@@ -47,6 +47,21 @@ async function isBlockedEitherWay(db, a, b) {
   return Boolean(await db.prepare(`SELECT 1 AS x FROM blocks WHERE (user_id=? AND blocked_id=?) OR (user_id=? AND blocked_id=?)`).get(a, b, b, a));
 }
 
+function pairKey(a, b) { return Number(a) < Number(b) ? [Number(a), Number(b)] : [Number(b), Number(a)]; }
+// After an unmatch, old share links can't be used between the pair until they match again.
+async function markUnmatched(db, a, b) {
+  const [x, y] = pairKey(a, b);
+  await db.prepare(`INSERT OR IGNORE INTO unmatched_pairs (a_id, b_id, created_at) VALUES (?,?,?)`).run(x, y, new Date().toISOString());
+}
+async function clearUnmatched(db, a, b) {
+  const [x, y] = pairKey(a, b);
+  await db.prepare(`DELETE FROM unmatched_pairs WHERE a_id=? AND b_id=?`).run(x, y);
+}
+async function isUnmatchedPair(db, a, b) {
+  const [x, y] = pairKey(a, b);
+  return Boolean(await db.prepare(`SELECT 1 AS x FROM unmatched_pairs WHERE a_id=? AND b_id=?`).get(x, y));
+}
+
 async function isMutualMatch(db, a, b) {
   const [x, y] = Number(a) < Number(b) ? [a, b] : [b, a];
   return Boolean(await db.prepare(`SELECT id FROM matches WHERE a_id=? AND b_id=?`).get(x, y));
@@ -57,7 +72,8 @@ async function checkFollow(db, me, target, token) {
   if (!target) return { ok: false, status: 404, error: "User not found." };
   if (Number(target.id) === Number(me.id)) return { ok: false, status: 400, error: "You can't follow yourself." };
   if (await isBlockedEitherWay(db, me.id, target.id)) return { ok: false, status: 403, error: "You can't follow this person." };
-  if (await isMutualMatch(db, me.id, target.id)) return { ok: true, via: "match" };
+  if (await isMutualMatch(db, me.id, target.id)) { await clearUnmatched(db, me.id, target.id); return { ok: true, via: "match" }; }
+  if (await isUnmatchedPair(db, me.id, target.id)) return { ok: false, status: 403, code: "follow_not_allowed", error: "You two unmatched, so this link can't be used to follow. If you match again, you can follow." };
   if (linkTokenValid(target, token)) return { ok: true, via: "link" };
   return { ok: false, status: 403, code: "follow_not_allowed", error: "You can follow someone after you match, or from a profile link they share with you." };
 }
@@ -81,6 +97,7 @@ async function migrateFollowRules(db) {
     for (const [c, t] of userCols) { try { await db.exec(`ALTER TABLE users ADD COLUMN ${c} ${t}`); } catch (_) {} }
     try { await db.exec("ALTER TABLE follows ADD COLUMN via TEXT DEFAULT ''"); } catch (_) {}
   }
+  await db.exec(`CREATE TABLE IF NOT EXISTS unmatched_pairs (a_id INTEGER NOT NULL, b_id INTEGER NOT NULL, created_at TEXT, PRIMARY KEY (a_id, b_id))`);
   // Follows made before the rule existed are kept and labeled "legacy" (grandfathered).
   try {
     const r = await db.prepare(`UPDATE follows SET via='legacy' WHERE via IS NULL OR via=''`).run();
@@ -95,4 +112,5 @@ async function migrateFollowRules(db) {
 module.exports = {
   ensureShareToken, resetShareToken, shareFollowEnabled, shareUrl, linkTokenValid,
   isMutualMatch, isBlockedEitherWay, checkFollow, canFollowSimple, removeFollowsBetween, migrateFollowRules, newShareToken,
+  markUnmatched, clearUnmatched, isUnmatchedPair,
 };

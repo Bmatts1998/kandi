@@ -849,6 +849,7 @@ async function maybeMatch(fromId, toId) {
   const existing = await db.prepare(`SELECT * FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
   if (existing) return existing;
   const info = await db.prepare(`INSERT INTO matches (a_id, b_id) VALUES (?,?)`).run(a, b);
+  try { await followRules.clearUnmatched(db, a, b); } catch (_) {}
   return await db.prepare(`SELECT * FROM matches WHERE id=?`).get(Number(info.lastInsertRowid));
 }
 
@@ -1388,6 +1389,7 @@ app.get("/api/share/:username", async (req, res) => {
   if (!target || !followRules.linkTokenValid(target, token) || mailer.isLocked(target)) return res.status(404).json(invalid);
   const me = await getUserFromReq(req);
   if (me && Number(me.id) !== Number(target.id) && await followRules.isBlockedEitherWay(db, me.id, target.id)) return res.status(404).json(invalid);
+  if (me && Number(me.id) !== Number(target.id) && await followRules.isUnmatchedPair(db, me.id, target.id) && !(await followRules.isMutualMatch(db, me.id, target.id))) return res.status(404).json(invalid);
   const full = publicUser(target);
   const following = me ? Boolean(await db.prepare(`SELECT 1 AS x FROM follows WHERE follower_id=? AND following_id=?`).get(me.id, target.id)) : false;
   res.json({

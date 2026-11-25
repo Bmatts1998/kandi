@@ -91,7 +91,11 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
     await db().prepare(`DELETE FROM likes WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`).run(req.user.id, other, other, req.user.id);
     try { await db().prepare(`INSERT OR IGNORE INTO passes (from_id, to_id) VALUES (?,?)`).run(req.user.id, other); } catch (_) {}
     // Unmatching ends follows both ways, including ones that came from a share link.
-    if (other && other !== req.user.id) await require("./follow-rules").removeFollowsBetween(db(), req.user.id, other);
+    if (other && other !== req.user.id) {
+      const fr = require("./follow-rules");
+      await fr.removeFollowsBetween(db(), req.user.id, other);
+      await fr.markUnmatched(db(), req.user.id, other);
+    }
     broadcastToUser(other, { type: "unmatch", userId: req.user.id });
     res.json({ ok: true });
   });

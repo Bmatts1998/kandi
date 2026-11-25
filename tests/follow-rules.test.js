@@ -110,6 +110,21 @@ describe("follow rules", () => {
     assert.equal(r.data.user.followingCount, 0);
     // No match any more, so a plain follow is refused again.
     assert.equal((await a.c("POST", `/api/users/${b.id}/follow`, {})).status, 403);
+    // Old share links don't work between the pair after an unmatch, in either direction.
+    const kb = new URL((await b.c("GET", "/api/me/share-link")).data.url).searchParams.get("k");
+    r = await b.c("POST", `/api/users/${a.id}/follow`, { k });
+    assert.equal(r.status, 403);
+    assert.equal((await a.c("POST", `/api/users/${b.id}/follow`, { k: kb })).status, 403);
+    assert.equal((await b.c("GET", `/api/share/fu_amy?k=${k}`)).status, 404);
+    // Someone else can still use Amy's link.
+    const c = await signup("fu_cy");
+    assert.equal((await c.c("POST", `/api/users/${a.id}/follow`, { k })).status, 200);
+    // A new mutual match lifts it.
+    const passed = await a.c("POST", "/api/like", { userId: b.id, targetType: "photo", targetId: "0" });
+    const back = await b.c("POST", "/api/like", { userId: a.id, targetType: "photo", targetId: "0" });
+    assert.ok(passed.data.matched || back.data.matched, "re-matched: " + JSON.stringify([passed.data, back.data]));
+    assert.equal((await b.c("POST", `/api/users/${a.id}/follow`, { k })).status, 200);
+    assert.equal((await b.c("GET", `/api/share/fu_amy?k=${k}`)).status, 200);
   });
 
   test("crew tagging can't search strangers by name", async () => {
