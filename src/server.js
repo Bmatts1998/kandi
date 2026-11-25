@@ -89,6 +89,47 @@ async function auth(req, res, next) {
   } catch (err) { next(err); }
 }
 
+const MAX_PROFILE_PHOTOS = 6;
+
+function parsePhotos(raw) {
+  try {
+    const list = typeof raw === "string" ? JSON.parse(raw || "[]") : (raw || []);
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function fileIdFromPhoto(ph) {
+  if (!ph || ph.type !== "file" || !ph.url) return null;
+  const m = String(ph.url).match(/^\/uploads\/([^/?#]+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function sniffImageMime(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return "image/gif";
+  if (buf.slice(0, 4).toString("ascii") === "RIFF" && buf.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+async function saveUserPhotos(userId, photos) {
+  await db.prepare(`UPDATE users SET photos=? WHERE id=?`).run(JSON.stringify(photos), userId);
+  return publicUser(await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId));
+}
+
+async function deletePhotoFileIfOwned(fileId, userId) {
+  if (!fileId) return;
+  const used = await db.prepare(`SELECT id FROM posts WHERE photo_id=? LIMIT 1`).get(fileId);
+  if (used) return;
+  const row = await db.prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
+  if (!row || Number(row.user_id) !== Number(userId)) return;
+  await db.prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
+  try { fs.unlinkSync(path.join(uploadDir, fileId)); } catch (_) { /* ephemeral disk is ok */ }
+}
+
 function publicUser(u, extra) {
   if (!u) return null;
   return {
@@ -251,22 +292,79 @@ app.put("/api/me", auth, async (req, res) => {
 
 app.post("/api/me/photo", auth, async (req, res) => {
   upload.single("photo")(req, res, async (err) => {
-    if (err) return res.status(400).json({ error: err.message || "Upload failed" });
+    if (err) {
+      const msg = err.code === "LIMIT_FILE_SIZE"
+        ? "That photo is over 3 MB. Pick a smaller one — Kandi also shrinks photos to 1080px on your phone before upload."
+        : (err.message || "Upload failed");
+      return res.status(400).json({ error: msg });
+    }
     if (!req.file) return res.status(400).json({ error: "Choose a photo to upload." });
+    const sniffed = sniffImageMime(req.file.buffer);
+    if (!sniffed) return res.status(400).json({ error: "That file doesn't look like a photo. Use a JPEG, PNG, WebP, or GIF." });
+    const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+    const photos = parsePhotos(fresh && fresh.photos);
+    if (photos.length >= MAX_PROFILE_PHOTOS) {
+      return res.status(400).json({ error: "You can add up to 6 photos. Remove one to add another." });
+    }
     const ext = path.extname(req.file.originalname || "").toLowerCase() || ".jpg";
-    const safe = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? ext : ".jpg";
+    const safe = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? ext : (sniffed === "image/png" ? ".png" : sniffed === "image/webp" ? ".webp" : sniffed === "image/gif" ? ".gif" : ".jpg");
     const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${safe}`;
-    const mime = req.file.mimetype || "image/jpeg";
+    const mime = sniffed;
     await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
       fileId, req.user.id, mime, req.file.buffer.toString("base64")
     );
     try { fs.writeFileSync(path.join(uploadDir, fileId), req.file.buffer); } catch (_) { /* ephemeral disk is ok */ }
-    const photos = JSON.parse(req.user.photos || "[]");
-    photos.push({ type: "file", url: "/uploads/" + fileId, caption: String(req.body.caption || "") });
-    await db.prepare(`UPDATE users SET photos=? WHERE id=?`).run(JSON.stringify(photos), req.user.id);
-    const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
-    res.json({ user: publicUser(user) });
+    const entry = { type: "file", url: "/uploads/" + fileId, caption: String((req.body && req.body.caption) || "") };
+    const asMain = req.body && (req.body.main === "1" || req.body.main === "true" || req.body.asMain === "1");
+    if (asMain || photos.length === 0) photos.unshift(entry);
+    else photos.push(entry);
+    const user = await saveUserPhotos(req.user.id, photos);
+    res.json({ user });
   });
+});
+
+app.delete("/api/me/photo/:index", auth, async (req, res) => {
+  const index = Number(req.params.index);
+  const photos = parsePhotos(req.user.photos);
+  if (!Number.isInteger(index) || index < 0 || index >= photos.length) {
+    return res.status(404).json({ error: "Photo not found." });
+  }
+  const removed = photos.splice(index, 1)[0];
+  await deletePhotoFileIfOwned(fileIdFromPhoto(removed), req.user.id);
+  const user = await saveUserPhotos(req.user.id, photos);
+  res.json({ user });
+});
+
+app.post("/api/me/photo/main", auth, async (req, res) => {
+  const index = Number(req.body && req.body.index);
+  const photos = parsePhotos(req.user.photos);
+  if (!Number.isInteger(index) || index < 0 || index >= photos.length) {
+    return res.status(400).json({ error: "Pick one of your photos to set as main." });
+  }
+  if (index !== 0) {
+    const [picked] = photos.splice(index, 1);
+    photos.unshift(picked);
+  }
+  const user = await saveUserPhotos(req.user.id, photos);
+  res.json({ user });
+});
+
+app.put("/api/me/photos", auth, async (req, res) => {
+  const photos = parsePhotos(req.user.photos);
+  const order = (req.body && req.body.order) || [];
+  if (!Array.isArray(order) || order.length !== photos.length) {
+    return res.status(400).json({ error: "Send a new order for all of your photos." });
+  }
+  const idxs = order.map((n) => Number(n));
+  if (idxs.some((n) => !Number.isInteger(n) || n < 0 || n >= photos.length)) {
+    return res.status(400).json({ error: "That photo order isn't valid." });
+  }
+  if (new Set(idxs).size !== photos.length) {
+    return res.status(400).json({ error: "That photo order isn't valid." });
+  }
+  const next = idxs.map((i) => photos[i]);
+  const user = await saveUserPhotos(req.user.id, next);
+  res.json({ user });
 });
 
 // ---- discover ----

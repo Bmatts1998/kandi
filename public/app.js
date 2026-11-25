@@ -45,7 +45,10 @@
     chatWith: null,
     blocked: [],
     locationShare: null,
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "" },
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", claimPreview: "" },
+    uploadingPhoto: false,
+    uploadProgress: null,
+    uploadError: "",
     onboardStep: 0,
     filters: { event: "all", genre: "all" },
     billing: "monthly",
@@ -181,7 +184,156 @@
     if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(av.url)}')"></span>`;
     const g = (av && av.gradient) || "linear-gradient(160deg,#111,#ff5c00)";
     const e = (av && av.emoji) || emojiFallback || "●";
-    return `<span class="${cls}" style="background:${g}">${e}</span>`;
+    return `<span class="${cls}" style="background:${g}">${esc(e)}</span>`;
+  }
+  function hasRealPhoto(photos) {
+    return (photos || []).some((ph) => ph && ph.type === "file" && ph.url);
+  }
+  function initialOf(p) {
+    const name = (p && (p.name || p.username)) || "?";
+    return (String(name).trim().charAt(0) || "?").toUpperCase();
+  }
+  function mainPhotoOf(p) {
+    if (p && p.avatar) return p.avatar;
+    const photos = (p && p.photos) || [];
+    return photos[0] || null;
+  }
+  function personAvatar(p, cls) {
+    return avatarEl(mainPhotoOf(p), cls || "av", initialOf(p));
+  }
+  function photoThumbStyle(ph) {
+    if (ph && ph.type === "file" && ph.url) return `background-image:url('${esc(ph.url)}')`;
+    return `background:${esc((ph && ph.gradient) || "#1a1a1a")}`;
+  }
+  function uploadBusy() {
+    if (!state.uploadingPhoto) {
+      return state.uploadError ? `<div class="err">${esc(state.uploadError)}</div>` : "";
+    }
+    const pct = state.uploadProgress == null ? "" : " " + state.uploadProgress + "%";
+    return `<div class="upload-busy"><span class="spin"></span>Uploading photo${pct}…</div>`;
+  }
+  function setUploadProgress(pct) {
+    state.uploadProgress = pct;
+    const node = document.querySelector(".upload-busy");
+    if (node) node.innerHTML = `<span class="spin"></span>Uploading photo${pct == null ? "" : " " + pct + "%"}…`;
+  }
+  function profileAvatarEditor(p) {
+    return `<label class="prof-avatar-wrap" title="Change your main photo">
+      ${personAvatar(p, "av prof-av")}
+      <span class="cam-badge" aria-hidden="true">📷</span>
+      <input type="file" accept="image/*" data-act-file="upload-photo-main" ${state.uploadingPhoto ? "disabled" : ""} aria-label="Set or change your main profile photo" />
+    </label>`;
+  }
+  function photoEditor(photos) {
+    const list = photos || [];
+    const empty = Math.max(0, 6 - list.length);
+    let slots = list.map((ph, i) => {
+      const inner = (ph.type === "file" && ph.url) ? "" : `<span style="font-size:36px;display:grid;place-items:center;height:100%">${esc(ph.emoji || initialOf(state.me))}</span>`;
+      return `<div class="photo-slot${i === 0 ? " main" : ""}" style="${photoThumbStyle(ph)}" draggable="true" data-drag-i="${i}">
+        ${i === 0 ? `<span class="main-tag">Main</span>` : ""}
+        ${inner}
+        <button class="slot-x" type="button" data-act="del-photo" data-i="${i}" aria-label="Remove photo">×</button>
+        <div class="slot-tools">
+          ${i > 0 ? `<button type="button" data-act="photo-left" data-i="${i}" aria-label="Move left">‹</button>` : ""}
+          ${i < list.length - 1 ? `<button type="button" data-act="photo-right" data-i="${i}" aria-label="Move right">›</button>` : ""}
+          ${i > 0 ? `<button type="button" data-act="photo-main" data-i="${i}">Set as main</button>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    for (let i = 0; i < empty; i++) {
+      slots += `<label class="photo-slot add"><span>+</span>
+        <input type="file" accept="image/*" data-act-file="upload-photo" ${state.uploadingPhoto ? "disabled" : ""} aria-label="Add a profile photo" /></label>`;
+    }
+    return `<div class="photo-editor">
+      <div class="photo-grid">${slots}</div>
+      <p class="photo-hint">${list.length}/6 photos. Tap + or the camera to add one. On iPhone this offers Take Photo or Photo Library. We'll shrink it to 1080px. Max 3 MB.</p>
+      ${uploadBusy()}
+    </div>`;
+  }
+  async function compressImage(file, maxDim, quality) {
+    maxDim = maxDim || 1080;
+    quality = quality == null ? 0.86 : quality;
+    const maxBytes = 3 * 1024 * 1024;
+    if (!file) throw new Error("Choose a photo to upload.");
+    let bitmap = null;
+    if (typeof createImageBitmap === "function") {
+      try { bitmap = await createImageBitmap(file); } catch (_) { bitmap = null; }
+    }
+    if (!bitmap) {
+      const url = URL.createObjectURL(file);
+      try {
+        bitmap = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("Couldn't read that photo. Try a JPEG or PNG, or take a new photo."));
+          img.src = url;
+        });
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+    const w = bitmap.width || bitmap.naturalWidth;
+    const h = bitmap.height || bitmap.naturalHeight;
+    if (!w || !h) throw new Error("Couldn't read that photo. Try a JPEG or PNG, or take a new photo.");
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * scale));
+    const ch = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, cw, ch);
+    if (bitmap.close) try { bitmap.close(); } catch (_) {}
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) throw new Error("Couldn't prepare that photo. Try another one.");
+    if (blob.size > maxBytes) throw new Error("That photo is still over 3 MB after shrinking. Try a smaller image.");
+    return new File([blob], "photo.jpg", { type: "image/jpeg" });
+  }
+  function postPhoto(file, asMain) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/me/photo");
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+        else reject(new Error(data.error || "Upload failed"));
+      };
+      xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+      const fd = new FormData();
+      fd.append("photo", file);
+      if (asMain) fd.append("main", "1");
+      xhr.send(fd);
+    });
+  }
+  async function uploadProfilePhoto(file, asMain) {
+    if (state.uploadingPhoto) return;
+    const existing = (state.me && state.me.photos) || [];
+    if (existing.length >= 6) {
+      state.uploadError = "You can add up to 6 photos. Remove one to add another.";
+      render();
+      return;
+    }
+    state.uploadingPhoto = true;
+    state.uploadProgress = 0;
+    state.uploadError = "";
+    render();
+    try {
+      const ready = await compressImage(file);
+      const data = await postPhoto(ready, asMain);
+      if (!data.user) throw new Error("Upload failed");
+      state.me = data.user;
+    } catch (err) {
+      state.uploadError = err.message || "Upload failed";
+    } finally {
+      state.uploadingPhoto = false;
+      state.uploadProgress = null;
+      render();
+    }
   }
   async function refreshAll() {
     await Promise.all([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
@@ -277,6 +429,12 @@
       ${c.username ? `<p class="muted" style="margin-top:8px">Username: @${esc(c.username)}</p>` : ""}
       <input data-field="claimPass" type="password" placeholder="Password (8+ characters)" value="${esc(state.drafts.claimPass || "")}" style="margin-top:16px" autocomplete="new-password" />
       <input data-field="claimAge" inputmode="numeric" maxlength="2" placeholder="Your age (18+)" value="${esc(state.drafts.claimAge || "")}" style="margin-top:8px" />
+      <label class="card photo-upload" style="display:block;margin-top:12px;text-align:center;padding:18px">
+        ${state.drafts.claimPreview
+          ? `<div class="photo-slot main" style="margin:0 auto 8px;width:96px;background-image:url('${esc(state.drafts.claimPreview)}')"></div><div class="tiny">Photo ready — we'll add it after you save</div>`
+          : `<div>📷 Add a profile photo</div><p class="tiny" style="margin-top:6px">Optional, but people recognize you faster with a photo. You can also add one in the next steps.</p>`}
+        <input type="file" accept="image/*" data-act-file="claim-photo" />
+      </label>
       ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
       <button class="btn primary" data-act="claim-finish" style="margin-top:16px">Save and enter Kandi</button>
     </div></div>`;
@@ -344,12 +502,10 @@
         }
       }
     } else if (s === 4) {
-      body = `<p class="sub">Upload a photo of yourself, or skip and add one later. Placeholder photos are fine for testing.</p>
-        <div class="card photo-upload" style="margin-top:16px;padding:28px;text-align:center">
-          <div>📷 Tap to upload a photo</div>
-          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-act-file="upload-photo" />
-        </div>
-        <div class="stack" style="padding:12px 0">${(me.photos || []).map((ph, i) => photoEl({ ...me, name: me.name, age: me.age, photos: me.photos }, i, false)).join("")}</div>`;
+      const hasPhoto = hasRealPhoto(me.photos);
+      body = `<p class="sub">${hasPhoto ? "Looking good. You can add up to 6 photos, set a main, or rearrange them." : "Add a photo so people can recognize you on the floor. Take one or pick from your library. You can skip and add one later, but profiles with photos get more likes."}</p>
+        <div style="display:flex;justify-content:center;margin:16px 0 8px">${profileAvatarEditor(me)}</div>
+        ${photoEditor(me.photos)}`;
     } else {
       body = `<div class="notice warn"><strong>PLUR, always.</strong> Ask before you touch, wait for a yes, and look out for each other. Dates and hookups are fine — pressure is not.</div>
         <p class="sub">You can share a meetup note with a friend at a show, and you can report or block anyone at any time.</p>`;
@@ -407,7 +563,7 @@
       const info = p.liked || {};
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
-        <div class="av" style="width:56px;height:56px;font-size:26px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        ${personAvatar(p, "av md")}
         <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}</div>
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
@@ -440,7 +596,7 @@
       const p = m.user;
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
-        <div class="av" style="width:52px;height:52px;font-size:24px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        ${personAvatar(p, "av sm")}
         <div class="grow"><div style="font-weight:800">${esc(p.name)}</div>
         <div class="muted">${esc(last ? last.text : "You matched. Say hi.")}</div></div></button>`;
     });
@@ -456,6 +612,11 @@
       <button class="${!following ? "on" : ""}" data-act="feed-tab" data-id="popular">Popular</button>
     </div>`;
     html += `<div class="scroll">`;
+    if (state.me && !state.me.isDemo && !hasRealPhoto(state.me.photos) && !localStorage.getItem("kandi-hide-photo-nudge")) {
+      html += `<div class="nudge"><div class="grow"><strong>Add a profile photo</strong><p>Ravers recognize you faster in the feed, in Discover, and in chat.</p></div>
+        <button class="btn sm primary" data-act="edit-profile">Add photo</button>
+        <button class="icon-btn" data-act="dismiss-photo-nudge" aria-label="Dismiss">✕</button></div>`;
+    }
     if (!following && (state.topRavers || []).length) {
       html += `<div class="label" style="padding:0 14px 8px">Top ravers</div><div class="stories">`;
       html += state.topRavers.map((p) =>
@@ -517,15 +678,16 @@
   function viewYou() {
     const p = state.me;
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
-    let html = header("You") + `<div class="scroll pad">`;
-    html += `<div class="photo" style="background:linear-gradient(160deg,#000000,#ff5c00 60%,#ffc14d);height:220px"><div class="who"><div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div></div><div class="emoji">💫</div></div>`;
+    let html = header("You", `<button class="btn sm ghost" data-act="edit-profile">Edit profile</button>`) + `<div class="scroll pad">`;
+    html += `<div class="prof-hero">${profileAvatarEditor(p)}<div class="grow"><div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+      <div class="muted">@${esc(p.username)}</div>
+      <button class="btn sm ghost" style="margin-top:10px" data-act="edit-profile">Edit profile</button></div></div>`;
+    html += photoEditor(p.photos);
     html += `<div class="chips" style="margin:12px 0">${p.vibes.map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>`;
-    html += `<div class="muted">@${esc(p.username)} · looking for ${p.looking.map((id) => LOOKING_LABEL[id] || id).join(", ")}</div>`;
+    html += `<div class="muted">Looking for ${p.looking.map((id) => LOOKING_LABEL[id] || id).join(", ")}</div>`;
     (p.prompts || []).forEach((pr) => {
       html += `<div class="prompt" style="padding-bottom:20px;margin-top:12px"><div class="q">${esc(pr.q)}</div><div class="a" style="font-size:18px">${esc(pr.a)}</div></div>`;
     });
-    html += `<div class="card photo-upload" style="margin-top:16px;text-align:center"><div>📷 Add another photo</div>
-      <input type="file" accept="image/jpeg,image/png,image/webp" data-act-file="upload-photo" /></div>`;
     const soc = state.profile && state.profile.user && state.profile.user.id === p.id ? state.profile : null;
     if (soc) {
       html += `<div class="counts">
@@ -604,6 +766,20 @@
         <button class="btn danger" style="margin-top:16px;width:100%" data-act="submit-report-post">Report and block</button>
         <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
     }
+    if (o.type === "editProfile") {
+      const me = state.me || { photos: [], name: "", bio: "" };
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">Edit profile</span></div>
+        <div class="right"><button class="btn sm primary" data-act="save-profile">Save</button></div></div>
+        <div class="scroll pad">
+          <div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
+          ${photoEditor(me.photos)}
+          <div class="label" style="margin-top:8px">Name</div>
+          <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
+          <div class="label" style="margin-top:12px">Bio</div>
+          <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
+          ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        </div></div>`;
+    }
     if (o.type === "profile") {
       const data = state.profile;
       if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
@@ -613,7 +789,10 @@
         : `<button class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
-          <div class="muted">@${esc(u.username)}${u.age ? " · " + u.age : ""}</div>
+          <div class="profile-top">${personAvatar(u, "av lg")}<div class="grow">
+            <div style="font-weight:800;font-size:20px">${esc(u.name)}${u.age ? ", " + u.age : ""}</div>
+            <div class="muted">@${esc(u.username)}</div>
+          </div></div>
           <div class="counts">
             <span><strong>${u.followerCount || 0}</strong><span class="tiny">followers</span></span>
             <span><strong>${u.followingCount || 0}</strong><span class="tiny">following</span></span>
@@ -675,8 +854,8 @@
     if (o.type === "match") {
       const p = o.person;
       return `<div class="overlay"><div class="match-wrap">
-        <div class="avatars"><div class="av" style="background:linear-gradient(160deg,#000000,#ff5c00)">💫</div>${beads(5, "sm")}
-        <div class="av" style="background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div></div>
+        <div class="avatars">${personAvatar(state.me, "av")}${beads(5, "sm")}
+        ${personAvatar(p, "av")}</div>
         <h2>It's a trade!</h2>
         <p class="sub">${esc(state.me.name)} and ${esc(p.name)} liked each other. Time to trade kandi — or at least a hello.</p>
         <button class="btn primary" style="margin-top:24px;max-width:280px" data-act="chat" data-id="${p.id}">Send a message</button>
@@ -721,7 +900,7 @@
           <button class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${e.id}" aria-label="I'm going"><i></i></button></div>
         ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
         <div class="label">Who's going</div>
-        ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px"><div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px">${personAvatar(p, "av sm")}
           <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>
           <div class="tiny">${p.vibes.join(" · ")}</div></div></div>`).join("")}
         <button class="btn primary" style="margin-top:8px" data-act="open-live" data-id="${e.id}">Open at-the-show live mode</button></div></div>`;
@@ -741,7 +920,7 @@
           <div class="notice warn" style="margin-top:12px">Tell a friend where you are. <button data-act="share-loc" style="color:var(--gold);font-weight:700">Share a meetup note</button></div>
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
-            <div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+            ${personAvatar(p, "av sm")}
             <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}</div>
             <div class="tiny">${esc(p.meetupSpot || "At this event")} · ${p.vibes.slice(0, 2).join(", ")}</div></div></button>`).join("")}
         `}</div></div>`;
@@ -751,7 +930,7 @@
       if (!p) return "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close">‹</button>
-        <span style="font-weight:800">${esc(p.name)}</span></div>
+        <div class="chat-head">${personAvatar(p, "av chat")}<span class="nm">${esc(p.name)}</span></div></div>
         <div class="right"><button class="icon-btn" data-act="report" data-id="${p.id}" title="Report or block">⚑</button></div></div>
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
         <div class="scroll chat-log">${state.chat.map((m) => `<div class="bubble ${m.fromId === state.me.id ? "me" : "them"}">${esc(m.text)}</div>`).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
@@ -814,9 +993,54 @@
         applyMe(data);
         connectWs();
         history.replaceState({}, "", "/");
+        if (state.drafts.claimFile) {
+          await uploadProfilePhoto(state.drafts.claimFile, true);
+          if (state.drafts.claimPreview && String(state.drafts.claimPreview).startsWith("blob:")) {
+            try { URL.revokeObjectURL(state.drafts.claimPreview); } catch (_) {}
+          }
+          state.drafts.claimFile = null;
+          state.drafts.claimPreview = "";
+        }
         state.view = needsOnboard(state.me) ? "onboard" : "app";
         state.overlay = null;
         if (state.view === "app") await refreshAll();
+        render(); return;
+      }
+      if (act === "dismiss-photo-nudge") { localStorage.setItem("kandi-hide-photo-nudge", "1"); render(); return; }
+      if (act === "edit-profile") {
+        state.err = "";
+        state.drafts.editName = state.me ? state.me.name : "";
+        state.drafts.editBio = state.me ? (state.me.bio || "") : "";
+        state.overlay = { type: "editProfile" };
+        render(); return;
+      }
+      if (act === "save-profile") {
+        const data = await api("/api/me", { method: "PUT", body: { name: state.drafts.editName, bio: state.drafts.editBio } });
+        state.me = data.user;
+        state.overlay = null;
+        render(); return;
+      }
+      if (act === "del-photo") {
+        const i = Number(el.getAttribute("data-i"));
+        const data = await api("/api/me/photo/" + i, { method: "DELETE", body: {} });
+        state.me = data.user;
+        render(); return;
+      }
+      if (act === "photo-main") {
+        const i = Number(el.getAttribute("data-i"));
+        const data = await api("/api/me/photo/main", { method: "POST", body: { index: i } });
+        state.me = data.user;
+        render(); return;
+      }
+      if (act === "photo-left" || act === "photo-right") {
+        const i = Number(el.getAttribute("data-i"));
+        const photos = (state.me && state.me.photos) || [];
+        const j = act === "photo-left" ? i - 1 : i + 1;
+        if (j < 0 || j >= photos.length) return;
+        const order = photos.map((_, n) => n);
+        const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+        const data = await api("/api/me/photos", { method: "PUT", body: { order } });
+        state.me = data.user;
         render(); return;
       }
       if (act === "show-signup") { state.overlay = { type: "signup" }; render(); return; }
@@ -1190,15 +1414,52 @@
       render();
       return;
     }
-    if (kind !== "upload-photo") return;
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("photo", file);
+    if (kind === "claim-photo") {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (state.drafts.claimPreview && String(state.drafts.claimPreview).startsWith("blob:")) {
+        try { URL.revokeObjectURL(state.drafts.claimPreview); } catch (_) {}
+      }
+      state.drafts.claimFile = file;
+      state.drafts.claimPreview = URL.createObjectURL(file);
+      render();
+      return;
+    }
+    if (kind === "upload-photo" || kind === "upload-photo-main") {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      await uploadProfilePhoto(file, kind === "upload-photo-main");
+      e.target.value = "";
+    }
+  });
+
+  let dragFrom = null;
+  root.addEventListener("dragstart", (e) => {
+    const slot = e.target.closest && e.target.closest("[data-drag-i]");
+    if (!slot) return;
+    dragFrom = Number(slot.getAttribute("data-drag-i"));
+    try { e.dataTransfer.setData("text/plain", String(dragFrom)); e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+  });
+  root.addEventListener("dragover", (e) => {
+    const slot = e.target.closest && e.target.closest("[data-drag-i]");
+    if (!slot) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = "move"; } catch (_) {}
+  });
+  root.addEventListener("drop", async (e) => {
+    const slot = e.target.closest && e.target.closest("[data-drag-i]");
+    if (!slot) return;
+    e.preventDefault();
+    const to = Number(slot.getAttribute("data-drag-i"));
+    const from = dragFrom;
+    dragFrom = null;
+    const photos = (state.me && state.me.photos) || [];
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= photos.length || to >= photos.length) return;
+    const order = photos.map((_, n) => n);
+    const [moved] = order.splice(from, 1);
+    order.splice(to, 0, moved);
     try {
-      const res = await fetch("/api/me/photo", { method: "POST", body: fd, credentials: "include" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const data = await api("/api/me/photos", { method: "PUT", body: { order } });
       state.me = data.user;
       render();
     } catch (err) {
