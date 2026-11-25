@@ -1,5 +1,7 @@
 "use strict";
 
+const { publicMessage } = require("./chat-media");
+
 const MAX_REPLIES_PER_DAY = 20;
 
 const DEFAULT_REPLIES = [
@@ -77,12 +79,13 @@ function createDemoChat({ getDb, publicUser, broadcastToUser, delayRange = [3000
     const ev = await sharedUpcomingEvent(fromUser.id, toUser.id);
     const text = pickReply({ sharedEvent: ev, lastTexts });
     const createdAt = new Date().toISOString();
+    const matchRow = await db.prepare(`SELECT disappear FROM matches WHERE id=?`).get(matchId);
+    const disappear = matchRow && Number(matchRow.disappear) ? 1 : 0;
     const info = await db.prepare(
-      `INSERT INTO messages (match_id, from_id, text, created_at) VALUES (?,?,?,?)`
-    ).run(matchId, toUser.id, text, createdAt);
-    const msg = await db.prepare(
-      `SELECT id, from_id as fromId, text, created_at as at FROM messages WHERE id=?`
-    ).get(Number(info.lastInsertRowid));
+      `INSERT INTO messages (match_id, from_id, text, created_at, disappear) VALUES (?,?,?,?,?)`
+    ).run(matchId, toUser.id, text, createdAt, disappear);
+    const row = await db.prepare(`SELECT * FROM messages WHERE id=?`).get(Number(info.lastInsertRowid));
+    const msg = publicMessage(row);
     if (typeof broadcastToUser === "function") {
       broadcastToUser(fromUser.id, { type: "message", matchId, message: msg, from: publicUser(toUser) });
     }

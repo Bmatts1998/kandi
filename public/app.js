@@ -562,6 +562,9 @@
     nearby: [],
     chat: [],
     chatWith: null,
+    chatDisappear: false,
+    chatSheet: null,
+    chatLightbox: null,
     blocked: [],
     locationShare: null,
     crews: { mine: [], discover: [] },
@@ -854,6 +857,30 @@
         }
         toast((msg.from && msg.from.name ? msg.from.name : "Your match") + " picked a meet spot.");
         render();
+      } else if (msg.type === "disappear") {
+        if (Number(msg.matchId) === Number(state.chatMatchId)) {
+          state.chatDisappear = Boolean(msg.disappear);
+          if (msg.message && !state.chat.some((m) => Number(m.id) === Number(msg.message.id))) state.chat.push(msg.message);
+          render();
+          scrollChatToEnd();
+        }
+      } else if (msg.type === "messages-read") {
+        if (Number(msg.matchId) === Number(state.chatMatchId)) {
+          (msg.messageIds || []).forEach((id) => {
+            const m = state.chat.find((x) => Number(x.id) === Number(id));
+            if (m) m.readAt = msg.readAt;
+          });
+          render();
+        }
+      } else if (msg.type === "messages-deleted") {
+        const ids = new Set((msg.messageIds || []).map(Number));
+        const before = state.chat.length;
+        if (Number(msg.matchId) === Number(state.chatMatchId) || state.chat.some((m) => ids.has(Number(m.id)))) {
+          state.chat = state.chat.filter((m) => !ids.has(Number(m.id)));
+          if (state.chatLightbox && ids.has(Number(state.chatLightbox.messageId))) state.chatLightbox = null;
+          if (state.chat.length !== before) render();
+        }
+        quiet(Promise.all([loadMatches(), loadUnread()]));
       } else if (msg.type === "crew-message") {
         const onGroup = state.overlay && state.overlay.type === "group" && state.group && state.group.group && Number(state.group.group.id) === Number(msg.crewId);
         if (onGroup && msg.message && !(state.groupMessages || []).some((m) => m.id === msg.message.id)) {
@@ -873,8 +900,17 @@
     };
   }
   function markChatRead(id) {
-    api("/api/chats/" + id + "/read", { method: "POST", body: {} }).then((r) => {
-      if (r && r.unread) { state.unreadMsgs = r.unread.total || 0; state.unreadByUser = r.unread.byUser || {}; render(); }
+    if (!id) return;
+    const pending = (state.chat || []).filter((m) => Number(m.fromId) !== Number(state.me && state.me.id) && m.attachType !== "system" && !m.readAt).map((m) => m.id);
+    api("/api/chats/" + id + "/read", { method: "POST", body: pending.length ? { messageIds: pending } : {} }).then((r) => {
+      let changed = false;
+      if (r && r.unread) { state.unreadMsgs = r.unread.total || 0; state.unreadByUser = r.unread.byUser || {}; changed = true; }
+      const at = r && r.readAt;
+      (r && r.readIds || []).forEach((mid) => {
+        const m = state.chat.find((x) => Number(x.id) === Number(mid));
+        if (m && !m.readAt) { m.readAt = at; changed = true; }
+      });
+      if (changed) render();
     }).catch(() => {});
   }
   function scrollChatToEnd() {
@@ -889,7 +925,14 @@
       const id = state.chatWith.id;
       api("/api/chats/" + id).then((data) => {
         if (!state.overlay || state.overlay.type !== "chat" || !state.chatWith || state.chatWith.id !== id) return;
-        if ((data.messages || []).length !== state.chat.length) { state.chat = data.messages || []; render(); scrollChatToEnd(); }
+        const ids = (data.messages || []).map((m) => m.id).join(",");
+        const cur = state.chat.map((m) => m.id).join(",");
+        if (ids !== cur || Boolean(data.disappear) !== Boolean(state.chatDisappear)) {
+          state.chat = data.messages || [];
+          state.chatDisappear = Boolean(data.disappear);
+          render();
+          scrollChatToEnd();
+        }
       }).catch(() => {});
       return;
     }
@@ -1816,7 +1859,7 @@
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
         <div class="grow"><div style="font-weight:800">${esc(p.name)}${personBadge(p)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>
-        <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + last.text : "You matched. Say hi.")}</div>
+        <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : "You matched. Say hi.")}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
     });
@@ -2329,6 +2372,353 @@
       </div></div>`;
   }
 
+  function parseMusicLink(raw) {
+    const input = String(raw || "").trim();
+    const uri = input.match(/^spotify:(track|album|playlist|episode|show):([A-Za-z0-9]+)$/i);
+    const parsed = parseTuneUrl(uri ? ("https://open.spotify.com/" + uri[1].toLowerCase() + "/" + uri[2]) : input);
+    if (!parsed) return null;
+    return { provider: parsed.source, source: parsed.source, kind: parsed.kind, url: parsed.url, embedUrl: parsed.embedUrl };
+  }
+  function formatDur(sec) {
+    sec = Math.max(0, Math.round(Number(sec) || 0));
+    return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+  }
+  function isChatStack(type) {
+    return type === "chat" || type === "meetSpot" || type === "chatMusic" || type === "chatDisappear";
+  }
+  function lastPreview(m) {
+    if (!m) return "You matched. Say hi.";
+    if (m.preview) return m.preview;
+    const typ = m.attachType;
+    if (typ === "voice") return "🎤 Voice message";
+    if (typ === "photo") return "📷 Photo";
+    if (typ === "video") return "🎬 Video";
+    if (typ === "music") return "🎵 Music";
+    return m.text || "";
+  }
+  function waveHtml(peaks, duration) {
+    const bars = (peaks && peaks.length) ? peaks : Array.from({ length: 24 }, (_, i) => 20 + Math.round(40 * Math.abs(Math.sin(i * 0.7 + (duration || 1)))));
+    return `<span class="voice-wave" aria-hidden="true">${bars.map((h) => `<i style="height:${Math.max(4, Math.min(100, Number(h) || 8))}%"></i>`).join("")}</span>`;
+  }
+  function chatBubble(m) {
+    const mine = Number(m.fromId) === Number(state.me.id);
+    const typ = m.attachType || "";
+    if (typ === "system") return `<div class="bubble sys">${esc(m.text)}</div>`;
+    const side = mine ? "me" : "them";
+    let inner = "";
+    if (typ === "voice") {
+      inner = `<div class="voice-row">
+        <button type="button" class="voice-play" data-act="play-voice" data-id="${m.id}" aria-label="Play voice message">▶</button>
+        ${waveHtml(m.waveform, m.duration)}
+        <span class="voice-dur">${esc(formatDur(m.duration))}</span>
+      </div>
+      <audio data-voice-id="${m.id}" src="${esc(m.mediaUrl || "")}" preload="none" playsinline webkit-playsinline></audio>`;
+    } else if (typ === "photo") {
+      inner = `<button type="button" class="chat-media-btn" data-act="open-chat-media" data-id="${m.id}" aria-label="View photo">
+        <img class="chat-photo" src="${esc(m.mediaUrl || "")}" alt="">
+      </button>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+    } else if (typ === "video") {
+      inner = `<video class="chat-video" src="${esc(m.mediaUrl || "")}" ${m.posterUrl ? `poster="${esc(m.posterUrl)}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+    } else if (typ === "music" && m.music && m.music.embedUrl) {
+      const prov = m.music.source || m.music.provider || "spotify";
+      const hgt = (typeof tuneFrameHeight === "function") ? tuneFrameHeight(m.music) : 152;
+      inner = `<div class="chat-music ${esc(prov)}"><iframe src="${esc(m.music.embedUrl)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Music" style="height:${hgt}px"></iframe></div>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+    } else {
+      inner = esc(m.text);
+    }
+    const opened = mine && m.disappear && m.readAt ? `<div class="bubble-meta">Opened</div>` : (mine && m.disappear && !m.readAt ? `<div class="bubble-meta">Sent</div>` : "");
+    return `<div class="bubble ${side} ${typ}" data-msg="${m.id}">${inner}${opened}</div>`;
+  }
+  async function sendChatMedia(opts) {
+    if (!state.chatWith) return null;
+    const fd = new FormData();
+    if (opts.text) fd.append("text", opts.text);
+    if (opts.type) fd.append("type", opts.type);
+    if (opts.file) fd.append("media", opts.file, opts.file.name || "media");
+    if (opts.poster) fd.append("poster", opts.poster, "poster.jpg");
+    if (opts.duration) fd.append("duration", String(Math.round(opts.duration)));
+    if (opts.waveform && opts.waveform.length) fd.append("waveform", JSON.stringify(opts.waveform));
+    if (opts.linkUrl) fd.append("linkUrl", opts.linkUrl);
+    const data = await api("/api/chats/" + state.chatWith.id, { method: "POST", body: fd, timeout: 120000 });
+    if (data.message && !state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
+    return data.message;
+  }
+  async function leaveOpenChat() {
+    const other = state.chatWith;
+    if (!other) return;
+    try { await api("/api/chats/" + other.id + "/leave", { method: "POST", body: {} }); } catch (_) {}
+  }
+  let readTimer = null;
+  function scheduleMarkRead() {
+    if (!state.me || !state.chatWith || !state.overlay || state.overlay.type !== "chat") return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    clearTimeout(readTimer);
+    readTimer = setTimeout(() => {
+      if (!state.me || !state.chatWith || !state.overlay || state.overlay.type !== "chat") return;
+      if (typeof markChatRead === "function") markChatRead(state.chatWith.id);
+    }, 250);
+  }
+  function videoMeta(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const v = document.createElement("video");
+      v.preload = "auto";
+      v.muted = true;
+      v.playsInline = true;
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+      let settled = false;
+      const done = (err, meta) => {
+        if (settled) return;
+        settled = true;
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        try { v.removeAttribute("src"); v.load(); } catch (_) {}
+        if (err) reject(err);
+        else resolve(meta);
+      };
+      v.onerror = () => done(new Error("Couldn't read that video. Try another clip from your camera roll."));
+      const capture = () => {
+        const duration = Number(v.duration);
+        if (!Number.isFinite(duration) || duration <= 0) return done(null, { duration: 0, poster: null });
+        if (duration > 60.5) return done(new Error("Videos can be up to 60 seconds. Try a shorter clip."));
+        try {
+          const canvas = document.createElement("canvas");
+          const w = v.videoWidth || 640, h = v.videoHeight || 360;
+          const scale = Math.min(1, 720 / Math.max(w, h, 1));
+          canvas.width = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => done(null, { duration, poster: blob }), "image/jpeg", 0.82);
+        } catch (_) {
+          done(null, { duration, poster: null });
+        }
+      };
+      v.onloadeddata = () => {
+        const go = () => setTimeout(capture, 40);
+        try {
+          v.currentTime = Math.min(0.2, (Number(v.duration) || 1) / 4);
+          v.onseeked = go;
+          setTimeout(go, 800);
+        } catch (_) { go(); }
+      };
+      setTimeout(() => { if (!settled) capture(); }, 2500);
+      v.src = url;
+    });
+  }
+
+  const voiceRec = { status: "idle", mode: "hold", cancel: false, startY: 0, startedAt: 0, recorder: null, stream: null, chunks: [], peaks: [], mime: "", analyser: null, audioCtx: null, raf: 0, timer: 0, maxTimer: 0 };
+  function preferVoiceMime() {
+    const types = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"];
+    if (typeof MediaRecorder === "undefined") return "";
+    if (typeof MediaRecorder.isTypeSupported !== "function") return types[0];
+    return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  }
+  function stopVoiceHardware() {
+    if (voiceRec.raf) cancelAnimationFrame(voiceRec.raf);
+    voiceRec.raf = 0;
+    if (voiceRec.timer) clearInterval(voiceRec.timer);
+    voiceRec.timer = 0;
+    if (voiceRec.maxTimer) clearTimeout(voiceRec.maxTimer);
+    voiceRec.maxTimer = 0;
+    if (voiceRec.stream) voiceRec.stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+    voiceRec.stream = null;
+    voiceRec.analyser = null;
+    if (voiceRec.audioCtx) { try { voiceRec.audioCtx.close(); } catch (_) {} voiceRec.audioCtx = null; }
+  }
+  function paintRecordingBar() {
+    const bar = document.querySelector(".chat-bar");
+    if (!bar || voiceRec.status !== "recording") return;
+    const elapsed = Math.min(60, Math.floor((Date.now() - voiceRec.startedAt) / 1000));
+    const timeEl = bar.querySelector(".rec-time");
+    if (timeEl) timeEl.textContent = formatDur(elapsed);
+    bar.classList.toggle("cancel", voiceRec.cancel);
+    const hint = bar.querySelector(".rec-hint");
+    if (hint) hint.textContent = voiceRec.cancel ? "Release to cancel" : (voiceRec.mode === "tap" ? "Tap the mic to send" : "Slide up to cancel");
+    const wave = bar.querySelector(".voice-wave");
+    if (wave && voiceRec.peaks.length) {
+      wave.innerHTML = voiceRec.peaks.slice(-28).map((h) => `<i style="height:${Math.max(4, h)}%"></i>`).join("");
+    }
+  }
+  async function beginVoiceRecord(mode, startY) {
+    if (voiceRec.status === "recording" || voiceRec.status === "uploading") return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Voice messages aren't supported in this browser.", "err");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      toast("Voice messages aren't supported in this browser.", "err");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+    } catch (err) {
+      const name = (err && err.name) || "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        toast("Microphone access is off. Enable it for Kandi in Settings, then try again.", "err");
+      } else if (name === "NotFoundError") {
+        toast("No microphone was found.", "err");
+      } else {
+        toast("Couldn't start the microphone. Try again.", "err");
+      }
+      return;
+    }
+    const mime = preferVoiceMime();
+    let recorder;
+    try {
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (_) {
+      try { recorder = new MediaRecorder(stream); } catch (err) {
+        stream.getTracks().forEach((t) => t.stop());
+        toast("Couldn't start a recording on this device.", "err");
+        return;
+      }
+    }
+    voiceRec.status = "recording";
+    voiceRec.mode = mode || "hold";
+    voiceRec.cancel = false;
+    voiceRec.startY = startY || 0;
+    voiceRec.startedAt = Date.now();
+    voiceRec.recorder = recorder;
+    voiceRec.stream = stream;
+    voiceRec.chunks = [];
+    voiceRec.peaks = [];
+    voiceRec.mime = recorder.mimeType || mime || "audio/mp4";
+    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) voiceRec.chunks.push(ev.data); };
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        voiceRec.audioCtx = ctx;
+        voiceRec.analyser = analyser;
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (voiceRec.status !== "recording") return;
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const avg = sum / Math.max(1, data.length);
+          voiceRec.peaks.push(Math.max(8, Math.min(100, Math.round((avg / 180) * 100))));
+          if (voiceRec.peaks.length > 48) voiceRec.peaks = voiceRec.peaks.slice(-48);
+          paintRecordingBar();
+          voiceRec.raf = requestAnimationFrame(tick);
+        };
+        voiceRec.raf = requestAnimationFrame(tick);
+      }
+    } catch (_) { /* waveform is optional */ }
+    recorder.start(100);
+    render();
+    scrollChatToEnd();
+    voiceRec.timer = setInterval(paintRecordingBar, 250);
+    voiceRec.maxTimer = setTimeout(() => { finishVoiceRecord(false); }, 60000);
+  }
+  async function finishVoiceRecord(cancelled) {
+    if (voiceRec.status !== "recording") return;
+    voiceRec.status = "uploading";
+    const cancel = cancelled || voiceRec.cancel;
+    const startedAt = voiceRec.startedAt;
+    const peaks = voiceRec.peaks.slice();
+    const mime = voiceRec.mime;
+    const recorder = voiceRec.recorder;
+    const blob = await new Promise((resolve) => {
+      if (!recorder || recorder.state === "inactive") {
+        resolve(new Blob(voiceRec.chunks, { type: mime || "audio/mp4" }));
+        return;
+      }
+      recorder.onstop = () => resolve(new Blob(voiceRec.chunks, { type: mime || "audio/mp4" }));
+      try { recorder.stop(); } catch (_) { resolve(new Blob(voiceRec.chunks, { type: mime || "audio/mp4" })); }
+    });
+    stopVoiceHardware();
+    voiceRec.recorder = null;
+    const duration = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+    if (cancel || duration < 1 || !blob.size) {
+      voiceRec.status = "idle";
+      render();
+      if (!cancel && duration < 1) toast("Hold a little longer to record.", "warn");
+      return;
+    }
+    try {
+      const ext = /mp4|aac|m4a/i.test(mime) ? "m4a" : /ogg/i.test(mime) ? "ogg" : /webm/i.test(mime) ? "webm" : "m4a";
+      const file = new File([blob], "voice." + ext, { type: mime || "audio/mp4" });
+      await sendChatMedia({ type: "voice", file, duration, waveform: peaks });
+      state.drafts.chat = "";
+    } catch (err) {
+      toast((err && err.message) || "Couldn't send that voice message.", "err");
+    }
+    voiceRec.status = "idle";
+    render();
+    scrollChatToEnd();
+  }
+  function bindVoiceControls() {
+    const btn = document.querySelector("[data-act=hold-mic]");
+    if (!btn || btn.getAttribute("data-bound-mic") === "1") return;
+    btn.setAttribute("data-bound-mic", "1");
+    const down = async (e) => {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      if (voiceRec.status === "recording" && voiceRec.mode === "tap") {
+        finishVoiceRecord(false);
+        return;
+      }
+      const y = e.clientY;
+      const start = Date.now();
+      btn.classList.add("hot");
+      const move = (ev) => {
+        if (voiceRec.status !== "recording") return;
+        if (voiceRec.startY && (voiceRec.startY - ev.clientY) > 56) voiceRec.cancel = true;
+        else if (voiceRec.startY && (voiceRec.startY - ev.clientY) < 36) voiceRec.cancel = false;
+        paintRecordingBar();
+      };
+      const up = (ev) => {
+        btn.classList.remove("hot");
+        window.removeEventListener("pointermove", move, true);
+        window.removeEventListener("pointerup", up, true);
+        window.removeEventListener("pointercancel", up, true);
+        const held = Date.now() - start;
+        if (voiceRec.status !== "recording") {
+          // still starting
+          return;
+        }
+        if (held < 350 && !voiceRec.cancel) {
+          voiceRec.mode = "tap";
+          paintRecordingBar();
+          toast("Tap the mic again to send.");
+          return;
+        }
+        finishVoiceRecord(false);
+      };
+      window.addEventListener("pointermove", move, true);
+      window.addEventListener("pointerup", up, true);
+      window.addEventListener("pointercancel", up, true);
+      await beginVoiceRecord("hold", y);
+    };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  async function sendChatVideo(file) {
+    if (file.size > 50 * 1024 * 1024) {
+      toast("That video is over 50 MB. Try a shorter clip.", "err");
+      return;
+    }
+    toast("Preparing video…");
+    const meta = await videoMeta(file);
+    await sendChatMedia({ type: "video", file, duration: meta.duration, poster: meta.poster, text: state.drafts.chat.trim() });
+    state.drafts.chat = "";
+    render(); scrollChatToEnd();
+  }
+  async function sendChatPhoto(file) {
+    let ready = null;
+    try { ready = await compressImage(file); } catch (_) { ready = null; }
+    await sendChatMedia({ type: "photo", file: ready || file, text: state.drafts.chat.trim() });
+    state.drafts.chat = "";
+    render(); scrollChatToEnd();
+  }
+
   function overlays() {
     if (state.storyViewer) return storyViewerHtml();
     const o = state.overlay;
@@ -2559,16 +2949,67 @@
     if (o.type === "chat") {
       const p = state.chatWith;
       if (!p) return "";
+      const rec = voiceRec.status === "recording";
+      const attach = state.chatSheet === "attach";
+      const ghostOn = Boolean(state.chatDisappear);
+      let bar;
+      if (rec) {
+        bar = `<div class="chat-bar recording${voiceRec.cancel ? " cancel" : ""}">
+          <span class="rec-dot"></span>
+          <span class="rec-time">${esc(formatDur(Math.min(60, Math.floor((Date.now() - voiceRec.startedAt) / 1000))))}</span>
+          <span class="voice-wave"></span>
+          <span class="rec-hint">${voiceRec.mode === "tap" ? "Tap the mic to send" : "Slide up to cancel"}</span>
+          <button type="button" class="icon-btn mic-btn hot" data-act="hold-mic" aria-label="Stop recording">●</button>
+        </div>`;
+      } else {
+        bar = `<div class="chat-composer-wrap">
+          ${attach ? `<div class="attach-menu">
+            <button type="button" data-act="pick-chat-photo">Photo library</button>
+            <button type="button" data-act="pick-chat-camera">Take a photo</button>
+            <button type="button" data-act="pick-chat-video">Video</button>
+            <button type="button" data-act="open-chat-music">Music link</button>
+          </div>` : ""}
+          <div class="chat-bar">
+            <button type="button" class="icon-btn" data-act="chat-attach" aria-label="Attach" aria-expanded="${attach}">＋</button>
+            <input data-field="chat" aria-label="Message" enterkeyhint="send" autocomplete="off" placeholder="Say something..." value="${esc(state.drafts.chat)}" />
+            <button type="button" class="icon-btn mic-btn" data-act="hold-mic" aria-label="Voice message">🎙</button>
+            <button class="btn sm primary" data-act="send-chat">Send</button>
+          </div>
+          <input class="chat-file" type="file" accept="image/*" data-act-file="chat-photo" />
+          <input class="chat-file" type="file" accept="image/*" capture="environment" data-act-file="chat-camera" />
+          <input class="chat-file" type="file" accept="video/*,video/mp4,video/quicktime" data-act-file="chat-video" />
+        </div>`;
+      }
+      const musicSheet = state.chatSheet === "music" ? `<div class="sheet-bg" data-act="close-chat-sheet"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">Share music</h2>
+        <p class="sub">Paste a Spotify, SoundCloud, or Apple Music link.</p>
+        <input data-field="musicUrl" placeholder="https://open.spotify.com/track/..." value="${esc(state.drafts.musicUrl || "")}" style="margin-top:12px" />
+        <button class="btn primary" style="margin-top:12px" data-act="send-chat-music">Send</button>
+      </div></div>` : "";
+      const disappearSheet = state.chatSheet === "disappear" ? `<div class="sheet-bg" data-act="close-chat-sheet"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">Disappearing messages</h2>
+        <p class="sub">When this is on, messages disappear for both of you after they're opened — about 10 seconds later, or as soon as they leave the chat. Screenshots are still possible.</p>
+        <div class="row" style="margin-top:16px;align-items:center"><div class="grow"><strong>Disappear after opening</strong></div>
+        <button type="button" class="toggle${ghostOn ? " on" : ""}" data-act="toggle-disappear" aria-pressed="${ghostOn}" aria-label="Disappearing messages"><i></i></button></div>
+      </div></div>` : "";
+      const lite = state.chatLightbox ? `<div class="media-lite"><div class="header"><div class="left"><button class="icon-btn" data-act="close-lightbox" aria-label="Close">✕</button></div></div>
+        ${state.chatLightbox.type === "video"
+          ? `<video src="${esc(state.chatLightbox.url)}" ${state.chatLightbox.poster ? `poster="${esc(state.chatLightbox.poster)}"` : ""} playsinline webkit-playsinline controls autoplay></video>`
+          : `<img src="${esc(state.chatLightbox.url)}" alt="">`}
+      </div>` : "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
         <button class="chat-head" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}${personBadge(p)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`}</div></button></div>
-        <div class="right"><button class="icon-btn" data-act="chat-menu" data-id="${p.id}" aria-label="More options">⋯</button></div></div>
+        <div class="right">
+          <button type="button" class="icon-btn ghost-btn${ghostOn ? " on" : ""}" data-act="open-disappear" aria-label="Disappearing messages" aria-pressed="${ghostOn}" title="Disappearing messages">👻</button>
+          <button class="icon-btn" data-act="chat-menu" data-id="${p.id}" aria-label="More options">⋯</button>
+        </div></div>
         ${bothGoingLine(state.chatShared, state.chatMeetPlan)}
         ${state.chatShared && state.chatShared.length ? `<div style="padding:0 16px 8px"><button type="button" class="btn sm ghost" data-act="pick-meet" data-id="${p.id}">${state.chatMeetPlan && (state.chatMeetPlan.spot || state.chatMeetPlan.time) ? "Edit meet spot" : "Pick a meet spot"}</button></div>` : ""}
+        ${ghostOn ? `<div class="tiny" style="text-align:center;padding:0 16px 8px;color:var(--muted)">Disappearing messages are on. Screenshots are still possible.</div>` : ""}
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
-        <div class="scroll chat-log">${state.chat.map((m) => `<div class="bubble ${Number(m.fromId) === Number(state.me.id) ? "me" : "them"}">${esc(m.text)}</div>`).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
-        <div class="chat-bar"><input data-field="chat" aria-label="Message" enterkeyhint="send" autocomplete="off" placeholder="Say something..." value="${esc(state.drafts.chat)}" />
-        <button class="btn sm primary" data-act="send-chat">Send</button></div></div>`;
+        <div class="scroll chat-log">${state.chat.map(chatBubble).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
+        ${bar}${musicSheet}${disappearSheet}${lite}</div>`;
     }
     if (o.type === "notifs") {
       const list = state.notifs || [];
@@ -2899,6 +3340,8 @@
     });
     if (state.storyViewer) startStoryPlayback();
     else stopStoryPlayback();
+    bindVoiceControls();
+    scheduleMarkRead();
   }
   let lastRenderKey = "";
   const busyActs = new Set();
@@ -3168,6 +3611,8 @@
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
         if (state.storyViewer) { stopStoryPlayback(); state.storyViewer = null; }
+        if (state.overlay && state.overlay.type === "chat") leaveOpenChat();
+        state.chatSheet = null; state.chatLightbox = null;
         state.tab = id; state.overlay = null; state.badgeSheet = null;
         render();
         const scroller = document.querySelector(".screen > .scroll");
@@ -3182,6 +3627,8 @@
         return;
       }
       if (act === "close") {
+        if (state.chatLightbox) { state.chatLightbox = null; render(); return; }
+        if (state.chatSheet) { state.chatSheet = null; render(); return; }
         if (state.badgeSheet) { state.badgeSheet = null; render(); return; }
         if (state.storyViewer) { closeStoryViewer(); return; }
         if (state.overlay && state.overlay.type === "storyComposer") { clearStoryDraft(); state.overlay = null; render(); return; }
@@ -3190,6 +3637,7 @@
           state.err = "";
           render(); return;
         }
+        const leavingChat = state.overlay && state.overlay.type === "chat";
         const back = (state.overlay && state.overlay.returnTo) || state.overlayBack;
         if (state.overlay && state.overlay.type === "composer") {
           clearComposerMedia();
@@ -3197,11 +3645,15 @@
         }
         state.overlayBack = null;
         if (back && back !== state.overlay) {
+          if (leavingChat && !(back.type === "chat" || back === "chat" || back.type === "chatMenu")) leaveOpenChat();
           state.overlay = back;
           render(); return;
         }
+        if (leavingChat) leaveOpenChat();
         state.overlay = null;
         state.openPost = null;
+        state.chatSheet = null;
+        state.chatLightbox = null;
         render(); return;
       }
 
@@ -3747,6 +4199,9 @@
         state.chatShared = data.sharedEvents || (m && m.sharedEvents) || [];
         state.chatMeetPlan = data.meetPlan || (m && m.meetPlan) || null;
         state.chatMatchId = data.matchId || (m && m.matchId) || null;
+        state.chatDisappear = Boolean(data.disappear);
+        state.chatSheet = null;
+        state.chatLightbox = null;
         state.drafts.chat = "";
         state.overlay = { type: "chat", id: Number(id) };
         render(); scrollChatToEnd();
@@ -3756,10 +4211,72 @@
       if (act === "send-chat") {
         const text = state.drafts.chat.trim();
         if (!text || !state.chatWith) return;
-        const data = await api("/api/chats/" + state.chatWith.id, { method: "POST", body: { text } });
-        if (!state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
+        const music = parseMusicLink(text);
+        if (music && !/\s/.test(text)) {
+          await sendChatMedia({ type: "music", linkUrl: music.url });
+        } else {
+          const data = await api("/api/chats/" + state.chatWith.id, { method: "POST", body: { text } });
+          if (!state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
+        }
         state.drafts.chat = "";
         render(); scrollChatToEnd(); return;
+      }
+      if (act === "chat-attach") { state.chatSheet = state.chatSheet === "attach" ? null : "attach"; render(); return; }
+      if (act === "close-chat-sheet") { state.chatSheet = null; render(); return; }
+      if (act === "open-chat-music") { state.chatSheet = "music"; render(); return; }
+      if (act === "open-disappear") { state.chatSheet = "disappear"; render(); return; }
+      if (act === "close-lightbox") { state.chatLightbox = null; render(); return; }
+      if (act === "pick-chat-photo") {
+        const el = document.querySelector('[data-act-file=chat-photo]');
+        if (el) el.click();
+        return;
+      }
+      if (act === "pick-chat-camera") {
+        const el = document.querySelector('[data-act-file=chat-camera]');
+        if (el) el.click();
+        return;
+      }
+      if (act === "pick-chat-video") {
+        const el = document.querySelector('[data-act-file=chat-video]');
+        if (el) el.click();
+        return;
+      }
+      if (act === "send-chat-music") {
+        const url = (state.drafts.musicUrl || "").trim();
+        const music = parseMusicLink(url);
+        if (!music) { toast("Paste a Spotify, SoundCloud, or Apple Music link.", "err"); return; }
+        await sendChatMedia({ type: "music", linkUrl: music.url, text: state.drafts.chat.trim() });
+        state.drafts.musicUrl = "";
+        state.drafts.chat = "";
+        state.chatSheet = null;
+        render(); scrollChatToEnd(); return;
+      }
+      if (act === "toggle-disappear") {
+        if (!state.chatWith) return;
+        const on = !state.chatDisappear;
+        const data = await api("/api/chats/" + state.chatWith.id + "/disappear", { method: "POST", body: { on } });
+        state.chatDisappear = Boolean(data.disappear);
+        if (data.message && !state.chat.some((m) => Number(m.id) === Number(data.message.id))) state.chat.push(data.message);
+        render(); scrollChatToEnd(); return;
+      }
+      if (act === "play-voice") {
+        const id = el && el.getAttribute("data-id");
+        const audio = document.querySelector('audio[data-voice-id="' + id + '"]');
+        if (!audio) return;
+        document.querySelectorAll("audio[data-voice-id]").forEach((a) => { if (a !== audio) { try { a.pause(); } catch (_) {} } });
+        if (audio.paused) { audio.playsInline = true; audio.play().catch(() => toast("Couldn't play that voice message.", "err")); el.textContent = "❚❚"; audio.onended = () => { el.textContent = "▶"; }; }
+        else { audio.pause(); el.textContent = "▶"; }
+        return;
+      }
+      if (act === "open-chat-media") {
+        const id = Number(el && el.getAttribute("data-id"));
+        const m = state.chat.find((x) => Number(x.id) === id);
+        if (!m || !m.mediaUrl) return;
+        state.chatLightbox = { type: m.attachType || "photo", url: m.mediaUrl, poster: m.posterUrl || "", messageId: m.id };
+        render(); return;
+      }
+      if (act === "hold-mic") {
+        return;
       }
       if (act === "share-loc") { state.overlay = { type: "share", with: "Riley (trusted friend)", returnTo: state.overlay && ["settings", "live"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
       if (act === "share-with") { state.overlay = Object.assign({}, state.overlay, { with: id }); render(); return; }
@@ -4124,6 +4641,22 @@
   }
   async function onPickedFile(e) {
     const kind = e.target.getAttribute("data-act-file");
+    if (kind === "chat-photo" || kind === "chat-camera") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      state.chatSheet = null;
+      if (!file) return;
+      try { await sendChatPhoto(file); } catch (err) { toast((err && err.message) || "Couldn't send that photo.", "err"); }
+      return;
+    }
+    if (kind === "chat-video") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      state.chatSheet = null;
+      if (!file) return;
+      try { await sendChatVideo(file); } catch (err) { toast((err && err.message) || "Couldn't send that video.", "err"); }
+      return;
+    }
     if (kind === "story-media") {
       const file = e.target.files && e.target.files[0];
       e.target.value = "";

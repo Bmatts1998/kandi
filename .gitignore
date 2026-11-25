@@ -3,6 +3,7 @@ data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 data/.seeded
+data/chat-cache/
 uploads/*
 !uploads/.gitkeep
 .DS_Store

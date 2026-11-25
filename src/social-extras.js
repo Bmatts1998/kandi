@@ -64,7 +64,19 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
     const lastId = last && last.id ? Number(last.id) : 0;
     await db().prepare(`DELETE FROM chat_reads WHERE user_id=? AND match_id=?`).run(req.user.id, m.id);
     await db().prepare(`INSERT INTO chat_reads (user_id, match_id, last_read_id) VALUES (?,?,?)`).run(req.user.id, m.id, lastId);
-    res.json({ ok: true, unread: await unreadFor(req.user.id) });
+    let extra = {};
+    try {
+      const { markDisappearRead } = require("./chat-routes");
+      extra = await markDisappearRead(db(), {
+        match: m,
+        readerId: req.user.id,
+        messageIds: req.body && req.body.messageIds,
+        broadcastToUser,
+      }) || {};
+    } catch (err) {
+      console.error("disappear read:", err.message || err);
+    }
+    res.json({ ok: true, unread: await unreadFor(req.user.id), ...extra });
   });
 
   app.post("/api/matches/:userId/unmatch", auth, async (req, res) => {
@@ -73,6 +85,7 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
     if (m) {
       await db().prepare(`DELETE FROM messages WHERE match_id=?`).run(m.id);
       try { await db().prepare(`DELETE FROM chat_reads WHERE match_id=?`).run(m.id); } catch (_) {}
+      try { await db().prepare(`DELETE FROM chat_files WHERE match_id=?`).run(m.id); } catch (_) {}
       await db().prepare(`DELETE FROM matches WHERE id=?`).run(m.id);
     }
     await db().prepare(`DELETE FROM likes WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`).run(req.user.id, other, other, req.user.id);

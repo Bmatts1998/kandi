@@ -24,10 +24,12 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kandi uses the microphone so you can send voice messages in chat.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Kandi uses the camera so you can take a photo for your profile.</string>
+	<string>Kandi uses the camera so you can take photos and videos for your profile, posts, and chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Kandi uses your photo library so you can add photos to your profile.</string>
+	<string>Kandi uses your photo library so you can add photos and videos to your profile, posts, and chat.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

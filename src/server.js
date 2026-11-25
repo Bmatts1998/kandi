@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
+const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
 const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
@@ -415,6 +416,7 @@ app.delete("/api/account", auth, async (req, res) => {
     try { await db.prepare(sql).run(...(sql.includes("other_id") ? [id, id] : [id])); } catch (_) { /* table not created yet */ }
   }
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM users WHERE id=?`).run(id);
   clearSessionCookie(res);
@@ -747,7 +749,7 @@ app.get("/api/matches", auth, async (req, res) => {
     const item = {
       matchId: m.id,
       user: publicUser(other),
-      lastMessage: last ? { text: last.text, fromId: last.from_id, at: last.created_at } : null,
+      lastMessage: last ? { text: previewText(last), preview: previewText(last), attachType: last.attach_type || null, fromId: last.from_id, at: last.created_at } : null,
       createdAt: m.created_at,
       sharedEvents: shared,
       meetPlan: (m.meet_spot || m.meet_time) ? {
@@ -762,25 +764,6 @@ app.get("/api/matches", auth, async (req, res) => {
   res.json({ matches: out });
 });
 
-app.get("/api/chats/:userId", auth, async (req, res) => {
-  const otherId = Number(req.params.userId);
-  const [a, b] = pairIds(req.user.id, otherId);
-  const match = await db.prepare(`SELECT * FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
-  if (!match) return res.status(404).json({ error: "You can only chat after you match." });
-  const messages = await db.prepare(`SELECT id, from_id as fromId, text, created_at as at FROM messages WHERE match_id=? ORDER BY id ASC`).all(match.id);
-  const shared = await sharedShows(db, req.user.id, otherId);
-  res.json({
-    matchId: match.id,
-    messages,
-    sharedEvents: shared,
-    meetPlan: (match.meet_spot || match.meet_time) ? {
-      eventKey: match.meet_event_key || "",
-      event: shared.find((s) => s.eventKey === match.meet_event_key || s.id === match.meet_event_key) || shared[0] || null,
-      spot: match.meet_spot || "",
-      time: match.meet_time || "",
-    } : null,
-  });
-});
 
 app.post("/api/matches/:id/meet", auth, async (req, res) => {
   const match = await db.prepare(`SELECT * FROM matches WHERE id=?`).get(Number(req.params.id));
@@ -805,21 +788,6 @@ app.post("/api/matches/:id/meet", auth, async (req, res) => {
   res.json({ ok: true, meetPlan: plan, sharedEvents: shared });
 });
 
-app.post("/api/chats/:userId", auth, async (req, res) => {
-  const otherId = Number(req.params.userId);
-  const text = String(req.body.text || "").trim().slice(0, 1000);
-  if (!text) return res.status(400).json({ error: "Message is empty." });
-  if ((await blockedSet(req.user.id)).has(otherId)) return res.status(403).json({ error: "You can't message this person." });
-  const [a, b] = pairIds(req.user.id, otherId);
-  const match = await db.prepare(`SELECT * FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
-  if (!match) return res.status(404).json({ error: "You can only chat after you match." });
-  const info = await db.prepare(`INSERT INTO messages (match_id, from_id, text) VALUES (?,?,?)`).run(match.id, req.user.id, text);
-  const msg = await db.prepare(`SELECT id, from_id as fromId, text, created_at as at FROM messages WHERE id=?`).get(Number(info.lastInsertRowid));
-  broadcastToUser(otherId, { type: "message", matchId: match.id, message: msg, from: publicUser(req.user) });
-  const other = await db.prepare(`SELECT * FROM users WHERE id=?`).get(otherId);
-  demoChat.maybeReply({ matchId: match.id, fromUser: req.user, toUser: other });
-  res.json({ message: msg });
-});
 
 
 function parseJsonList(value) {
@@ -1131,6 +1099,19 @@ installSocialExtras({
   broadcastToUser: (...args) => broadcastToUser(...args),
 });
 
+installChat({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  pairIds,
+  broadcastToUser,
+  sharedShows,
+  getDemoChat: () => demoChat,
+});
+
+
 installGroups({
   app,
   getDb: () => db,
@@ -1224,6 +1205,7 @@ async function boot() {
   }
   Object.assign(engagement, createEngagement(() => db));
   demoChat = createDemoChat({ getDb: () => db, publicUser, broadcastToUser });
+  startDisappearSweeper(() => db, broadcastToUser);
   try {
     await engagement.refreshNow();
     console.log("Engagement scores refreshed.");

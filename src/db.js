@@ -901,6 +901,47 @@ async function migrate(db) {
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_crew_requests_user ON crew_requests(user_id)"); } catch (_) {}
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_crew_messages_crew ON crew_messages(crew_id, id)"); } catch (_) {}
   }
+  const messageCols = [
+    ["attach_type", "TEXT DEFAULT ''"],
+    ["media_id", "TEXT DEFAULT ''"],
+    ["duration", "INTEGER DEFAULT 0"],
+    ["mime", "TEXT DEFAULT ''"],
+    ["link_url", "TEXT DEFAULT ''"],
+    ["waveform", "TEXT DEFAULT ''"],
+    ["poster_id", "TEXT DEFAULT ''"],
+    ["disappear", "INTEGER DEFAULT 0"],
+    ["read_at", "TEXT DEFAULT ''"],
+  ];
+  if (db.driver === "postgres") {
+    await db.exec("ALTER TABLE matches ADD COLUMN IF NOT EXISTS disappear INTEGER DEFAULT 0");
+    for (const [col, typ] of messageCols) {
+      await db.exec(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+    await db.exec(`CREATE TABLE IF NOT EXISTS chat_files (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      match_id INTEGER,
+      mime TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT DEFAULT (NOW()::text)
+    )`);
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_messages_media_id ON messages(media_id)"); } catch (err) { console.error("idx_messages_media_id:", err.message || err); }
+  } else {
+    try { await db.exec("ALTER TABLE matches ADD COLUMN disappear INTEGER DEFAULT 0"); } catch (_) {}
+    for (const [col, typ] of messageCols) {
+      try { await db.exec(`ALTER TABLE messages ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+    await db.exec(`CREATE TABLE IF NOT EXISTS chat_files (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      match_id INTEGER,
+      mime TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_messages_media_id ON messages(media_id)"); } catch (_) {}
+  }
+
   try {
     const { backfillEventKeys } = require("./meetup");
     await backfillEventKeys(db);
