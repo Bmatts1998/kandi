@@ -220,10 +220,12 @@ function sendMedia(req, res, buffer, mime, { etag, cacheControl } = {}) {
     return res.end(buffer);
   }
   const m = String(range).match(/bytes=(\d*)-(\d*)/);
-  if (!m) return res.status(416).end();
-  const start = m[1] ? Number(m[1]) : 0;
-  const end = m[2] ? Number(m[2]) : buffer.length - 1;
-  if (start >= buffer.length || end >= buffer.length || start > end) {
+  if (!m || (!m[1] && !m[2])) return res.status(416).end();
+  let start;
+  let end;
+  if (!m[1]) { start = Math.max(0, buffer.length - Number(m[2])); end = buffer.length - 1; } // suffix range
+  else { start = Number(m[1]); end = m[2] ? Math.min(Number(m[2]), buffer.length - 1) : buffer.length - 1; }
+  if (start >= buffer.length || start > end) {
     res.setHeader("Content-Range", "bytes */" + buffer.length);
     return res.status(416).end();
   }

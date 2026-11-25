@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { normalizePhoto, sniffImageMime, savePhotoFile } = require("./photo");
 const { listUpcomingForProfile } = require("./meetup");
 const { contentRejected } = require("./content-filter");
+const { finishVideo } = require("./video");
 
 const MAX_POST_PHOTOS = 10;
 
@@ -280,7 +281,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
       try {
         if (err) {
           const msg = err.code === "LIMIT_FILE_SIZE"
-            ? "That file is over 50 MB, which is too big to send. Try a shorter clip or another photo."
+            ? "That video didn't get shrunk before sending. Update Kandi (close and reopen it) and try again."
             : err.code === "LIMIT_UNEXPECTED_FILE" ? ("You can add up to " + MAX_POST_PHOTOS + " photos per post.")
             : (err.message || "Upload failed");
           return res.status(400).json({ error: msg });
@@ -303,15 +304,19 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         const photoIds = [];
         if (videoFile) {
           if (videoFile.size > videoCap) {
-            return res.status(400).json({ error: "That video is over 50 MB. Try a shorter clip." });
+            return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
           }
           const mime = sniffVideoMime(videoFile.buffer, videoFile.originalname, videoFile.mimetype)
             || (sniffImageMime(videoFile.buffer) ? null : "video/mp4");
           if (!mime || !String(mime).startsWith("video/")) {
             return res.status(400).json({ error: "Please choose a short video (.mov or .mp4) or a photo." });
           }
-          const ext = mime === "video/quicktime" ? ".mov" : (mime === "video/webm" ? ".webm" : ".mp4");
-          videoId = await storeBuffer(req.user.id, videoFile.buffer, mime, ext);
+          const done = await finishVideo(videoFile.buffer, mime, { maxSeconds: 60, wantPoster: !posterFile });
+          if (done.tooLong) return res.status(400).json({ error: "Videos can be up to 60 seconds. Trim it in Photos and try again." });
+          videoId = await storeBuffer(req.user.id, done.buffer, done.mime, done.ext);
+          if (!posterFile && done.poster) {
+            try { posterId = await storeBuffer(req.user.id, done.poster, "image/jpeg", ".jpg"); } catch (_) {}
+          }
           if (posterFile) {
             try {
               const normalized = await normalizePhoto(posterFile.buffer);

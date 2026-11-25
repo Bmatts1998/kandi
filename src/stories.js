@@ -15,6 +15,7 @@ const {
   MAX_ACTIVE_STORIES,
   storyCutoffIso,
 } = require("./media");
+const { finishVideo } = require("./video");
 
 function firstAvatar(photosJson) {
   try {
@@ -43,7 +44,7 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
         return cb(null, true);
       }
       if (/\.(mov|mp4|m4v|qt|webm|jpg|jpeg|png|webp|gif|heic|heif|avif)$/.test(name)) return cb(null, true);
-      cb(new Error("Please choose a photo or a short video (15 seconds or less)."));
+      cb(new Error("Please choose a photo or a video (up to 60 seconds)."));
     },
   });
 
@@ -253,7 +254,7 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
       try {
         if (err) {
           const msg = err.code === "LIMIT_FILE_SIZE"
-            ? "That file is too big for a story. Photos can be any size and we'll shrink them; videos need to be 15 seconds or less and under 8 MB."
+            ? "That video didn't get shrunk before sending. Close and reopen Kandi, then try again."
             : (err.message || "Upload failed");
           return res.status(400).json({ error: msg });
         }
@@ -297,19 +298,24 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
           mediaId = await storeBuffer(req.user.id, normalized.buffer, normalized.mime, normalized.ext);
         } else if (videoMime) {
           if (file.size > MAX_STORY_VIDEO_BYTES) {
-            return res.status(400).json({ error: "That video is over 8 MB. Try a shorter clip (15 seconds or less)." });
+            return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
           }
-          const ext = videoMime === "video/quicktime" ? ".mov" : (videoMime === "video/webm" ? ".webm" : ".mp4");
+          const hasPoster = Boolean(posterFile && sniffImageMime(posterFile.buffer));
+          const done = await finishVideo(file.buffer, videoMime, { maxSeconds: MAX_STORY_VIDEO_SECONDS, wantPoster: !hasPoster });
+          if (done.tooLong) return res.status(400).json({ error: "Story videos can be up to 60 seconds." });
           kind = "video";
-          mediaId = await storeBuffer(req.user.id, file.buffer, videoMime, ext);
-          if (posterFile && sniffImageMime(posterFile.buffer)) {
+          mediaId = await storeBuffer(req.user.id, done.buffer, done.mime, done.ext);
+          if (!hasPoster && done.poster) {
+            try { posterId = await storeBuffer(req.user.id, done.poster, "image/jpeg", ".jpg"); } catch (_) {}
+          }
+          if (hasPoster) {
             try {
               const normalized = await normalizePhoto(posterFile.buffer);
               posterId = await storeBuffer(req.user.id, normalized.buffer, normalized.mime, normalized.ext);
             } catch (_) { /* poster is optional */ }
           }
         } else {
-          return res.status(400).json({ error: "Please choose a photo or a short video (.mov or .mp4, 15 seconds or less)." });
+          return res.status(400).json({ error: "Please choose a photo or a video (.mov or .mp4, up to 60 seconds)." });
         }
 
         const createdAt = new Date().toISOString();

@@ -5,7 +5,7 @@ const { parseTune } = require("./tunes");
 const MAX_VOICE_SECONDS = 60;
 const MAX_VIDEO_SECONDS = 60;
 const MAX_VOICE_BYTES = 8 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024; // the app shrinks any-size originals to ~720p before upload
 const DISAPPEAR_AFTER_MS = 10 * 1000;
 
 const AUDIO_MIMES = new Set([

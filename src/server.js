@@ -25,47 +25,8 @@ const { parseTunes, MAX_TUNES } = require("./tunes");
 const { installStories } = require("./stories");
 const { contentRejected, rejectedFromAll } = require("./content-filter");
 
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const MAX_VIDEO_SECONDS = 60;
-
-function sniffVideoMime(buf, name, typ) {
-  typ = String(typ || "").toLowerCase();
-  name = String(name || "").toLowerCase();
-  if (typ.startsWith("video/")) return typ === "video/quicktime" ? "video/quicktime" : typ;
-  if (buf && buf.length >= 12 && buf.slice(4, 8).toString("ascii") === "ftyp") {
-    const brand = buf.slice(8, 12).toString("ascii");
-    if (brand.startsWith("qt") || brand === "moov") return "video/quicktime";
-    return "video/mp4";
-  }
-  if (name.endsWith(".mov") || name.endsWith(".qt")) return "video/quicktime";
-  if (name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".webm")) {
-    return name.endsWith(".webm") ? "video/webm" : "video/mp4";
-  }
-  return null;
-}
-
-function sendBuffer(req, res, buffer, mime) {
-  res.setHeader("Content-Type", mime || "application/octet-stream");
-  res.setHeader("Cache-Control", "public, max-age=604800");
-  res.setHeader("Accept-Ranges", "bytes");
-  const range = req.headers.range;
-  if (!range) {
-    res.setHeader("Content-Length", buffer.length);
-    return res.send(buffer);
-  }
-  const m = String(range).match(/bytes=(\d*)-(\d*)/);
-  if (!m) return res.status(416).end();
-  const start = m[1] ? Number(m[1]) : 0;
-  const end = m[2] ? Number(m[2]) : buffer.length - 1;
-  if (start >= buffer.length || end >= buffer.length || start > end) {
-    res.setHeader("Content-Range", "bytes */" + buffer.length);
-    return res.status(416).end();
-  }
-  res.status(206);
-  res.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + buffer.length);
-  res.setHeader("Content-Length", end - start + 1);
-  return res.send(buffer.subarray(start, end + 1));
-}
+const { sendBuffer, MAX_VIDEO_BYTES } = require("./media");
+const videoTools = require("./video");
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 const { createEngagement, compareDiscover, compareGoers } = require("./engagement");
 const { createDemoChat } = require("./demo-chat");
@@ -144,6 +105,23 @@ billing.mountStripeWebhook(app, () => db);
 app.use(express.json({ limit: "1mb" }));
 app.get("/uploads/:id", async (req, res, next) => {
   try {
+    // Videos are too big for the photo cache; keep a few in memory so iPhone range requests stay fast.
+    const vid = String(req.params.id || "");
+    const cached = videoTools.cacheGet(vid);
+    if (cached) {
+      res.setHeader("ETag", videoTools.etagFor(vid));
+      return sendBuffer(req, res, cached.buffer, cached.mime);
+    }
+    if (/\.(mp4|mov|webm|m4v)$/i.test(vid)) {
+      const row = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(vid);
+      const mime = row ? String(row.mime || "") : "";
+      if (row && mime.startsWith("video/")) {
+        const raw = Buffer.isBuffer(row.data) ? row.data : Buffer.from(String(row.data), "base64");
+        videoTools.cachePut(vid, { buffer: raw, mime });
+        res.setHeader("ETag", videoTools.etagFor(vid));
+        return sendBuffer(req, res, raw, mime);
+      }
+    }
     if (await sendUploadedMedia(req, res, db)) return;
     next();
   } catch (err) { next(err); }
@@ -165,7 +143,7 @@ let indexHtmlCache = null;
 function sendIndex(res) {
   if (!indexHtmlCache) {
     indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
-      .replace(/(href|src)="\/(styles\.css|app\.js)"/g, `$1="/$2?v=${BUILD}"`);
+      .replace(/(href|src)="\/(styles\.css|app\.js|video-prep\.js)"/g, `$1="/$2?v=${BUILD}"`);
   }
   noStore(res);
   res.type("html").send(indexHtmlCache);

@@ -782,3 +782,6 @@
     .agree-row a { color: #ff8a1a; }
     [data-bg]:not([data-bg-on]) { background-color: #1a1a1a; background-size: cover; background-position: center; }
     img[loading="lazy"] { content-visibility: auto; }
+.video-prep { margin-top: 8px; font-size: 13px; color: #ff8a1a; font-weight: 600; }
+.chat-video-status { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 90; background: rgba(20,20,20,.95); border: 1px solid #ff5c00; border-radius: 14px; padding: 10px 14px; margin: 0; max-width: 90vw; }
+.video-prep.err { color: #ff5c5c; }

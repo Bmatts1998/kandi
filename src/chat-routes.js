@@ -7,6 +7,7 @@ const multer = require("multer");
 const { buildVariants, variantForQuery } = require("./photo");
 const { contentRejected } = require("./content-filter");
 const { sendBuffer } = require("./media");
+const { finishVideo } = require("./video");
 const {
   MAX_VOICE_SECONDS, MAX_VIDEO_SECONDS, MAX_VOICE_BYTES, MAX_VIDEO_BYTES,
   DISAPPEAR_AFTER_MS, sniffMedia, extForMime, baseMime, isAllowedAudio,
@@ -41,7 +42,7 @@ function maybeChatUpload(req, res, next) {
     ])(req, res, (err) => {
       if (!err) return next();
       const msg = err.code === "LIMIT_FILE_SIZE"
-        ? "That file is over 50 MB, which is too big to send. Try a shorter video or another photo."
+        ? "That video didn't get shrunk before sending. Close and reopen Kandi, then try again."
         : (err.message || "Upload failed");
       const e = new Error(msg);
       e.status = 400;
@@ -337,7 +338,7 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
         mediaId = savedVoice.id;
       } else {
         if (mediaFile.buffer.length > MAX_VIDEO_BYTES) {
-          return res.status(400).json({ error: "That video is over 50 MB. Try a shorter clip." });
+          return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
         }
         mime = isAllowedVideo(mediaFile.mimetype, sniffed);
         if (!mime && sniffed && sniffed.mime === "video/mp4") mime = "video/mp4";
@@ -345,8 +346,13 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
         if (duration > MAX_VIDEO_SECONDS) {
           return res.status(400).json({ error: "Videos can be up to 60 seconds." });
         }
-        const savedVideo = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime, ext: extForMime(mime) });
-        mediaId = savedVideo.id;
+        const done = await finishVideo(mediaFile.buffer, mime, { maxSeconds: MAX_VIDEO_SECONDS, wantPoster: !(posterFile && posterFile.buffer) });
+        if (done.tooLong) return res.status(400).json({ error: "Videos can be up to 60 seconds." });
+        mime = done.mime;
+        mediaId = (await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: done.buffer, mime, ext: done.ext })).id;
+        if (!(posterFile && posterFile.buffer) && done.poster) {
+          try { posterId = (await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: done.poster, mime: "image/jpeg", ext: ".jpg" })).id; } catch (_) {}
+        }
         if (posterFile && posterFile.buffer) {
           try {
             const savedPoster = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: posterFile.buffer, mime: posterFile.mimetype || "image/jpeg", ext: ".jpg" });

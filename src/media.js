@@ -27,10 +27,17 @@ function sendBuffer(req, res, buffer, mime) {
     return res.send(buffer);
   }
   const m = String(range).match(/bytes=(\d*)-(\d*)/);
-  if (!m) return res.status(416).end();
-  const start = m[1] ? Number(m[1]) : 0;
-  const end = m[2] ? Number(m[2]) : buffer.length - 1;
-  if (start >= buffer.length || end >= buffer.length || start > end) {
+  if (!m || (!m[1] && !m[2])) return res.status(416).end();
+  let start;
+  let end;
+  if (!m[1]) { // suffix range: last N bytes
+    start = Math.max(0, buffer.length - Number(m[2]));
+    end = buffer.length - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] ? Math.min(Number(m[2]), buffer.length - 1) : buffer.length - 1;
+  }
+  if (start >= buffer.length || start > end) {
     res.setHeader("Content-Range", "bytes */" + buffer.length);
     return res.status(416).end();
   }
@@ -40,10 +47,12 @@ function sendBuffer(req, res, buffer, mime) {
   return res.send(buffer.subarray(start, end + 1));
 }
 
-// 8 MB keeps a 15s story well under Neon free-tier storage (base64 in photo_files).
-// Feed posts may use a higher cap in a sibling module; stories stay tighter.
-const MAX_STORY_VIDEO_BYTES = 8 * 1024 * 1024;
-const MAX_STORY_VIDEO_SECONDS = 15;
+// The app shrinks every video to ~720p H.264 (about 15-20 MB per minute) before upload, so these
+// caps only stop something unexpected. Any size original from the phone is fine.
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+const MAX_VIDEO_SECONDS = 60;
+const MAX_STORY_VIDEO_BYTES = MAX_VIDEO_BYTES;
+const MAX_STORY_VIDEO_SECONDS = MAX_VIDEO_SECONDS;
 const MAX_STORY_TEXT = 140;
 const MAX_ACTIVE_STORIES = 30;
 const STORY_TTL_MS = 24 * 3600 * 1000;
@@ -55,6 +64,8 @@ function storyCutoffIso() {
 module.exports = {
   sniffVideoMime,
   sendBuffer,
+  MAX_VIDEO_BYTES,
+  MAX_VIDEO_SECONDS,
   MAX_STORY_VIDEO_BYTES,
   MAX_STORY_VIDEO_SECONDS,
   MAX_STORY_TEXT,

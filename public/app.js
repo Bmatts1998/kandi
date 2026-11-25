@@ -2,8 +2,7 @@
 (function () {
   window.__kandiBooted = true;
   const DAILY = 8;
-  const MAX_STORY_VIDEO_BYTES = 8 * 1024 * 1024;
-  const MAX_STORY_VIDEO_SECONDS = 15;
+  const MAX_STORY_VIDEO_SECONDS = 60;
   const MAX_GENRES = 5;
   const GENRES = [
     { id: "dubstep", name: "Dubstep", short: "Dubstep", color: "#b44aff", icon: "diamond" },
@@ -71,7 +70,7 @@
   const HOBBIES = ["dancing", "DJing", "producing", "kandi making", "photography", "festivals", "afters", "vinyl", "fashion", "thrifting", "hiking", "camping", "yoga", "gym", "skating", "art", "gaming", "travel", "animals", "tattooing"];
   const MAX_TUNES = 5;
   const MAX_POST_PHOTOS = 10;
-  const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+  const MAX_VIDEO_BYTES = 60 * 1024 * 1024; // after in-app shrinking; the original can be any size
   const MAX_VIDEO_SECONDS = 60;
   const SPOTS = ["Left of main stage", "Right of main stage", "Water station", "Merch booth", "Back of the floor", "Totem / meeting flag", "Rideshare / exit"];
   const PROMPT_BANK = [
@@ -311,8 +310,71 @@
     return { user: preview };
   }
 
+  // Any-size video: shrink it in the app (public/video-prep.js) while the user writes the caption.
+  function videoPrepText(job) {
+    if (!job) return "";
+    if (job.phase === "uploading") return `Uploading video ${job.uploadPct || 0}%…`;
+    if (job.phase === "error") return job.error || "Couldn't get that video ready.";
+    if (job.phase === "ready") {
+      const r = job.result || {};
+      return "Video ready ✓" + (r.trimmed ? " (first 60 seconds)" : "");
+    }
+    return `Getting your video ready… ${job.pct || 0}% · keep Kandi open`;
+  }
+  function paintVideoPrep(job) {
+    document.querySelectorAll(".video-prep").forEach((node) => {
+      node.textContent = videoPrepText(job);
+      node.classList.toggle("err", job.phase === "error");
+    });
+  }
+  function startVideoPrep(file, maxSeconds, meta, onReady) {
+    const KV = window.KandiVideo;
+    const job = { file, pct: 0, phase: "prep", error: "", result: null, uploadPct: 0, ctrl: typeof AbortController !== "undefined" ? new AbortController() : null };
+    if (!KV) {
+      job.phase = "ready";
+      job.result = { file, poster: null, trimmed: false };
+      job.promise = Promise.resolve(job.result);
+      return job;
+    }
+    job.promise = KV.prepare(file, {
+      maxSeconds,
+      meta: meta || undefined,
+      maxBytes: MAX_VIDEO_BYTES,
+      signal: job.ctrl ? job.ctrl.signal : undefined,
+      onProgress: (pct) => { if (job.phase === "prep") { job.pct = pct; paintVideoPrep(job); } },
+    }).then((r) => {
+      job.result = r;
+      job.phase = "ready";
+      if (r && onReady) { try { onReady(r); } catch (_) {} }
+      paintVideoPrep(job);
+      if (r && r.noAudio && r.transcoded) toast("Heads up: this phone couldn't keep the sound on that video.", "warn");
+      return r;
+    }, (err) => {
+      if (err && err.name === "AbortError") { job.phase = "cancelled"; return null; }
+      job.phase = "error";
+      job.error = (err && err.message) || "Couldn't get that video ready. Try another one.";
+      paintVideoPrep(job);
+      toast(job.error, "err");
+      throw err;
+    });
+    job.promise.catch(() => {});
+    return job;
+  }
+  function cancelVideoPrep(job) {
+    if (job && job.phase === "prep" && job.ctrl) { try { job.ctrl.abort(); } catch (_) {} }
+  }
+  async function awaitVideoPrep(job) {
+    if (!job) return null;
+    if (job.result) return job.result;
+    paintVideoPrep(job);
+    const r = await job.promise;
+    if (!r) throw new Error("Video was removed.");
+    return r;
+  }
+
   function clearComposerMedia() {
     const media = state.composerMedia || {};
+    cancelVideoPrep(media.prep);
     (media.previews || []).forEach((u) => {
       if (u && String(u).startsWith("blob:")) { try { URL.revokeObjectURL(u); } catch (_) {} }
     });
@@ -1210,13 +1272,15 @@
     if (!state.uploadingPhoto) {
       return state.uploadError ? `<div class="err upload-err" role="alert">${esc(state.uploadError)}</div>` : "";
     }
+    const prep = state.storyDraft && state.storyDraft.prep;
+    if (prep && (prep.phase === "prep" || prep.phase === "error")) return `<div class="upload-busy"><span class="spin"></span>Finishing your video first…</div>`;
     const pct = state.uploadProgress == null ? "" : " " + state.uploadProgress + "%";
-    return `<div class="upload-busy"><span class="spin"></span>Uploading photo${pct}…</div>`;
+    return `<div class="upload-busy"><span class="spin"></span>Uploading${pct}…</div>`;
   }
   function setUploadProgress(pct) {
     state.uploadProgress = pct;
     const node = document.querySelector(".upload-busy");
-    if (node) node.innerHTML = `<span class="spin"></span>Uploading photo${pct == null ? "" : " " + pct + "%"}…`;
+    if (node) node.innerHTML = `<span class="spin"></span>Uploading${pct == null ? "" : " " + pct + "%"}…`;
   }
   let fileInputSeq = 0;
   function hiddenFileInput(kind, label, opts) {
@@ -2037,6 +2101,10 @@
     return `<button type="button" class="av-story-ring${unseen ? "" : " seen"}" data-act="open-story" data-id="${userId}" aria-label="View story">${inner}</button>`;
   }
   function clearStoryDraft() {
+    if (state.storyDraft) {
+      cancelVideoPrep(state.storyDraft.prep);
+      if (state.storyDraft.videoUrl) { try { URL.revokeObjectURL(state.storyDraft.videoUrl); } catch (_) {} }
+    }
     if (state.storyDraft && state.storyDraft.preview && String(state.storyDraft.preview).startsWith("blob:")) {
       try { URL.revokeObjectURL(state.storyDraft.preview); } catch (_) {}
     }
@@ -2232,13 +2300,14 @@
     const d = state.storyDraft || {};
     const evs = state.events || [];
     const preview = d.preview
-      ? `<div class="story-preview">${d.kind === "video"
-          ? `<video src="${esc(d.preview)}" muted playsinline webkit-playsinline autoplay loop></video>`
+      ? `<div class="story-preview">${d.kind === "video" && d.videoUrl
+          ? `<video src="${esc(d.videoUrl)}" muted playsinline webkit-playsinline autoplay loop></video>`
           : `<img src="${esc(d.preview)}" alt="">`}
-          ${state.drafts.storyText ? `<div class="story-text">${esc(state.drafts.storyText)}</div>` : ""}</div>`
+          ${state.drafts.storyText ? `<div class="story-text">${esc(state.drafts.storyText)}</div>` : ""}</div>
+          ${d.prep ? `<div class="video-prep tiny${d.prep.phase === "error" ? " err" : ""}" role="status" aria-live="polite">${esc(videoPrepText(d.prep))}</div>` : ""}`
       : `<label class="card photo-upload big-pick"><div style="font-size:30px">◎</div>
           <div style="font-weight:700;margin-top:6px">Add to your story</div>
-          <div class="tiny" style="margin-top:4px">Photo or a video up to 15 seconds. Any size photo works.</div>
+          <div class="tiny" style="margin-top:4px">Photo or a video up to 60 seconds. Any size works.</div>
           <input type="file" accept="image/*,video/*,video/mp4,video/quicktime" data-act-file="story-media" aria-label="Add a photo or short video to your story" /></label>`;
     return `<div class="sheet-bg" data-act="story-composer-close"><div class="sheet" data-stop="1"><div class="grab"></div>
       <h2 class="h2">New story</h2>
@@ -2513,6 +2582,7 @@
       const videoUrl = media.videoUrl || "";
       return `<div class="composer-preview-wrap">
         <video class="composer-video" ${videoUrl ? `src="${esc(videoUrl)}"` : ""} ${src ? `poster="${esc(src)}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>
+        ${media.prep ? `<div class="video-prep tiny${media.prep.phase === "error" ? " err" : ""}" role="status" aria-live="polite">${esc(videoPrepText(media.prep))}</div>` : ""}
         <button type="button" class="btn sm ghost" data-act="clear-composer-media">Remove video</button>
       </div>`;
     }
@@ -2523,7 +2593,7 @@
       }).join("") + `</div>
         <button type="button" class="btn sm ghost" data-act="clear-composer-media">Remove photos</button></div>`;
     }
-    return `<p class="muted" style="margin-top:8px">Add photos or one short video (up to 60 seconds). Caption and a rave tag are optional — same as a regular feed post.</p>`;
+    return `<p class="muted" style="margin-top:8px">Add photos or one video (up to 60 seconds, any size). Caption and a rave tag are optional — same as a regular feed post.</p>`;
   }
 
   function composerView() {
@@ -2875,16 +2945,49 @@
     btn.addEventListener("pointerdown", down);
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
   }
+  // Any-size video up to 60s: shrink it here first (public/video-prep.js), then upload with progress.
   async function sendChatVideo(file) {
-    if (file.size > 50 * 1024 * 1024) {
-      toast("That video is over 50 MB. Try a shorter clip.", "err");
-      return;
+    if (!state.chatWith) return;
+    const chatWith = state.chatWith;
+    let bar = document.getElementById("chat-video-status");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "chat-video-status";
+      bar.className = "video-prep chat-video-status";
+      bar.setAttribute("role", "status");
+      document.body.appendChild(bar);
     }
-    toast("Preparing video…");
-    const meta = await videoMeta(file);
-    await sendChatMedia({ type: "video", file, duration: meta.duration, poster: meta.poster, text: state.drafts.chat.trim() });
-    state.drafts.chat = "";
-    render(); scrollChatToEnd();
+    const job = { phase: "prep", pct: 0, uploadPct: 0 };
+    const paint = () => { bar.textContent = videoPrepText(job); };
+    paint();
+    try {
+      let prepared;
+      if (window.KandiVideo) {
+        const meta = await window.KandiVideo.probe(file).catch(() => ({ duration: 0 }));
+        if (meta.duration > MAX_VIDEO_SECONDS + 0.5) toast("Videos can be up to 60 seconds, so we'll send the first 60.", "warn");
+        prepared = await window.KandiVideo.prepare(file, { meta, maxSeconds: MAX_VIDEO_SECONDS, maxBytes: MAX_VIDEO_BYTES, onProgress: (pct) => { job.pct = pct; paint(); } });
+      } else {
+        const meta = await videoMeta(file);
+        prepared = { file, poster: meta.poster, duration: meta.duration };
+      }
+      if (state.chatWith !== chatWith) return;
+      job.phase = "uploading"; paint();
+      const fd = new FormData();
+      fd.append("type", "video");
+      const text = (state.drafts.chat || "").trim();
+      if (text) fd.append("text", text);
+      fd.append("media", prepared.file, prepared.file.name || "clip.mp4");
+      if (prepared.poster) fd.append("poster", prepared.poster, "poster.jpg");
+      if (prepared.duration) fd.append("duration", String(Math.min(MAX_VIDEO_SECONDS, Math.round(prepared.duration))));
+      const data = window.KandiVideo
+        ? await window.KandiVideo.upload("/api/chats/" + chatWith.id, fd, (pct) => { job.uploadPct = pct; paint(); })
+        : await api("/api/chats/" + chatWith.id, { method: "POST", body: fd, timeout: 300000 });
+      if (data.message && state.chatWith === chatWith && !state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
+      state.drafts.chat = "";
+      render(); scrollChatToEnd();
+    } finally {
+      bar.remove();
+    }
   }
   async function sendChatPhoto(file) {
     let ready = null;
@@ -3987,9 +4090,13 @@
         const fd = new FormData();
         fd.append("caption", caption);
         if (state.drafts.postEvent) fd.append("eventId", state.drafts.postEvent);
+        let prepared = null;
         if (media.video) {
-          fd.append("video", media.video, media.video.name || "clip.mp4");
-          if (media.poster) fd.append("poster", media.poster, "poster.jpg");
+          prepared = media.prep ? await awaitVideoPrep(media.prep) : { file: media.video, poster: media.poster };
+          if (state.composerMedia !== media) return; // composer was closed or the video removed meanwhile
+          fd.append("video", prepared.file, prepared.file.name || "clip.mp4");
+          const poster = prepared.poster || media.poster;
+          if (poster) fd.append("poster", poster, "poster.jpg");
         } else {
           const allPhotos = photos;
           for (let i = 0; i < allPhotos.length; i++) {
@@ -4002,7 +4109,22 @@
             fd.append("photos", photo, (photo && photo.name) || ("photo-" + (i + 1) + ".jpg"));
           }
         }
-        const created = await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
+        let created;
+        if (media.video && window.KandiVideo) {
+          const job = media.prep || { phase: "uploading" };
+          job.phase = "uploading";
+          job.uploadPct = 0;
+          paintVideoPrep(job);
+          try {
+            created = await window.KandiVideo.upload("/api/posts", fd, (pct) => { job.uploadPct = pct; paintVideoPrep(job); });
+          } catch (err) {
+            job.phase = "ready";
+            paintVideoPrep(job);
+            throw err;
+          }
+        } else {
+          created = await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
+        }
         clearComposerMedia();
         clearPostFiles();
         const back = state.overlay && state.overlay.returnTo;
@@ -4395,8 +4517,13 @@
         render();
         try {
           const fd = new FormData();
-          if (d.kind === "video") fd.append("video", d.file);
-          else fd.append("photo", d.file);
+          if (d.kind === "video") {
+            const prepared = d.prep ? await awaitVideoPrep(d.prep) : { file: d.file, poster: null };
+            if (state.storyDraft !== d) { state.uploadingPhoto = false; state.uploadProgress = null; return; }
+            fd.append("video", prepared.file, prepared.file.name || "story.mp4");
+            if (prepared.poster) fd.append("poster", prepared.poster, "poster.jpg");
+            setUploadProgress(0);
+          } else fd.append("photo", d.file);
           if (state.drafts.storyText) fd.append("textOverlay", state.drafts.storyText.trim());
           if (state.drafts.storyEvent) fd.append("eventId", state.drafts.storyEvent);
           const data = await new Promise((resolve, reject) => {
@@ -4952,24 +5079,32 @@
       const name = String(file.name || "").toLowerCase();
       const isVideo = typ.startsWith("video/") || /\.(mov|mp4|m4v|webm|qt)$/.test(name);
       if (isVideo) {
-        if (file.size > MAX_STORY_VIDEO_BYTES) {
-          toast("That video is over 8 MB. Try a shorter clip (15 seconds or less).", "err");
-          return;
-        }
+        let meta = null;
         try {
-          const dur = await probeVideoDuration(file);
-          if (dur > MAX_STORY_VIDEO_SECONDS + 0.25) {
-            toast("Stories can be up to 15 seconds. Try a shorter clip.", "err");
-            return;
-          }
+          meta = window.KandiVideo ? await window.KandiVideo.probe(file) : { duration: await probeVideoDuration(file), poster: null };
+          if (meta.duration > MAX_STORY_VIDEO_SECONDS + 0.5) toast("Stories can be up to 60 seconds, so we'll use the first 60.", "warn");
         } catch (err) {
-          toast(err.message || "Couldn't read that video.", "err");
-          return;
+          if (!window.KandiVideo) { toast(err.message || "Couldn't read that video.", "err"); return; }
+          meta = { duration: 0, poster: null };
         }
-        if (state.storyDraft && state.storyDraft.preview) {
-          try { URL.revokeObjectURL(state.storyDraft.preview); } catch (_) {}
-        }
-        state.storyDraft = { file, preview: URL.createObjectURL(file), kind: "video" };
+        clearStoryDraft();
+        const poster = meta.poster;
+        const draft = { file, preview: poster ? URL.createObjectURL(poster) : "", videoUrl: "", kind: "video" };
+        if (!draft.preview) draft.preview = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        draft.prep = startVideoPrep(file, MAX_STORY_VIDEO_SECONDS, meta, (r) => {
+          if (state.storyDraft !== draft) return;
+          draft.videoUrl = URL.createObjectURL(r.file);
+          const box = document.querySelector(".story-preview");
+          if (box) {
+            const img = box.querySelector("img");
+            const v = document.createElement("video");
+            v.src = draft.videoUrl; v.muted = true; v.autoplay = true; v.loop = true; v.playsInline = true;
+            v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+            if (img) img.replaceWith(v); else box.prepend(v);
+            v.play().catch(() => {});
+          }
+        });
+        state.storyDraft = draft;
         state.overlay = { type: "storyComposer" };
         render();
         return;
@@ -5008,22 +5143,30 @@
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
       if (!file) return;
+      let meta = { duration: 0, poster: null };
       try {
-        const meta = await readVideoMeta(file);
-        clearComposerMedia();
-        const preview = meta.preview || (meta.poster ? URL.createObjectURL(meta.poster) : URL.createObjectURL(file));
-        state.composerMedia = {
-          photos: [],
-          video: file,
-          poster: meta.poster || null,
-          previews: [preview],
-          videoUrl: URL.createObjectURL(file),
-        };
-        state.err = "";
-      } catch (err) {
-        state.err = err.message || "Couldn't use that video.";
-        if (typeof toast === "function") toast(state.err, "err");
-      }
+        if (window.KandiVideo) meta = await window.KandiVideo.probe(file);
+      } catch (_) { /* the shrink step tries again and reports a clear error if it really can't */ }
+      clearComposerMedia();
+      if (meta.duration > MAX_VIDEO_SECONDS + 0.5) toast("Videos can be up to 60 seconds, so we'll post the first 60.", "warn");
+      const preview = meta.poster ? URL.createObjectURL(meta.poster) : "";
+      const media = {
+        photos: [],
+        video: file,
+        poster: meta.poster || null,
+        previews: preview ? [preview] : [],
+        videoUrl: "",
+      };
+      // The preview plays the shrunk copy once ready, so the phone isn't decoding a huge 4K original twice.
+      media.prep = startVideoPrep(file, MAX_VIDEO_SECONDS, meta, (r) => {
+        if (state.composerMedia !== media) return;
+        media.videoUrl = URL.createObjectURL(r.file);
+        media.previews.push(media.videoUrl);
+        const el = document.querySelector(".composer-video");
+        if (el) el.src = media.videoUrl;
+      });
+      state.composerMedia = media;
+      state.err = "";
       render();
       return;
     }
@@ -5045,6 +5188,10 @@
       e.target.value = "";
     }
   }
+  root.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t && t.matches && t.matches("input[type=file]") && window.KandiVideo) window.KandiVideo.unlock();
+  }, true);
   root.addEventListener("change", onPickedFile);
   root.addEventListener("input", onPickedFile);
 
