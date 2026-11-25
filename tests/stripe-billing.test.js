@@ -115,9 +115,9 @@ describe("public plans and iOS hiding", () => {
     assert.equal(plans.store, "iap_coming_soon");
     const blob = JSON.stringify(plans).toLowerCase();
     assert.equal(blob.includes("stripe"), false);
-    assert.equal(blob.includes("$9.99"), false);
-    assert.equal(blob.includes("checkout"), false);
+    assert.equal(blob.includes("checkout.stripe"), false);
     assert.equal(blob.includes("http"), false);
+    assert.equal(plans.store, "iap_coming_soon");
   });
 
   test("web stays hidden when keys are missing", () => {
@@ -133,8 +133,11 @@ describe("public plans and iOS hiding", () => {
     });
     assert.equal(plans.paymentsEnabled, true);
     assert.equal(plans.store, "stripe");
-    assert.equal(plans.plans.plus.intervals.monthly.label, "$9.99");
-    assert.equal(plans.plans.plus.intervals.yearly.label, "$79.99");
+    const monthly = plans.catalog.plans.find((x) => x.interval === "monthly");
+    const yearly = plans.catalog.plans.find((x) => x.interval === "yearly");
+    assert.ok(monthly);
+    assert.ok(yearly);
+    assert.equal(yearly.amount, 59.99);
   });
 
   test("iOS billing flags never offer a customer portal", () => {

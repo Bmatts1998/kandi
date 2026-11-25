@@ -8,10 +8,11 @@
  */
 
 const crypto = require("crypto");
+const plusPlans = require("./plus-plans");
 
 const ACTIVE_STATUSES = new Set(["active", "trialing"]);
 const KEEP_STATUSES = new Set(["active", "trialing", "past_due", "paused"]);
-const DEFAULT_INTERVALS = ["monthly", "yearly"];
+const DEFAULT_INTERVALS = ["monthly", "3mo", "6mo", "yearly"];
 
 function parsePriceIds(raw) {
   if (!raw) return {};
@@ -56,9 +57,7 @@ function getConfig(env = process.env) {
 }
 
 function planKey(plan, interval) {
-  const p = plan === "vip" ? "vip" : "plus";
-  const i = interval === "yearly" || interval === "year" ? "yearly" : "monthly";
-  return `${p}_${i}`;
+  return plusPlans.resolvePlanKey(plan, interval);
 }
 
 function planFromPriceId(priceId, prices) {
@@ -66,6 +65,7 @@ function planFromPriceId(priceId, prices) {
   for (const [key, id] of Object.entries(prices)) {
     if (id === priceId) {
       if (key.startsWith("vip")) return "vip";
+      if (key.startsWith("founding")) return "plus";
       if (key.startsWith("plus")) return "plus";
     }
   }
@@ -141,73 +141,41 @@ function verifyStripeSignature(payload, header, secret, toleranceSec = 300) {
   return true;
 }
 
-function publicPlans(config, { ios = false, priceDetails = {} } = {}) {
+function publicPlans(config, { ios = false, priceDetails = {}, isFounder = false } = {}) {
+  const catalog = plusPlans.publicCatalog({
+    ios,
+    isFounder,
+    stripePrices: priceDetails,
+    stripeEnabled: Boolean(config && config.enabled),
+  });
   if (ios) {
     return {
       paymentsEnabled: false,
       store: "iap_coming_soon",
       intervals: DEFAULT_INTERVALS,
+      catalog,
       plans: {
-        plus: {
-          features: ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"],
-        },
+        plus: { features: catalog.features, offers: catalog.plans },
       },
-      note: "Kandi+ is coming soon and will be sold through Apple In-App Purchase.",
+      founding: catalog.founding,
+      yearlyConfirmed: true,
+      note: "Kandi+ will be sold through Apple In-App Purchase.",
     };
   }
-  if (!config.enabled) {
-    return {
-      paymentsEnabled: false,
-      store: "disabled",
-      intervals: DEFAULT_INTERVALS,
-      plans: {
-        plus: {
-          features: ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"],
-        },
-      },
-      note: "Kandi+ payments are not available yet.",
-    };
-  }
-  const plans = {};
-  for (const plan of ["plus", "vip"]) {
-    const intervals = {};
-    let any = false;
-    for (const interval of DEFAULT_INTERVALS) {
-      const key = planKey(plan, interval);
-      const priceId = config.prices[key];
-      if (!priceId) continue;
-      any = true;
-      const detail = priceDetails[key] || priceDetails[priceId] || {};
-      intervals[interval] = {
-        key,
-        label: detail.label || null,
-        amount: detail.amount != null ? detail.amount : null,
-        currency: detail.currency || "usd",
-      };
-    }
-    if (any) {
-      plans[plan] = {
-        intervals,
-        features: plan === "vip"
-          ? ["Everything in Kandi+", "Unlimited rewinds", "Priority at events and live mode"]
-          : ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"],
-      };
-    }
-  }
-  if (!plans.plus) {
-    plans.plus = {
-      features: ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"],
-      intervals: {},
-    };
-  }
+  const paymentsEnabled = Boolean(config && config.enabled);
   return {
-    paymentsEnabled: true,
-    store: "stripe",
-    intervals: DEFAULT_INTERVALS.filter((interval) =>
-      Object.values(plans).some((p) => p.intervals && p.intervals[interval])
-    ),
-    plans,
-    note: "Checkout is handled securely by Stripe. Cancel anytime from Manage membership.",
+    paymentsEnabled,
+    store: paymentsEnabled ? "stripe" : "disabled",
+    intervals: DEFAULT_INTERVALS,
+    catalog,
+    plans: {
+      plus: { features: catalog.features, offers: catalog.plans },
+    },
+    founding: catalog.founding,
+    yearlyConfirmed: true,
+    note: paymentsEnabled
+      ? "Checkout is handled securely by Stripe. Cancel anytime from Manage membership."
+      : "Kandi+ plans are listed below. Website checkout turns on once payments are connected.",
   };
 }
 
@@ -510,9 +478,12 @@ function installStripeBilling({ app, getDb, auth, isNativeIosClient, publicUser 
     if (!config.enabled) {
       return res.status(503).json({ error: "Kandi+ payments are not available yet.", code: "billing_disabled" });
     }
-    const plan = req.body && req.body.plan === "vip" ? "vip" : "plus";
-    const interval = req.body && (req.body.interval === "yearly" || req.body.interval === "year") ? "yearly" : "monthly";
+    const plan = req.body && req.body.plan === "founding" ? "founding" : (req.body && req.body.plan === "vip" ? "vip" : "plus");
+    const interval = (req.body && req.body.interval) || "monthly";
     const key = planKey(plan, interval);
+    if (key === "founding_monthly" && !Number(req.user.is_founder)) {
+      return res.status(403).json({ error: "The founding rate is for founding members.", code: "founders_only" });
+    }
     const priceId = config.prices[key];
     if (!priceId) {
       return res.status(400).json({ error: "That plan is not available yet.", code: "price_unavailable" });

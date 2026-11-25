@@ -11,8 +11,8 @@
     "import-events": "node scripts/import-events.js",
     "test:e2e": "playwright test",
     "test:engagement": "node scripts/test-engagement.js",
-    "test:billing": "node --test tests/stripe-billing.test.js",
-    "test": "node --test tests/stripe-billing.test.js"
+    "test:billing": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js",
+    "test": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js"
   },
   "engines": {
     "node": ">=22"

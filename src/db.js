@@ -594,9 +594,8 @@ function convertRow(row) {
   return out;
 }
 
-function wrapSqlite(raw) {
+function sqliteStatements(raw) {
   return {
-    driver: "sqlite",
     prepare(sql) {
       const stmt = raw.prepare(sql);
       return {
@@ -611,25 +610,44 @@ function wrapSqlite(raw) {
     async exec(sql) {
       raw.exec(sql);
     },
+  };
+}
+
+function wrapSqlite(raw) {
+  const stmts = sqliteStatements(raw);
+  return {
+    driver: "sqlite",
+    prepare: stmts.prepare,
+    exec: stmts.exec,
+    async transaction(fn) {
+      raw.exec("BEGIN IMMEDIATE");
+      try {
+        const out = await fn({ driver: "sqlite", prepare: stmts.prepare, exec: stmts.exec });
+        raw.exec("COMMIT");
+        return out;
+      } catch (err) {
+        try { raw.exec("ROLLBACK"); } catch (_) {}
+        throw err;
+      }
+    },
     async close() {
       raw.close();
     },
   };
 }
 
-function wrapPg(pool) {
+function pgStatements(queryable) {
   return {
-    driver: "postgres",
     prepare(sql) {
       return {
         async get(...p) {
           const text = toPgParams(translateSqlite(sql));
-          const res = await pool.query(text, p);
+          const res = await queryable.query(text, p);
           return convertRow(res.rows[0]);
         },
         async all(...p) {
           const text = toPgParams(translateSqlite(sql));
-          const res = await pool.query(text, p);
+          const res = await queryable.query(text, p);
           return res.rows.map(convertRow);
         },
         async run(...p) {
@@ -640,14 +658,38 @@ function wrapPg(pool) {
             translated += " RETURNING id";
           }
           const text = toPgParams(translated);
-          const res = await pool.query(text, p);
+          const res = await queryable.query(text, p);
           const id = res.rows[0] && res.rows[0].id;
           return { lastInsertRowid: id != null ? Number(id) : 0, changes: res.rowCount || 0 };
         },
       };
     },
     async exec(sql) {
-      await pool.query(sql);
+      await queryable.query(sql);
+    },
+  };
+}
+
+function wrapPg(pool) {
+  const stmts = pgStatements(pool);
+  return {
+    driver: "postgres",
+    prepare: stmts.prepare,
+    exec: stmts.exec,
+    async transaction(fn) {
+      const client = await pool.connect();
+      const tx = Object.assign({ driver: "postgres" }, pgStatements(client));
+      try {
+        await client.query("BEGIN");
+        const out = await fn(tx);
+        await client.query("COMMIT");
+        return out;
+      } catch (err) {
+        try { await client.query("ROLLBACK"); } catch (_) {}
+        throw err;
+      } finally {
+        client.release();
+      }
     },
     async close() {
       await pool.end();
@@ -972,6 +1014,37 @@ async function migrate(db) {
     console.error("Genre vibe migration failed:", err.message || err);
   }
   await migrateBilling(db);
+  await migrateFounding(db);
+}
+
+async function migrateFounding(db) {
+  const cols = [
+    ["date_of_birth", "TEXT"],
+    ["home_location", "TEXT"],
+    ["is_founder", "INTEGER DEFAULT 0"],
+    ["founding_number", "INTEGER"],
+    ["plus_until", "TEXT"],
+  ];
+  const meta = `CREATE TABLE IF NOT EXISTS founding_meta (
+      id INTEGER PRIMARY KEY,
+      claimed INTEGER NOT NULL DEFAULT 0,
+      cap INTEGER NOT NULL DEFAULT 3000
+    )`;
+  if (db.driver === "postgres") {
+    for (const [col, typ] of cols) {
+      await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+    await db.exec(meta);
+    try { await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_founding_number ON users(founding_number) WHERE founding_number IS NOT NULL"); } catch (err) { console.error("idx_users_founding_number:", err.message || err); }
+  } else {
+    for (const [col, typ] of cols) {
+      try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+    await db.exec(meta);
+    try { await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_founding_number ON users(founding_number)"); } catch (_) {}
+  }
+  const row = await db.prepare(`SELECT id FROM founding_meta WHERE id=1`).get();
+  if (!row) await db.prepare(`INSERT INTO founding_meta (id, claimed, cap) VALUES (1, 0, 3000)`).run();
 }
 
 async function migrateBilling(db) {

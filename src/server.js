@@ -32,6 +32,8 @@ const { createEngagement, compareDiscover, compareGoers } = require("./engagemen
 const { createDemoChat } = require("./demo-chat");
 const { catalog: genreCatalog, normalizeGenreIds, publicGenres, sharedGenreIds, sharedGenreChip, eventMatchesGenre, getGenre, MAX_GENRES } = require("./genres");
 const billing = require("./stripe-billing");
+const founding = require("./founding");
+const iap = require("./iap");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -231,7 +233,7 @@ async function auth(req, res, next) {
   try {
     const user = await getUserFromReq(req);
     if (!user) return res.status(401).json({ error: "Sign in required" });
-    req.user = user;
+    req.user = await expireComplimentaryIfNeeded(user);
     engagement.recordActivity(user.id).catch(() => {});
     next();
   } catch (err) { next(err); }
@@ -314,6 +316,9 @@ function publicUser(u, extra) {
     createdAt: u.created_at,
     vibes: normalizeGenreIds(parseJsonList(u.vibes, [])),
     genres: publicGenres(u.vibes),
+    isFounder: Boolean(Number(u.is_founder)),
+    foundingNumber: u.founding_number ? Number(u.founding_number) : null,
+    homeLocation: u.home_location || "",
     ...(extra || {}),
   };
 }
@@ -334,8 +339,44 @@ function isNativeIosClient(req) {
   return /Capacitor/i.test(ua) && /iPhone|iPad|iPod/i.test(ua);
 }
 
-function isPlus(sub) {
-  return sub === "plus" || sub === "vip";
+function paidStripeStatus(user) {
+  const status = String((user && user.subscription_status) || "").toLowerCase();
+  return status === "active" || status === "trialing" || status === "past_due" || status === "paused";
+}
+
+function isPlus(userOrSub) {
+  if (userOrSub && typeof userOrSub === "object") {
+    if (founding.hasActiveComp(userOrSub)) return true;
+    if (userOrSub.subscription === "vip") return true;
+    if (userOrSub.subscription === "plus") {
+      if (Number(userOrSub.is_founder) && userOrSub.plus_until && !founding.hasActiveComp(userOrSub) && !paidStripeStatus(userOrSub)) {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }
+  return userOrSub === "plus" || userOrSub === "vip";
+}
+
+async function expireComplimentaryIfNeeded(user) {
+  if (!user || !Number(user.is_founder) || !user.plus_until) return user;
+  if (founding.hasActiveComp(user) || paidStripeStatus(user)) return user;
+  if (user.subscription === "plus") {
+    await db.prepare(`UPDATE users SET subscription=NULL WHERE id=? AND is_founder=1`).run(user.id);
+    user.subscription = null;
+  }
+  return user;
+}
+
+function selfBillingExtra(user, req) {
+  return {
+    dateOfBirth: user.date_of_birth || "",
+    plusUntil: user.plus_until || null,
+    complimentaryActive: founding.hasActiveComp(user),
+    founding: founding.publicFounding(user),
+    billing: billing.publicBillingForUser(user, billing.getConfig(), { ios: isNativeIosClient(req) }),
+  };
 }
 function pairIds(a, b) {
   return a < b ? [a, b] : [b, a];
@@ -356,6 +397,17 @@ async function blockedSet(userId) {
   return new Set(rows.map((r) => Number(r.id)));
 }
 
+function parseProfileDob(raw, { required = false } = {}) {
+  if (raw == null || String(raw).trim() === "") {
+    if (required) return { error: "Enter your date of birth." };
+    return null;
+  }
+  const value = founding.parseDob(raw);
+  if (!value) return { error: "Enter your birthday as YYYY-MM-DD." };
+  if (!founding.isAdultDob(value)) return { error: "Kandi is 18+. Check the birthday you entered." };
+  return { value, age: founding.ageFromDob(value) };
+}
+
 // ---- auth ----
 app.post("/api/signup", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
@@ -370,14 +422,22 @@ app.post("/api/signup", async (req, res) => {
   if (!acceptedTerms(req.body)) return res.status(400).json({ error: "Please agree to the Terms of Use and Privacy Policy to create an account." });
   const nameBad = contentRejected(name);
   if (nameBad) return res.status(400).json({ error: nameBad });
+  const dob = parseProfileDob(req.body.dateOfBirth || req.body.date_of_birth, { required: false });
+  if (dob && dob.error) return res.status(400).json({ error: dob.error });
+  if (dob && dob.age != null && dob.age !== age) {
+    // Birthday is the source of truth for 18+.
+  }
+  const homeLocation = clipText(req.body.homeLocation || req.body.home_location || "", 80, "");
   const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
   const hash = bcrypt.hashSync(password, 10);
-  const info = await db.prepare(`INSERT INTO users (username,password_hash,name,age) VALUES (?,?,?,?)`).run(username, hash, name, age);
+  const info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location) VALUES (?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null);
   const token = crypto.randomBytes(24).toString("hex");
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, Number(info.lastInsertRowid));
   setSessionCookie(res, token, req);
-  const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(Number(info.lastInsertRowid));
+  let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(Number(info.lastInsertRowid));
+  try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on signup failed:", err && err.message); }
+  user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
   const demos = await db.prepare(`SELECT id FROM users WHERE is_demo=1 AND id != ? LIMIT 2`).all(user.id);
   for (const d of demos) {
     try {
@@ -402,7 +462,7 @@ app.post("/api/login", async (req, res) => {
   const token = crypto.randomBytes(24).toString("hex");
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, user.id);
   setSessionCookie(res, token, req);
-  res.json({ user: publicUser(user), likesLeft: isPlus(user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
+  res.json({ user: publicUser(user), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
 });
 
 app.post("/api/logout", auth, async (req, res) => {
@@ -466,9 +526,9 @@ app.get("/api/me", auth, async (req, res) => {
     user: publicUser(req.user, {
       events: going.length ? going : JSON.parse(req.user.events || "[]"),
       upcomingShows: upcoming.shows,
-      billing: billing.publicBillingForUser(req.user, billing.getConfig(), { ios: isNativeIosClient(req) }),
+      ...selfBillingExtra(req.user, req),
     }),
-    likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
+    likesLeft: isPlus(req.user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
     live: live ? { on: true, eventId: live.event_id, meetupSpot: live.meetup_spot } : { on: false },
     locationShare: share ? { with: share.share_with, event: share.event_label, at: share.created_at } : null,
     upcomingShows: upcoming.shows,
@@ -547,12 +607,25 @@ app.put("/api/me", auth, async (req, res) => {
     }
     favoriteTunes = JSON.stringify(parsed.tunes.slice(0, MAX_TUNES));
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, req.user.id
+  let dateOfBirth = req.user.date_of_birth || null;
+  if (body.dateOfBirth !== undefined || body.date_of_birth !== undefined) {
+    const dob = parseProfileDob(body.dateOfBirth != null ? body.dateOfBirth : body.date_of_birth, { required: false });
+    if (dob && dob.error) return res.status(400).json({ error: dob.error });
+    dateOfBirth = dob ? dob.value : null;
+    if (dob && dob.age != null) age = dob.age;
+  }
+  let homeLocation = req.user.home_location || "";
+  if (body.homeLocation !== undefined || body.home_location !== undefined) {
+    homeLocation = clipText(body.homeLocation != null ? body.homeLocation : body.home_location, 80, "");
+  }
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, req.user.id
   );
-  const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
+  user = await expireComplimentaryIfNeeded(await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id));
   const upcoming = await listUpcomingForProfile(db, user, user);
-  res.json({ user: publicUser(user, { upcomingShows: upcoming.shows }) });
+  res.json({ user: publicUser(user, { upcomingShows: upcoming.shows, ...selfBillingExtra(user, req) }), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
 });
 
 app.post("/api/me/photo", auth, async (req, res) => {
@@ -694,7 +767,7 @@ app.get("/api/discover", auth, async (req, res) => {
   }
   res.json({
     people,
-    likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
+    likesLeft: isPlus(req.user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
   });
 });
 
@@ -715,7 +788,7 @@ app.post("/api/like", auth, async (req, res) => {
   const comment = String(req.body.comment || "").slice(0, 280);
   if (!toId || toId === req.user.id) return res.status(400).json({ error: "Invalid like." });
   if ((await blockedSet(req.user.id)).has(toId)) return res.status(400).json({ error: "You can't like this person." });
-  if (!isPlus(req.user.subscription) && await likesUsedToday(req.user.id) >= DAILY_LIKES) {
+  if (!isPlus(req.user) && await likesUsedToday(req.user.id) >= DAILY_LIKES) {
     return res.status(402).json({ error: "You're out of free likes today.", code: "plus_required", reason: "likes" });
   }
   try {
@@ -724,7 +797,7 @@ app.post("/api/like", auth, async (req, res) => {
     return res.status(409).json({ error: "You already liked this person." });
   }
   await db.prepare(`DELETE FROM passes WHERE from_id=? AND to_id=?`).run(req.user.id, toId);
-  if (!isPlus(req.user.subscription)) await bumpLike(req.user.id);
+  if (!isPlus(req.user)) await bumpLike(req.user.id);
   const match = await maybeMatch(req.user.id, toId);
   if (match) broadcastToUser(toId, { type: "match", user: publicUser(req.user), matchId: match.id });
   else broadcastToUser(toId, { type: "like", from: publicUser(req.user), targetType, targetId, comment });
@@ -733,7 +806,7 @@ app.post("/api/like", auth, async (req, res) => {
     ok: true,
     matched: Boolean(match),
     matchId: match ? match.id : null,
-    likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
+    likesLeft: isPlus(req.user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
   });
 });
 
@@ -756,7 +829,7 @@ async function bumpRewind(userId) {
 }
 
 app.post("/api/rewind", auth, async (req, res) => {
-  if (!isPlus(req.user.subscription)) return res.status(402).json({ error: "Rewind is a Kandi+ feature.", code: "plus_required", reason: "rewind" });
+  if (!isPlus(req.user)) return res.status(402).json({ error: "Rewind is a Kandi+ feature.", code: "plus_required", reason: "rewind" });
   if (req.user.subscription !== "vip" && await rewindsUsedToday(req.user.id) >= PLUS_REWINDS) {
     return res.status(402).json({ error: "You're out of rewinds today. Kandi VIP has unlimited rewinds.", code: "plus_required", reason: "rewind" });
   }
@@ -779,7 +852,7 @@ app.get("/api/likes-received", auth, async (req, res) => {
     ORDER BY l.created_at DESC
   `).all(req.user.id, req.user.id, req.user.id);
   const count = rows.length;
-  if (!isPlus(req.user.subscription)) {
+  if (!isPlus(req.user)) {
     return res.json({ locked: true, count, people: rows.slice(0, 4).map((r) => ({ blurred: true, photos: publicUser(r).photos })) });
   }
   res.json({
@@ -1050,6 +1123,58 @@ billing.installStripeBilling({
   isNativeIosClient,
   publicUser,
 });
+iap.installIapRoutes({ app, auth, isNativeIosClient });
+
+app.get("/api/plus/founding", async (_req, res) => {
+  const status = await founding.spots(db);
+  res.json(status);
+});
+
+app.post("/api/plus/claim-founding", auth, async (req, res) => {
+  const body = req.body || {};
+  const updates = [];
+  const vals = [];
+  if (body.dateOfBirth != null || body.date_of_birth != null) {
+    const dob = parseProfileDob(body.dateOfBirth != null ? body.dateOfBirth : body.date_of_birth, { required: true });
+    if (dob.error) return res.status(400).json({ error: dob.error });
+    updates.push("date_of_birth=?", "age=?");
+    vals.push(dob.value, dob.age);
+  }
+  if (body.homeLocation != null || body.home_location != null) {
+    updates.push("home_location=?");
+    vals.push(clipText(body.homeLocation != null ? body.homeLocation : body.home_location, 80, ""));
+  }
+  if (updates.length) {
+    vals.push(req.user.id);
+    await db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id=?`).run(...vals);
+  }
+  let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  const result = await founding.claimFounding(db, user);
+  user = await expireComplimentaryIfNeeded(await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id));
+  const status = await founding.spots(db);
+  res.status(result.ok || result.already ? 200 : (result.reason === "full" ? 409 : 400)).json({
+    ok: Boolean(result.ok),
+    reason: result.reason || null,
+    granted: Boolean(result.granted),
+    already: Boolean(result.already),
+    founding: status,
+    user: publicUser(user, selfBillingExtra(user, req)),
+    likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)),
+    message: result.granted
+      ? "You're a founding member. Kandi+ is on for a year."
+      : result.already
+        ? "You're already a founding member."
+        : result.reason === "full"
+          ? "Founding spots are all claimed."
+          : result.reason === "location"
+            ? "Founding membership is for verified 18+ ravers in the Salt Lake / Utah County area."
+            : result.reason === "dob"
+              ? "Add your date of birth so we can confirm you're 18+."
+              : result.reason === "demo"
+                ? "Demo profiles can't become founding members."
+                : "We couldn't claim a founding spot with the details on your profile.",
+  });
+});
 
 app.post("/api/subscribe", auth, async (req, res) => {
   if (isNativeIosClient(req)) {
@@ -1069,6 +1194,9 @@ app.post("/api/subscribe/cancel", auth, async (req, res) => {
   const config = billing.getConfig();
   if (config.enabled && req.user.stripe_customer_id) {
     return res.status(400).json({ error: "Manage or cancel your membership in the billing portal.", code: "use_portal" });
+  }
+  if (founding.hasActiveComp(req.user)) {
+    return res.status(400).json({ error: "Your complimentary founding year is still active.", code: "founding_comp_active" });
   }
   await db.prepare(`UPDATE users SET subscription=NULL, subscription_status=NULL WHERE id=?`).run(req.user.id);
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
@@ -1117,7 +1245,7 @@ app.post("/api/claim", async (req, res) => {
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(row.user_id);
   res.json({
     user: publicUser(user),
-    likesLeft: isPlus(user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)),
+    likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)),
   });
 });
 
@@ -1285,6 +1413,12 @@ async function boot() {
     console.error("Engagement refresh on boot failed:", err.message || err);
   }
   engagement.startPeriodicRefresh();
+  try {
+    const filled = await founding.backfillFounders(db);
+    if (filled && filled.granted) console.log("Founding backfill granted " + filled.granted + " members (" + filled.claimed + "/" + filled.cap + ").");
+  } catch (err) {
+    console.error("Founding backfill failed:", err && err.message);
+  }
   server.listen(PORT, HOST, () => {
     console.log(`Kandi v1 listening on http://${HOST}:${PORT}`);
     startPhotoBackfill(db);

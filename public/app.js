@@ -228,6 +228,8 @@
     state.drafts.editName = me.name || "";
     state.drafts.editBio = me.bio || "";
     state.drafts.editAge = me.age != null ? String(me.age) : "";
+    state.drafts.editDob = me.dateOfBirth || "";
+    state.drafts.editHomeLocation = me.homeLocation || "";
     state.drafts.editHeightFt = ht.ft;
     state.drafts.editHeightIn = ht.inn;
     state.drafts.editFavoriteArtists = me.favoriteArtists || "";
@@ -269,6 +271,8 @@
       name: state.drafts.editName,
       bio: state.drafts.editBio,
       age,
+      dateOfBirth: String(state.drafts.editDob || "").trim(),
+      homeLocation: String(state.drafts.editHomeLocation || "").trim(),
       gender: d.gender || "",
       pronouns: d.pronouns || "",
       sex: d.sex || "",
@@ -579,6 +583,7 @@
     const tab = state.profileTab || "posts";
     const buttons = isMe
       ? `<div class="prof-actions"><button type="button" class="btn sm primary" data-act="edit-profile">Edit Profile</button>
+          <button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>
           <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New Post</button></div>`
       : "";
     const soc = opts.counts || {};
@@ -586,8 +591,8 @@
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
     const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
     let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
-      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
-      <div class="muted">@${esc(p.username)}${pronouns}</div>
+      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}${founderBadge(p)}</div>
+      <div class="muted">@${esc(p.username)}${pronouns}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
       ${genreRow(p)}
       ${buttons}
     </div></div>`;
@@ -685,6 +690,7 @@
     billing: "monthly",
     pendingPlan: "plus",
     plans: null,
+    founding: null,
     err: "",
     info: "",
     genreCatalog: null,
@@ -1172,7 +1178,18 @@
   function needsOnboard(u) {
     return !u || !u.age || u.needsProfile || !u.vibes.length || !u.looking.length || !u.prompts.length;
   }
-  function isPlus() { return state.me && (state.me.subscription === "plus" || state.me.subscription === "vip"); }
+  function isPlus() {
+    const me = state.me;
+    if (!me) return false;
+    if (me.complimentaryActive || (me.founding && me.founding.complimentaryActive)) return true;
+    if (me.plusUntil && Date.parse(me.plusUntil) > Date.now()) return true;
+    return me.subscription === "plus" || me.subscription === "vip";
+  }
+  function founderBadge(person) {
+    if (!person || !person.isFounder) return "";
+    const n = person.foundingNumber ? " #" + person.foundingNumber : "";
+    return ` <span class="founder-badge">Founding${n}</span>`;
+  }
   function isVip() { return state.me && state.me.subscription === "vip"; }
   function isNativeIos() {
     try {
@@ -1594,7 +1611,7 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans(), loadFounding()]);
     state.loaded.home = true;
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
@@ -1606,6 +1623,100 @@
       if (!state.plans) state.plans = { paymentsEnabled: false, store: "disabled", plans: {} };
     }
   }
+  async function loadFounding() {
+    try {
+      state.founding = await api("/api/plus/founding");
+    } catch (_) {
+      if (!state.founding) state.founding = { cap: 3000, claimed: 0, left: 3000, open: true };
+    }
+  }
+
+
+  function formatPlusUntil(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+  function viewUpgrade() {
+    const me = state.me || {};
+    const founding = state.founding || { cap: 3000, claimed: 0, left: 3000, open: true };
+    const catalog = (state.plans && (state.plans.catalog || state.plans)) || {};
+    const offers = (catalog.plans && Array.isArray(catalog.plans) ? catalog.plans : (catalog.plus && catalog.plus.offers)) || [
+      { key: "plus_monthly", interval: "monthly", name: "Monthly", label: "$7.99/mo", period: "per month", hint: "Billed every month" },
+      { key: "plus_3mo", interval: "3mo", name: "3 months", label: "$19.99", period: "every 3 months", hint: "Billed every 3 months" },
+      { key: "plus_6mo", interval: "6mo", name: "6 months", label: "$34.99", period: "every 6 months", hint: "Billed every 6 months" },
+      { key: "plus_yearly", interval: "yearly", name: "Yearly", label: "$59.99/year", period: "per year", hint: "Best value — billed once a year" },
+    ];
+    const foundingOffer = catalog.founding || { label: "$4.99/mo", period: "per month", amount: 4.99 };
+    const features = (catalog.features || ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"]);
+    const pending = state.billing || "monthly";
+    const ios = isNativeIos();
+    const canBuy = !ios && paymentsEnabled();
+    const left = founding.left != null ? Number(founding.left) : 3000;
+    const cap = founding.cap || 3000;
+    const spots = `<div class="founding-spots"><span class="num">${esc(String(left))}</span> of ${esc(String(cap))} founding spots left</div>`;
+    let status = "";
+    if (me.isFounder) {
+      status = `<div class="notice ok" style="text-align:center;margin:12px 0">
+        <div>${founderBadge(me)} You're founding member${me.foundingNumber ? " #" + esc(String(me.foundingNumber)) : ""}.</div>
+        <p class="tiny" style="margin-top:6px">${me.complimentaryActive || (me.plusUntil && Date.parse(me.plusUntil) > Date.now())
+          ? "Kandi+ is included free until " + esc(formatPlusUntil(me.plusUntil)) + ". After that, your founding rate is " + esc(foundingOffer.label) + "."
+          : "Your founding rate is " + esc(foundingOffer.label) + " after the complimentary year."}</p>
+      </div>`;
+    } else if (founding.open !== false) {
+      status = `<div class="card founding-card" style="margin:12px 0">
+        <div class="tiny" style="letter-spacing:.08em;font-weight:800;color:var(--orange2)">FOUNDING MEMBERS</div>
+        <p style="margin:8px 0 0">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get Kandi+ free for 12 months, a founding badge, and then ${esc(foundingOffer.label)} for life.</p>
+        ${spots}
+        <div class="label" style="margin-top:12px">Birthday</div>
+        <input data-field="upgradeDob" type="date" value="${esc(state.drafts.upgradeDob || me.dateOfBirth || "")}" />
+        <div class="label" style="margin-top:10px">Home city</div>
+        <input data-field="upgradeLocation" placeholder="Salt Lake City, Springville, Provo, or a local ZIP" value="${esc(state.drafts.upgradeLocation || me.homeLocation || "")}" />
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <button type="button" class="btn primary" style="margin-top:12px" data-act="claim-founding">Check my founding spot</button>
+      </div>`;
+    } else {
+      status = `<div class="notice" style="text-align:center;margin:12px 0">Founding spots are all claimed. You can still get Kandi+ below.</div>`;
+    }
+    const planCards = offers.map((o) => {
+      const on = pending === o.interval ? " on" : "";
+      return `<button type="button" class="plan${on}" data-act="billing" data-id="${esc(o.interval)}">
+        <div class="tiny">${esc(o.name).toUpperCase()}</div>
+        <div class="price">${esc(o.label)}</div>
+        <div class="tiny">${esc(o.period)}</div>
+        ${o.interval === "yearly" ? `<div class="tiny" style="color:var(--orange2);font-weight:700;margin-top:6px">Best value</div>` : ""}
+      </button>`;
+    }).join("");
+    const founderRateCard = me.isFounder ? `<button type="button" class="plan${pending === "founding" ? " on" : ""}" data-act="billing" data-id="founding">
+        <div class="tiny">FOUNDING RATE</div>
+        <div class="price">${esc(foundingOffer.label)}</div>
+        <div class="tiny">${esc(foundingOffer.period || "per month")}</div>
+      </button>` : "";
+    let cta;
+    if (ios) {
+      cta = `<p class="sub" style="text-align:center;margin-top:18px">Available soon in the App Store. When it launches, Kandi+ will use Apple In-App Purchase — we will never ask you to pay outside the App Store.</p>
+        <button type="button" class="btn primary" style="margin-top:14px" data-act="close">Back to Kandi</button>`;
+    } else if (canBuy) {
+      const label = pending === "founding" ? "Continue to checkout at the founding rate" : "Continue to checkout";
+      cta = `<button type="button" class="btn primary" style="margin-top:18px" data-act="buy">${label}</button>
+        ${me.billing && me.billing.managed ? `<button type="button" class="btn ghost" style="margin-top:8px" data-act="manage-billing">Manage membership</button>` : ""}
+        <p class="tiny" style="text-align:center;margin-top:10px">Secure checkout is handled by Stripe. Cancel anytime from Settings.</p>`;
+    } else {
+      cta = `<button type="button" class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">Plans are set. Website checkout turns on once payments are connected.</p>`;
+    }
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi Plus</span></div></div>
+      <div class="scroll pad upgrade-screen">${beads(8)}
+      <h2 class="h2" style="text-align:center;margin:12px 0 6px">Upgrade to Kandi Plus</h2>
+      <p class="sub" style="text-align:center">Unlimited likes, see who likes you, filters and rewinds.</p>
+      ${status}
+      <div class="card" style="margin-top:8px">${features.map((f) => `<div class="feat"><span>${esc(f)}</span><span class="tiny">✓</span></div>`).join("")}</div>
+      <div class="upgrade-plans">${founderRateCard}${planCards}</div>
+      ${cta}
+      </div></div>`;
+  }
+
   function paymentsEnabled() {
     if (isNativeIos()) return false;
     if (state.me && state.me.billing && state.me.billing.paymentsEnabled) return true;
@@ -2446,19 +2557,16 @@
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
     const row = (act, label, sub, extra) => `<button type="button" class="set-row" data-act="${act}" ${extra || ""}><div class="grow"><div>${label}</div>${sub ? `<div class="tiny">${sub}</div>` : ""}</div><span aria-hidden="true">›</span></button>`;
     const billingFlags = p.billing || {};
+    const spots = state.founding && state.founding.left != null ? state.founding.left + " of 3,000 founding spots left" : "Founding member perks and plans";
     let plusRow;
     if (isNativeIos()) {
-      plusRow = p.subscription
-        ? `<div class="set-row static"><div class="grow"><div>${esc(plan)} is on</div><div class="tiny">Managing membership on iPhone will use Apple In-App Purchase when it launches.</div></div></div>`
-        : ""; // Nothing to buy in the iOS app yet: no placeholder subscription row for App Review.
-    } else if (p.subscription && billingFlags.managed) {
-      plusRow = row("manage-billing", plan + " is on", "Manage or cancel your membership");
-    } else if (p.subscription) {
-      plusRow = row("cancel-sub", plan + " is on", "Tap to turn it off");
-    } else if (paymentsEnabled()) {
-      plusRow = row("paywall", "Get Kandi+", "Unlimited likes, see who likes you, filters and rewinds", 'data-reason="upgrade"');
+      plusRow = row("upgrade", isPlus() ? plan + " is on" : "Kandi Plus", p.isFounder ? "Founding member #" + (p.foundingNumber || "") : spots, 'data-reason="upgrade"');
+    } else if (isPlus() && billingFlags.managed) {
+      plusRow = row("upgrade", plan + " is on", "View plans or manage your membership", 'data-reason="upgrade"');
+    } else if (isPlus()) {
+      plusRow = row("upgrade", plan + " is on", p.isFounder ? "Founding member — view your status and plans" : "View your plan", 'data-reason="upgrade"');
     } else {
-      plusRow = row("paywall", "Kandi+ coming soon", "You'll be able to subscribe here when payments are ready.", 'data-reason="upgrade"');
+      plusRow = row("upgrade", "Upgrade to Kandi Plus", spots, 'data-reason="upgrade"');
     }
     let html = `<div class="label">Account</div><div class="set-group">
         ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
@@ -2540,6 +2648,12 @@
       <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
       <div class="label" style="margin-top:12px">Age (18+)</div>
       <input data-field="editAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Age" value="${esc(state.drafts.editAge || "")}" />
+      <div class="label" style="margin-top:12px">Birthday</div>
+      <input data-field="editDob" type="date" value="${esc(state.drafts.editDob || "")}" />
+      <p class="tiny">Used to confirm you're 18+ for founding membership.</p>
+      <div class="label" style="margin-top:12px">Home city</div>
+      <input data-field="editHomeLocation" placeholder="e.g. Salt Lake City, Springville, or a local ZIP" value="${esc(state.drafts.editHomeLocation || "")}" />
+      <p class="tiny">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get a founding badge and a year of Kandi+ free.</p>
       <div class="label" style="margin-top:12px">Bio</div>
       <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
       ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}
@@ -3095,68 +3209,10 @@
         <button class="btn danger" style="margin-top:16px;width:100%" data-act="delete-account-confirm">Delete my account</button>
         <button class="btn ghost" style="margin-top:8px" data-act="close">Keep my account</button></div></div>`;
     }
-    if (o.type === "paywall") {
-      if (isNativeIos()) {
-        return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
-          <div class="scroll pad">${beads(8)}
-          <h2 class="h2" style="text-align:center;margin:12px 0 6px">Kandi+ coming soon</h2>
-          <p class="sub" style="text-align:center">Kandi is free to use in this version. Paid Kandi+ and VIP plans are not for sale in the iOS app yet. When they launch, they will use Apple In-App Purchase — we will never ask you to pay outside the App Store.</p>
-          <div class="card" style="margin-top:18px">
-            <div class="feat"><span>Unlimited likes</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>See who likes you</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>Advanced filters</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>Rewinds</span><span class="tiny">Soon</span></div>
-          </div>
-          <button class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button>
-          <p class="tiny" style="text-align:center;margin-top:10px">Free features stay available, including Discover, chat, events, and posting.</p></div></div>`;
-      }
-      const interval = state.billing === "yearly" ? "yearly" : "monthly";
-      const pending = state.pendingPlan === "vip" ? "vip" : "plus";
-      const catalog = (state.plans && state.plans.plans) || {};
-      const plusPlan = catalog.plus || {};
-      const vipPlan = catalog.vip || {};
-      const plusPrice = plusPlan.intervals && plusPlan.intervals[interval];
-      const vipPrice = vipPlan.intervals && vipPlan.intervals[interval];
-      const rows = [
-        ["Unlimited likes", "✓", "✓"],
-        ["See who likes you", "✓", "✓"],
-        ["Advanced event filters", "✓", "✓"],
-        ["Rewinds", "5 / day", "Unlimited"],
-        ["Priority at events and live mode", "—", "✓"],
-      ];
-      if (!paymentsEnabled()) {
-        return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
-          <div class="scroll pad">${beads(8)}
-          <h2 class="h2" style="text-align:center;margin:12px 0 6px">Kandi+ coming soon</h2>
-          <p class="sub" style="text-align:center">Kandi is free to use right now. Paid Kandi+ will be available to subscribe to here when payments are ready.</p>
-          <div class="card" style="margin-top:18px">
-            <div class="feat"><span>Unlimited likes</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>See who likes you</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>Advanced filters</span><span class="tiny">Soon</span></div>
-            <div class="feat"><span>Rewinds</span><span class="tiny">Soon</span></div>
-          </div>
-          <button class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button></div></div>`;
-      }
-      const hasVip = Boolean(vipPlan.intervals && (vipPlan.intervals.monthly || vipPlan.intervals.yearly));
-      const priceLabel = (info, fallback) => (info && info.label) || fallback;
-      const period = interval === "yearly" ? "per year" : "per month";
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
-        <div class="scroll pad">${beads(8)}
-        <h2 class="h2" style="text-align:center;margin:12px 0 6px">Stay on the floor longer.</h2>
-        <p class="sub" style="text-align:center;margin:8px 0 0">Unlimited likes, see who likes you, filters and rewinds. Cancel anytime.</p>
-        <div class="seg" style="margin:14px 0">
-          <button class="${interval === "monthly" ? "on" : ""}" data-act="billing" data-id="monthly">Monthly</button>
-          <button class="${interval === "yearly" ? "on" : ""}" data-act="billing" data-id="yearly">Yearly</button>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-          <button class="plan${pending === "plus" ? " on" : ""}" data-act="pick-plan" data-id="plus"><div class="tiny">KANDI+</div><div class="price">${esc(priceLabel(plusPrice, interval === "yearly" ? "Yearly" : "Monthly"))}</div><div class="tiny">${period}</div></button>
-          ${hasVip ? `<button class="plan${pending === "vip" ? " on" : ""}" data-act="pick-plan" data-id="vip"><div class="tiny">KANDI VIP</div><div class="price">${esc(priceLabel(vipPrice, interval === "yearly" ? "Yearly" : "Monthly"))}</div><div class="tiny">${period}</div></button>` : ""}
-        </div>
-        <div class="card">${rows.map((r) => `<div class="feat"><span>${r[0]}</span><span class="tiny">${pending === "vip" && hasVip ? r[2] : r[1]}</span></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="buy">Continue to checkout</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">Secure checkout is handled by Stripe. You can manage or cancel anytime from Settings.</p></div></div>`;
+    if (o.type === "paywall" || o.type === "upgrade") {
+      return viewUpgrade();
     }
-    if (o.type === "purchased") {
+        if (o.type === "purchased") {
       return `<div class="overlay"><div class="match-wrap">${beads(8, "lg")}<h2>You're in.</h2>
         <p class="sub">Kandi+ is on. Unlimited likes, see who likes you, filters and rewinds are ready.</p>
         <button class="btn primary" style="margin-top:24px;max-width:280px" data-act="close">Start using it</button></div></div>`;
@@ -4358,14 +4414,47 @@
         await api("/api/rewind", { method: "POST", body: {} });
         await loadFeed(); render(); return;
       }
-      if (act === "paywall") { state.overlay = { type: "paywall", reason: el.getAttribute("data-reason") || "upgrade", returnTo: state.overlay && ["settings", "event"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
-      if (act === "billing") { state.billing = id === "yearly" ? "yearly" : "monthly"; render(); return; }
+      if (act === "paywall" || act === "upgrade") {
+        state.err = "";
+        state.drafts.upgradeDob = state.drafts.upgradeDob || (state.me && state.me.dateOfBirth) || "";
+        state.drafts.upgradeLocation = state.drafts.upgradeLocation || (state.me && state.me.homeLocation) || "";
+        state.overlay = { type: "upgrade", reason: el.getAttribute("data-reason") || "upgrade", returnTo: state.overlay && ["settings", "event"].includes(state.overlay.type) ? state.overlay : null };
+        render();
+        quiet(Promise.all([loadPlans(), loadFounding()]));
+        return;
+      }
+      if (act === "billing") {
+        const allowed = { monthly: 1, "3mo": 1, "6mo": 1, yearly: 1, founding: 1 };
+        state.billing = allowed[id] ? id : "monthly";
+        state.pendingPlan = id === "founding" ? "founding" : "plus";
+        render(); return;
+      }
       if (act === "pick-plan") { state.pendingPlan = id; render(); return; }
       if (act === "buy") {
-        if (isNativeIos() || !paymentsEnabled()) { state.overlay = { type: "paywall", reason: "upgrade" }; render(); return; }
-        const data = await api("/api/billing/checkout", { method: "POST", body: { plan: state.pendingPlan === "vip" ? "vip" : "plus", interval: state.billing === "yearly" ? "yearly" : "monthly" } });
+        if (isNativeIos() || !paymentsEnabled()) { state.overlay = { type: "upgrade", reason: "upgrade" }; render(); return; }
+        const interval = state.billing === "founding" ? "founding" : state.billing;
+        const plan = interval === "founding" ? "founding" : "plus";
+        const data = await api("/api/billing/checkout", { method: "POST", body: { plan, interval } });
         if (data && data.url) { location.href = data.url; return; }
         throw new Error("Checkout could not be started.");
+      }
+      if (act === "claim-founding") {
+        if (!state.me) return;
+        const data = await api("/api/plus/claim-founding", {
+          method: "POST",
+          body: {
+            dateOfBirth: state.drafts.upgradeDob || state.me.dateOfBirth || "",
+            homeLocation: state.drafts.upgradeLocation || state.me.homeLocation || "",
+          },
+        });
+        if (data.user) state.me = data.user;
+        if (data.likesLeft != null || data.user) state.likesLeft = data.likesLeft == null ? state.likesLeft : data.likesLeft;
+        if (data.founding) state.founding = data.founding;
+        state.info = data.message || "";
+        state.err = data.ok ? "" : (data.message || "Couldn't claim a founding spot.");
+        if (data.granted) state.overlay = { type: "purchased" };
+        render();
+        return;
       }
       if (act === "manage-billing") {
         if (isNativeIos() || !paymentsEnabled()) return;

@@ -816,3 +816,12 @@
   .chat-bar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
 }
 html { height: 100%; height: -webkit-fill-available; }
+
+
+    .founder-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; color: #000; background: var(--orange); box-shadow: 0 0 10px rgba(255,92,0,.55); vertical-align: 2px; }
+    .upgrade-screen .upgrade-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0 4px; }
+    .upgrade-screen .plan { min-width: 0; }
+    .founding-spots { margin-top: 10px; font-weight: 700; }
+    .founding-spots .num { color: var(--orange2); font-size: 22px; font-weight: 800; letter-spacing: -.02em; text-shadow: 0 0 12px rgba(255,92,0,.45); }
+    .founding-card { border-color: rgba(255,92,0,.45); box-shadow: 0 0 0 1px rgba(255,92,0,.2); }
+    @media (max-width: 380px) { .upgrade-screen .upgrade-plans { grid-template-columns: 1fr; } }
