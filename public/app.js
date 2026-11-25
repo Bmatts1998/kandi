@@ -340,9 +340,14 @@
     if (days < 7) return days + "d";
     return days + "d";
   }
+  function mediaUrl(url) {
+    if (!url || String(url).startsWith("blob:") || String(url).startsWith("data:")) return url;
+    if (/[?&]o=1(?:&|$)/.test(url)) return url;
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "o=1";
+  }
   function avatarEl(av, cls, emojiFallback) {
     cls = cls || "av";
-    if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(av.url)}')"></span>`;
+    if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(mediaUrl(av.url))}')"></span>`;
     const g = (av && av.gradient) || "linear-gradient(160deg,#111,#ff5c00)";
     const e = (av && av.emoji) || emojiFallback || "●";
     return `<span class="${cls}" style="background:${g}">${esc(e)}</span>`;
@@ -363,12 +368,12 @@
     return avatarEl(mainPhotoOf(p), cls || "av", initialOf(p));
   }
   function photoThumbStyle(ph) {
-    if (ph && ph.type === "file" && ph.url) return `background-image:url('${esc(ph.url)}')`;
+    if (ph && ph.type === "file" && ph.url) return `background-image:url('${esc(mediaUrl(ph.url))}')`;
     return `background:${esc((ph && ph.gradient) || "#1a1a1a")}`;
   }
   function uploadBusy() {
     if (!state.uploadingPhoto) {
-      return state.uploadError ? `<div class="err">${esc(state.uploadError)}</div>` : "";
+      return state.uploadError ? `<div class="err upload-err" role="alert">${esc(state.uploadError)}</div>` : "";
     }
     const pct = state.uploadProgress == null ? "" : " " + state.uploadProgress + "%";
     return `<div class="upload-busy"><span class="spin"></span>Uploading photo${pct}…</div>`;
@@ -378,11 +383,17 @@
     const node = document.querySelector(".upload-busy");
     if (node) node.innerHTML = `<span class="spin"></span>Uploading photo${pct == null ? "" : " " + pct + "%"}…`;
   }
+  let fileInputSeq = 0;
+  function hiddenFileInput(kind, label) {
+    const id = "kandi-file-" + kind + "-" + (++fileInputSeq);
+    const input = `<input id="${id}" class="file-sr" type="file" accept="image/*" data-act-file="${kind}" ${state.uploadingPhoto ? "disabled" : ""} aria-label="${esc(label)}" />`;
+    return { id, input };
+  }
   function profileAvatarEditor(p) {
-    return `<label class="prof-avatar-wrap" title="Change your main photo">
+    const file = hiddenFileInput("upload-photo-main", "Set or change your main profile photo");
+    return `${file.input}<label class="prof-avatar-wrap" for="${file.id}" title="Change your main photo">
       ${personAvatar(p, "av prof-av")}
       <span class="cam-badge" aria-hidden="true">📷</span>
-      <input type="file" accept="image/*" data-act-file="upload-photo-main" ${state.uploadingPhoto ? "disabled" : ""} aria-label="Set or change your main profile photo" />
     </label>`;
   }
   function photoEditor(photos) {
@@ -401,13 +412,14 @@
         </div>
       </div>`;
     }).join("");
+    const addFile = hiddenFileInput("upload-photo", "Add a profile photo");
     for (let i = 0; i < empty; i++) {
-      slots += `<label class="photo-slot add"><span>+</span>
-        <input type="file" accept="image/*" data-act-file="upload-photo" ${state.uploadingPhoto ? "disabled" : ""} aria-label="Add a profile photo" /></label>`;
+      slots += `<label class="photo-slot add" for="${addFile.id}"><span>+</span></label>`;
     }
     return `<div class="photo-editor">
+      ${addFile.input}
       <div class="photo-grid">${slots}</div>
-      <p class="photo-hint">${list.length}/6 photos. Tap + or the camera to add one. On iPhone this offers Take Photo or Photo Library. Any size or format is fine — we'll shrink it automatically.</p>
+      <p class="photo-hint">${list.length}/6 photos. Tap the camera or a + square to add one. On iPhone this offers Take Photo or Photo Library. Any size or format is fine — we'll shrink it automatically.</p>
       ${uploadBusy()}
     </div>`;
   }
@@ -550,12 +562,12 @@
       }
       try {
         const bmp = await createImageBitmap(file, opts);
-        let canvas = document.createElement("canvas");
-        canvas.width = bmp.width;
-        canvas.height = bmp.height;
-        canvas.getContext("2d").drawImage(bmp, 0, 0);
+        const scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(bmp.width * scale));
+        canvas.height = Math.max(1, Math.round(bmp.height * scale));
+        canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
         if (bmp.close) try { bmp.close(); } catch (_) {}
-        if (Math.max(canvas.width, canvas.height) > maxDim) canvas = scaleCanvas(canvas, maxDim);
         return canvas;
       } catch (_) { /* fall through */ }
       if (!huge) {
@@ -633,7 +645,8 @@
         let data = {};
         try { data = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
         if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-        else reject(new Error(data.error || "Upload failed"));
+        else if (xhr.status === 401) reject(new Error("You're signed out. Fully close the app, log in again, and then add the photo."));
+        else reject(new Error(data.error || "Couldn't upload that photo. Try another one from your library."));
       };
       xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
       const fd = new FormData();
@@ -661,7 +674,8 @@
       if (!data.user) throw new Error("Upload failed");
       state.me = data.user;
     } catch (err) {
-      state.uploadError = err.message || "Upload failed";
+      state.uploadError = err.message || "Couldn't add that photo. Try another one from your library, or take a new photo.";
+      if (typeof toast === "function") toast(state.uploadError, "err");
     } finally {
       state.uploadingPhoto = false;
       state.uploadProgress = null;
@@ -740,7 +754,7 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(ph.url)}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div></div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div></div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
@@ -1016,7 +1030,7 @@
       ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete" aria-label="Delete">✕</button>`
       : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report" aria-label="Report">⋯</button>`;
     const photo = p.photoUrl
-      ? `<div class="post-photo" style="background-image:url('${esc(p.photoUrl)}')" data-act="post-like-tap" data-id="${p.id}">${burst}</div>`
+      ? `<div class="post-photo" style="background-image:url('${esc(mediaUrl(p.photoUrl))}')" data-act="post-like-tap" data-id="${p.id}">${burst}</div>`
       : (p.caption ? `<div class="post-photo" style="display:grid;place-items:center;padding:24px;aspect-ratio:auto;min-height:160px" data-act="post-like-tap" data-id="${p.id}"><div style="font-size:20px;font-weight:700;line-height:1.4;padding:12px">${esc(p.caption)}</div>${burst}</div>` : "");
     return `<article class="post">
       <div class="post-hd">
@@ -1061,7 +1075,7 @@
       if ((soc.posts || []).length) {
         html += `<div class="label">Your posts</div><div class="post-grid">` + soc.posts.map((post) =>
           post.photoUrl
-            ? `<button style="background-image:url('${esc(post.photoUrl)}')" data-act="feed-tab" data-id="following"></button>`
+            ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="feed-tab" data-id="following"></button>`
             : `<button data-act="feed-tab" data-id="following"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
         ).join("") + `</div>`;
       }
@@ -1165,7 +1179,7 @@
           ${(data.posts || []).length
             ? `<div class="post-grid" style="margin-top:16px">` + data.posts.map((post) =>
                 post.photoUrl
-                  ? `<button style="background-image:url('${esc(post.photoUrl)}')" data-act="open-comments" data-id="${post.id}"></button>`
+                  ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}"></button>`
                   : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
               ).join("") + `</div>`
             : `<div class="empty">No posts yet.</div>`}
@@ -1792,6 +1806,7 @@
     "edit-profile", "event", "paywall", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
+    if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
     // Tapping the dimmed backdrop of a bottom sheet closes it; taps inside the sheet never do.
     if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.overlay = null; state.err = ""; render(); return; }
     const actEl = t.closest("[data-act]");
@@ -1847,7 +1862,7 @@
       handle(state.overlay && state.overlay.type === "signup" ? "signup" : "login", e.target);
     }
   });
-  root.addEventListener("change", async (e) => {
+  async function onPickedFile(e) {
     const kind = e.target.getAttribute("data-act-file");
     if (kind === "post-photo") {
       const file = e.target.files && e.target.files[0];
@@ -1877,7 +1892,9 @@
       await uploadProfilePhoto(file, kind === "upload-photo-main");
       e.target.value = "";
     }
-  });
+  }
+  root.addEventListener("change", onPickedFile);
+  root.addEventListener("input", onPickedFile);
 
   let dragFrom = null;
   root.addEventListener("dragstart", (e) => {

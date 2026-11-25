@@ -100,9 +100,24 @@ async function normalizePhoto(input) {
   throw httpError("Couldn't process that photo. Try another one from your camera roll.", 400);
 }
 
+async function servePhoto(input, mimeHint) {
+  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  try {
+    const { data, info } = await sharp(buffer, { failOn: "none", limitInputPixels: INPUT_PIXELS })
+      .rotate()
+      .toBuffer({ resolveWithObject: true });
+    const format = (info && info.format) || "jpeg";
+    const mime = format === "jpg" || format === "jpeg" ? "image/jpeg" : "image/" + format;
+    return { buffer: data, mime };
+  } catch (_) {
+    return { buffer, mime: mimeHint || sniffImageMime(buffer) || "image/jpeg" };
+  }
+}
+
 module.exports = {
   sniffImageMime,
   normalizePhoto,
+  servePhoto,
   MAX_UPLOAD_BYTES,
   TARGET_BYTES,
   MAX_EDGE,

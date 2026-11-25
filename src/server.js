@@ -12,7 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
-const { sniffImageMime, normalizePhoto, MAX_UPLOAD_BYTES } = require("./photo");
+const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 
 const PORT = Number(process.env.PORT || 8787);
@@ -60,9 +60,11 @@ app.get("/uploads/:id", async (req, res, next) => {
   try {
     const row = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(req.params.id);
     if (row) {
-      res.setHeader("Content-Type", row.mime);
+      const raw = Buffer.from(row.data, "base64");
+      const served = await servePhoto(raw, row.mime);
+      res.setHeader("Content-Type", served.mime);
       res.setHeader("Cache-Control", "public, max-age=604800");
-      return res.send(Buffer.from(row.data, "base64"));
+      return res.send(served.buffer);
     }
     next();
   } catch (err) { next(err); }
@@ -361,6 +363,7 @@ app.post("/api/me/photo", auth, async (req, res) => {
     if (asMain || photos.length === 0) photos.unshift(entry);
     else photos.push(entry);
     const user = await saveUserPhotos(req.user.id, photos);
+    console.log("photo-upload ok", { userId: Number(req.user.id), bytesIn: req.file.size, bytesOut: normalized.buffer.length, main: Boolean(asMain) });
     res.json({ user });
   });
 });
