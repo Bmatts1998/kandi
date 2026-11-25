@@ -43,7 +43,7 @@ const config = {
   },
   ios: {
     scheme: "Kandi",
-    contentInset: "automatic",
+    contentInset: "never",
     preferredContentMode: "mobile",
     backgroundColor: "#000000",
   },

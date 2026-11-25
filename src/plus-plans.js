@@ -103,6 +103,15 @@ function planList() {
 }
 
 function publicCatalog({ ios = false, isFounder = false, stripePrices = {}, stripeEnabled = false } = {}) {
+  if (ios) {
+    return {
+      features: [],
+      plans: [],
+      founding: { available: false },
+      yearlyConfirmed: true,
+      payments: { iapComingSoon: true, websiteReady: false },
+    };
+  }
   const plans = planList().map((p) => {
     const stripe = stripePrices[p.stripeKey] || {};
     return {

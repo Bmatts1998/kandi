@@ -1145,6 +1145,12 @@ app.get("/api/plus/founding", async (_req, res) => {
 });
 
 app.post("/api/plus/claim-founding", auth, async (req, res) => {
+  if (isNativeIosClient(req)) {
+    return res.status(403).json({
+      error: "Founding membership isn't available in the iOS app.",
+      code: "plus_coming_soon",
+    });
+  }
   const body = req.body || {};
   const updates = [];
   const vals = [];

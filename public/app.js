@@ -626,7 +626,7 @@
     const tab = state.profileTab || "posts";
     const buttons = isMe
       ? `<div class="prof-actions"><button type="button" class="btn sm primary" data-act="edit-profile">Edit Profile</button>
-          <button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>
+          ${isNativeIos() ? "" : `<button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>`}
           <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New Post</button></div>`
       : "";
     const soc = opts.counts || {};
@@ -1683,6 +1683,14 @@
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }
   function viewUpgrade() {
+    if (isNativeIos()) {
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi</span></div></div>
+        <div class="scroll pad">${beads(8)}
+        <h2 class="h2" style="text-align:center;margin:12px 0 6px">This version is free</h2>
+        <p class="sub" style="text-align:center">Discover, events, chat, crews, and the rest of Kandi are free to use. Paid plans are not sold in this version of the app.</p>
+        <button type="button" class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button>
+        </div></div>`;
+    }
     const me = state.me || {};
     const founding = state.founding || { cap: 3000, claimed: 0, left: 3000, open: true };
     const catalog = (state.plans && (state.plans.catalog || state.plans)) || {};
@@ -2604,7 +2612,7 @@
     const spots = state.founding && state.founding.left != null ? state.founding.left + " of 3,000 founding spots left" : "Founding member perks and plans";
     let plusRow;
     if (isNativeIos()) {
-      plusRow = row("upgrade", isPlus() ? plan + " is on" : "Kandi Plus", p.isFounder ? "Founding member #" + (p.foundingNumber || "") : spots, 'data-reason="upgrade"');
+      plusRow = "";
     } else if (isPlus() && billingFlags.managed) {
       plusRow = row("upgrade", plan + " is on", "View plans or manage your membership", 'data-reason="upgrade"');
     } else if (isPlus()) {
@@ -2631,9 +2639,9 @@
         <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
           <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
-        <a class="set-row" href="/privacy" target="_blank" rel="noopener"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
-        <a class="set-row" href="/terms" target="_blank" rel="noopener"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
-        <a class="set-row" href="/support" target="_blank" rel="noopener"><div class="grow">Support</div><span aria-hidden="true">›</span></a>
+        <a class="set-row" href="/privacy"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
+        <a class="set-row" href="/terms"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
+        <a class="set-row" href="/support"><div class="grow">Support</div><span aria-hidden="true">›</span></a>
       </div>
       <div class="notice warn" style="margin-bottom:18px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     html += iosTip();
@@ -2694,10 +2702,10 @@
       <input data-field="editAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Age" value="${esc(state.drafts.editAge || "")}" />
       <div class="label" style="margin-top:12px">Birthday</div>
       <input data-field="editDob" type="date" value="${esc(state.drafts.editDob || "")}" />
-      <p class="tiny">Used to confirm you're 18+ for founding membership.</p>
+      <p class="tiny">${isNativeIos() ? "Used to confirm you're 18+." : "Used to confirm you're 18+ for founding membership."}</p>
       <div class="label" style="margin-top:12px">Home city</div>
       <input data-field="editHomeLocation" placeholder="e.g. Salt Lake City, Springville, or a local ZIP" value="${esc(state.drafts.editHomeLocation || "")}" />
-      <p class="tiny">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get a founding badge and a year of Kandi+ free.</p>
+      ${isNativeIos() ? "" : `<p class="tiny">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get a founding badge and a year of Kandi+ free.</p>`}
       <div class="label" style="margin-top:12px">Bio</div>
       <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
       ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}
@@ -3257,6 +3265,12 @@
         <button class="btn danger" style="margin-top:16px;width:100%" data-act="delete-account-confirm">Delete my account</button>
         <button class="btn ghost" style="margin-top:8px" data-act="close">Keep my account</button></div></div>`;
     }
+    if (o.type === "likeLimit") {
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">That's today's likes</h2>
+        <p class="sub">You've used today's free likes. Come back tomorrow to like more people — Discover, events, and chat stay open.</p>
+        <button class="btn primary" style="margin-top:18px" data-act="close">OK</button></div></div>`;
+    }
     if (o.type === "paywall" || o.type === "upgrade") {
       return viewUpgrade();
     }
@@ -3305,7 +3319,7 @@
         ? `<div class="label" style="margin-top:14px">Event</div><div class="chips">
         <button type="button" class="chip${f.event === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
         ${(state.events || []).map((e) => `<button type="button" class="chip${f.event === e.id ? " on" : ""}" data-act="set-event-filter" data-id="${e.id}">${esc(e.name)}</button>`).join("")}</div>`
-        : `<div class="label" style="margin-top:14px">Event</div><p class="tiny">Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button></p>`;
+        : `<div class="label" style="margin-top:14px">Event</div><p class="tiny">${isNativeIos() ? "Event filters aren't in this version." : `Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button>`}</p>`;
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2" style="font-size:22px">Filters</h2>
         <div class="label">Age range</div>
@@ -4405,7 +4419,10 @@
       if (act === "set-genre") { state.filters.genre = id; render(); return; }
       if (act === "set-gender-filter") { state.filters.gender = id || "all"; render(); return; }
       if (act === "set-event-filter") {
-        if (!isPlus() && id && id !== "all") { state.overlay = { type: "paywall", reason: "filters" }; render(); return; }
+        if (!isPlus() && id && id !== "all") {
+          if (isNativeIos()) return;
+          state.overlay = { type: "paywall", reason: "filters" }; render(); return;
+        }
         state.filters.event = id; render(); return;
       }
       if (act === "event-cat") { state.eventCategory = id || "all"; render(); return; }
@@ -4424,7 +4441,10 @@
         render(); return;
       }
       if (act === "want-like") {
-        if (!isPlus() && state.likesLeft === 0) { state.overlay = { type: "paywall", reason: "likes" }; render(); return; }
+        if (!isPlus() && state.likesLeft === 0) {
+          state.overlay = { type: isNativeIos() ? "likeLimit" : "paywall", reason: "likes" };
+          render(); return;
+        }
         state.drafts.comment = "";
         const person = state.feed.find((x) => String(x.id) === String(id)) || (state.inbound.people || []).find((x) => String(x.id) === String(id)) || state.nearby.find((x) => String(x.id) === String(id));
         state.overlay = { type: "likeSheet", id: Number(id), typeTarget: el.getAttribute("data-type"), targetId: el.getAttribute("data-target"), person }; render(); return;
@@ -4487,7 +4507,7 @@
         throw new Error("Checkout could not be started.");
       }
       if (act === "claim-founding") {
-        if (!state.me) return;
+        if (!state.me || isNativeIos()) return;
         const data = await api("/api/plus/claim-founding", {
           method: "POST",
           body: {
@@ -5458,6 +5478,14 @@
     document.querySelectorAll("[data-act].busy").forEach((n) => { n.classList.remove("busy"); n.removeAttribute("aria-busy"); });
     document.body.classList.remove("net-busy");
   }
+  window.addEventListener("online", () => {
+    if (state.view === "offline") {
+      state.view = "boot";
+      state.err = "";
+      render();
+      boot();
+    }
+  });
   window.addEventListener("error", (ev) => {
     if (ev && ev.target && ev.target !== window) return; // broken image etc.
     unstickTaps();

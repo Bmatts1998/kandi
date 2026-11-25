@@ -72,7 +72,23 @@ test.describe("QA pass regressions (iPhone WebKit)", () => {
     await expect(body).not.toContainText("meetup note");
     await expect(body).not.toContainText("coming soon");
     await expect(body).not.toContainText("Coming with the next");
+    await expect(body).not.toContainText("Upgrade to Kandi Plus");
+    await expect(body).not.toContainText("Stripe");
+    await expect(body).not.toContainText("$7.99");
+    await expect(page.locator('[data-act="upgrade"]')).toHaveCount(0);
     await expect(page.locator(".ios-tip")).toHaveCount(0);
+    await page.locator('[data-act="close"]').click();
+    await expect(page.locator("body")).not.toContainText("Check my founding spot");
+    await expect(page.locator("body")).not.toContainText("a year of Kandi+ free");
+    const claim = await page.request.post("/api/plus/claim-founding", {
+      headers: { "X-Kandi-Client": "ios" },
+      data: { dateOfBirth: "1998-01-01", homeLocation: "Springville, UT" },
+    });
+    expect(claim.status()).toBe(403);
+    const terms = await (await page.request.get("/terms")).text();
+    expect(terms).not.toMatch(/Stripe/i);
+    const support = await (await page.request.get("/support")).text();
+    expect(support).not.toMatch(/Stripe/i);
     await ctx.close();
   });
 

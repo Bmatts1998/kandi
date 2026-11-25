@@ -53,7 +53,11 @@ describe("prices", () => {
     const catalog = plusPlans.publicCatalog({ ios: true });
     assert.equal(catalog.yearlyConfirmed, true);
     assert.equal(catalog.payments.websiteReady, false);
+    assert.equal(catalog.payments.iapComingSoon, true);
+    assert.equal(catalog.plans.length, 0);
+    assert.equal(catalog.founding.available, false);
     assert.equal(JSON.stringify(catalog).includes("stripe.com"), false);
+    assert.equal(/\$\d/.test(JSON.stringify(catalog)), false);
   });
 });
 
@@ -125,16 +129,17 @@ describe("founding cap", () => {
 });
 
 describe("billing catalog for iOS", () => {
-  test("iOS plans list prices but never enable Stripe or a checkout URL", () => {
+  test("iOS catalog hides prices, Stripe, and checkout even when keys are set", () => {
     const cfg = billing.getConfig({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_PRICE_IDS: "plus_monthly:price_a" });
     const plans = billing.publicPlans(cfg, { ios: true });
     assert.equal(plans.paymentsEnabled, false);
     assert.equal(plans.store, "iap_coming_soon");
     assert.equal(plans.yearlyConfirmed, true);
+    assert.deepEqual(plans.catalog.plans, []);
+    assert.equal(plans.catalog.founding.available, false);
     const blob = JSON.stringify(plans).toLowerCase();
-    assert.equal(blob.includes("stripe.com"), false);
-    assert.equal(blob.includes("checkout.stripe"), false);
-    const yearly = plans.catalog.plans.find((p) => p.interval === "yearly");
-    assert.equal(yearly.amount, 59.99);
+    assert.equal(blob.includes("stripe"), false);
+    assert.equal(blob.includes("checkout"), false);
+    assert.equal(/\$\d/.test(blob), false);
   });
 });
