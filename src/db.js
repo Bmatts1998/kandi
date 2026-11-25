@@ -135,6 +135,13 @@ const SQLITE_SCHEMA = `
       data TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS setup_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
 `;
 
 const PG_SCHEMA = `
@@ -249,6 +256,12 @@ const PG_SCHEMA = `
       user_id INTEGER,
       mime TEXT NOT NULL,
       data TEXT NOT NULL,
+      created_at TEXT DEFAULT (NOW()::text)
+    );
+    CREATE TABLE IF NOT EXISTS setup_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL,
       created_at TEXT DEFAULT (NOW()::text)
     );
 `;
@@ -389,6 +402,16 @@ function makeNeonServerlessPool(url) {
   return new neon.Pool({ connectionString: url, max: Number(process.env.PG_POOL_MAX || 8) });
 }
 
+
+async function migrate(db) {
+  if (db.driver === "postgres") {
+    await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
+    await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile INTEGER DEFAULT 0");
+  } else {
+    try { await db.exec("ALTER TABLE users ADD COLUMN needs_profile INTEGER DEFAULT 0"); } catch (_) {}
+  }
+}
+
 async function openPostgres(url) {
   const force = String(process.env.PG_DRIVER || "").toLowerCase();
   const tryTcp = force !== "neon-serverless";
@@ -400,6 +423,7 @@ async function openPostgres(url) {
     try {
       await db.exec("SELECT 1");
       await db.exec(PG_SCHEMA);
+      await migrate(db);
       console.log("Database: Postgres via TCP (pg)");
       return db;
     } catch (err) {
@@ -412,6 +436,7 @@ async function openPostgres(url) {
   if (tryWs) {
     const db = wrapPg(makeNeonServerlessPool(url));
     await db.exec(PG_SCHEMA);
+    await migrate(db);
     console.log("Database: Postgres via Neon serverless");
     return db;
   }
@@ -429,7 +454,9 @@ async function open() {
   raw.exec("PRAGMA journal_mode = WAL;");
   raw.exec("PRAGMA foreign_keys = ON;");
   raw.exec(SQLITE_SCHEMA);
-  return wrapSqlite(raw);
+  const db = wrapSqlite(raw);
+  await migrate(db);
+  return db;
 }
 
 module.exports = { open, dbPath };

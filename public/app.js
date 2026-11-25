@@ -19,7 +19,7 @@
     { id: "late", q: "My 3am song is..." },
     { id: "looking", q: "I'm looking for someone who..." },
   ];
-  const BEADS = ["#ff3d9a", "#2ef0ff", "#ffd56a", "#b44aff", "#d4ff3f", "#ff7a4a", "#ffffff", "#5dffb0"];
+  const BEADS = ["#ff5c00", "#ff8a1a", "#ffc14d", "#ff3b00", "#ffb020", "#ff7a4a", "#ffffff", "#ffd4b0"];
   const LOOKING_LABEL = Object.fromEntries(LOOKING.map((x) => [x.id, x.label]));
 
   const state = {
@@ -96,6 +96,31 @@
   }
 
   async function boot() {
+    const claimToken = (function () {
+      const path = location.pathname || "";
+      const m = path.match(/^\/claim\/([^/]+)\/?$/);
+      if (m) return decodeURIComponent(m[1]);
+      const q = new URLSearchParams(location.search).get("claim");
+      if (q) return q;
+      const h = (location.hash || "").replace(/^#/, "");
+      if (h.startsWith("claim=")) return h.slice(6);
+      return "";
+    })();
+    if (claimToken) {
+      state.claimToken = claimToken;
+      state.drafts.claimPass = "";
+      state.drafts.claimAge = "";
+      try {
+        const info = await api("/api/claim/" + encodeURIComponent(claimToken));
+        state.claim = info;
+        state.view = "claim";
+      } catch (e) {
+        state.err = e.message || "That setup link is invalid or expired.";
+        state.view = "auth";
+      }
+      render();
+      return;
+    }
     try {
       const me = await api("/api/me");
       applyMe(me);
@@ -115,10 +140,22 @@
     if (data.locationShare !== undefined) state.locationShare = data.locationShare;
   }
   function needsOnboard(u) {
-    return !u || !u.vibes.length || !u.looking.length || !u.prompts.length;
+    return !u || !u.age || u.needsProfile || !u.vibes.length || !u.looking.length || !u.prompts.length;
   }
   function isPlus() { return state.me && (state.me.subscription === "plus" || state.me.subscription === "vip"); }
   function isVip() { return state.me && state.me.subscription === "vip"; }
+  function isIosSafari() {
+    const ua = navigator.userAgent || "";
+    const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || Boolean(navigator.standalone);
+    return iOS && !standalone && !localStorage.getItem("kandi-hide-ios-tip");
+  }
+  function iosTip() {
+    if (!isIosSafari()) return "";
+    return `<div class="ios-tip"><strong>Add Kandi to your Home Screen</strong>
+      <p>In Safari, tap the Share button (the square with the arrow), then <strong>Add to Home Screen</strong>. Kandi opens like a real app, with its own icon and a black splash.</p>
+      <div class="row"><button class="btn sm primary" data-act="dismiss-ios-tip">Got it</button></div></div>`;
+  }
 
   async function refreshAll() {
     await Promise.all([loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
@@ -179,7 +216,7 @@
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
-    return `<div class="photo" style="background:${esc(ph.gradient || "#1a0828")}"><div class="grain"></div>
+    return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
       ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div></div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
@@ -188,6 +225,21 @@
   function promptEl(p, pr) {
     return `<div class="prompt"><div class="q">${esc(pr.q)}</div><div class="a">${esc(pr.a)}</div>
       <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="prompt" data-target="${esc(pr.id)}" aria-label="Like this prompt">♡</button></div>`;
+  }
+
+  function viewClaim() {
+    const c = state.claim || {};
+    return `<div class="screen splash top-pad"><div class="inner auth-card claim-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      <h2 class="h2" style="margin-top:18px">Set up your profile</h2>
+      <p class="sub">${c.name ? "Welcome, " + esc(c.name) + ". " : ""}Choose a password and enter your age. Kandi is 18+ only — we didn't guess your age.</p>
+      ${c.username ? `<p class="muted" style="margin-top:8px">Username: @${esc(c.username)}</p>` : ""}
+      <input data-field="claimPass" type="password" placeholder="Password (8+ characters)" value="${esc(state.drafts.claimPass || "")}" style="margin-top:16px" autocomplete="new-password" />
+      <input data-field="claimAge" inputmode="numeric" maxlength="2" placeholder="Your age (18+)" value="${esc(state.drafts.claimAge || "")}" style="margin-top:8px" />
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      <button class="btn primary" data-act="claim-finish" style="margin-top:16px">Save and enter Kandi</button>
+    </div></div>`;
   }
 
   function viewAuth() {
@@ -200,18 +252,19 @@
       ${mode === "signup" ? `
         <input id="f-name" data-field="name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
         <input id="f-age" data-field="age" inputmode="numeric" maxlength="2" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
-        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" />
+        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <button class="btn primary" data-act="signup" style="margin-top:16px">Create account</button>
         <button class="btn ghost" data-act="show-login" style="margin-top:8px">I already have an account</button>
       ` : `
-        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" />
+        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" placeholder="Password" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
         <p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>
+        ${iosTip()}
       `}
     </div></div>`;
   }
@@ -237,7 +290,7 @@
       body = `<p class="sub" style="margin-bottom:12px">People can like a specific prompt, Hinge-style.</p>`;
       (me.prompts || []).forEach((pr, i) => {
         body += `<div class="prompt" style="padding-bottom:20px;margin-bottom:10px"><div class="q">${esc(pr.q)}</div><div class="a" style="font-size:18px">${esc(pr.a)}</div>
-          <button class="tiny" style="margin-top:8px;color:var(--pink)" data-act="del-prompt" data-i="${i}">Remove</button></div>`;
+          <button class="tiny" style="margin-top:8px;color:var(--orange)" data-act="del-prompt" data-i="${i}">Remove</button></div>`;
       });
       if ((me.prompts || []).length < 3) {
         body += `<div class="chips">${PROMPT_BANK.filter((q) => !(me.prompts || []).some((x) => x.id === q.id)).map((q) =>
@@ -299,7 +352,7 @@
     if (state.inbound.locked) {
       const preview = state.inbound.people || [];
       return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. Unlock Kandi+ to see who they are.</p>
-        <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#1a0828">
+        <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#111111">
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
         <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">See who likes you</button>
@@ -312,7 +365,7 @@
       const info = p.liked || {};
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
-        <div class="av" style="width:56px;height:56px;font-size:26px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#1a0828")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        <div class="av" style="width:56px;height:56px;font-size:26px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
         <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}</div>
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
@@ -345,7 +398,7 @@
       const p = m.user;
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
-        <div class="av" style="width:52px;height:52px;font-size:24px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#1a0828")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        <div class="av" style="width:52px;height:52px;font-size:24px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
         <div class="grow"><div style="font-weight:800">${esc(p.name)}</div>
         <div class="muted">${esc(last ? last.text : "You matched. Say hi.")}</div></div></button>`;
     });
@@ -356,7 +409,7 @@
     const p = state.me;
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
     let html = header("You") + `<div class="scroll pad">`;
-    html += `<div class="photo" style="background:linear-gradient(160deg,#1a0828,#ff3d9a 55%,#2ef0ff);height:220px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div></div><div class="emoji">💫</div></div>`;
+    html += `<div class="photo" style="background:linear-gradient(160deg,#000000,#ff5c00 60%,#ffc14d);height:220px"><div class="who"><div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div></div><div class="emoji">💫</div></div>`;
     html += `<div class="chips" style="margin:12px 0">${p.vibes.map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>`;
     html += `<div class="muted">@${esc(p.username)} · looking for ${p.looking.map((id) => LOOKING_LABEL[id] || id).join(", ")}</div>`;
     (p.prompts || []).forEach((pr) => {
@@ -380,8 +433,9 @@
         `<div class="row" style="margin:6px 0"><div class="grow">${esc(b.name)}</div><button class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`
       ).join("");
     }
+    html += iosTip();
     html += `<button class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
-      <p class="tiny" style="text-align:center;margin-top:10px">Kandi v1 · add to your home screen for the app-like experience</p></div>`;
+      <p class="tiny" style="text-align:center;margin-top:10px">Kandi v1 · Add to Home Screen in Safari for the full app</p></div>`;
     return html;
   }
 
@@ -423,8 +477,8 @@
     if (o.type === "match") {
       const p = o.person;
       return `<div class="overlay"><div class="match-wrap">
-        <div class="avatars"><div class="av" style="background:linear-gradient(160deg,#1a0828,#ff3d9a)">💫</div>${beads(5, "sm")}
-        <div class="av" style="background:${esc((p.photos[0] && p.photos[0].gradient) || "#1a0828")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div></div>
+        <div class="avatars"><div class="av" style="background:linear-gradient(160deg,#000000,#ff5c00)">💫</div>${beads(5, "sm")}
+        <div class="av" style="background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div></div>
         <h2>It's a trade!</h2>
         <p class="sub">${esc(state.me.name)} and ${esc(p.name)} liked each other. Time to trade kandi — or at least a hello.</p>
         <button class="btn primary" style="margin-top:24px;max-width:280px" data-act="chat" data-id="${p.id}">Send a message</button>
@@ -469,7 +523,7 @@
           <button class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${e.id}" aria-label="I'm going"><i></i></button></div>
         ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
         <div class="label">Who's going</div>
-        ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px"><div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#1a0828")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+        ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px"><div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
           <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>
           <div class="tiny">${p.vibes.join(" · ")}</div></div></div>`).join("")}
         <button class="btn primary" style="margin-top:8px" data-act="open-live" data-id="${e.id}">Open at-the-show live mode</button></div></div>`;
@@ -489,7 +543,7 @@
           <div class="notice warn" style="margin-top:12px">Tell a friend where you are. <button data-act="share-loc" style="color:var(--gold);font-weight:700">Share a meetup note</button></div>
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
-            <div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#1a0828")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
+            <div class="av" style="width:48px;height:48px;font-size:22px;background:${esc((p.photos[0] && p.photos[0].gradient) || "#111111")}">${(p.photos[0] && p.photos[0].emoji) || "💫"}</div>
             <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}</div>
             <div class="tiny">${esc(p.meetupSpot || "At this event")} · ${p.vibes.slice(0, 2).join(", ")}</div></div></button>`).join("")}
         `}</div></div>`;
@@ -534,6 +588,7 @@
     const root = document.getElementById("app");
     let html = "";
     if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1></div></div>`;
+    else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
     else if (state.view === "onboard") html = viewOnboard();
     else {
@@ -552,6 +607,19 @@
     const id = el && el.getAttribute("data-id");
     try {
       state.err = "";
+      if (act === "dismiss-ios-tip") { localStorage.setItem("kandi-hide-ios-tip", "1"); render(); return; }
+      if (act === "claim-finish") {
+        const password = (state.drafts.claimPass || "").trim();
+        const age = Number(state.drafts.claimAge);
+        const data = await api("/api/claim", { method: "POST", body: { token: state.claimToken, password, age } });
+        applyMe(data);
+        connectWs();
+        history.replaceState({}, "", "/");
+        state.view = needsOnboard(state.me) ? "onboard" : "app";
+        state.overlay = null;
+        if (state.view === "app") await refreshAll();
+        render(); return;
+      }
       if (act === "show-signup") { state.overlay = { type: "signup" }; render(); return; }
       if (act === "show-login") { state.overlay = null; render(); return; }
       if (act === "signup") {
@@ -750,7 +818,15 @@
     const field = e.target.getAttribute("data-field");
     if (!field) return;
     if (field === "user" || field === "pass" || field === "name" || field === "age" || field === "comment" || field === "chat" || field === "promptA") {
-      state.drafts[field === "comment" ? "comment" : field] = e.target.value;
+      let v = e.target.value;
+      if (field === "user") {
+        v = v.toLowerCase();
+        if (e.target.value !== v) e.target.value = v;
+      }
+      state.drafts[field === "comment" ? "comment" : field] = v;
+    }
+    if (field === "claimPass" || field === "claimAge") {
+      state.drafts[field] = e.target.value;
     }
   });
   root.addEventListener("keydown", (e) => {

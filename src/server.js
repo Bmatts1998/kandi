@@ -94,7 +94,7 @@ function publicUser(u, extra) {
     id: Number(u.id),
     username: u.username,
     name: u.name,
-    age: u.age,
+    age: u.age == null || u.age === "" ? null : Number(u.age),
     bio: u.bio || "",
     vibes: JSON.parse(u.vibes || "[]"),
     looking: JSON.parse(u.looking || "[]"),
@@ -102,6 +102,7 @@ function publicUser(u, extra) {
     photos: JSON.parse(u.photos || "[]"),
     events: JSON.parse(u.events || "[]"),
     isDemo: Boolean(u.is_demo),
+    needsProfile: Boolean(Number(u.needs_profile)),
     subscription: u.subscription || null,
     createdAt: u.created_at,
     ...(extra || {}),
@@ -143,7 +144,7 @@ app.post("/api/signup", async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (name.length < 2) return res.status(400).json({ error: "Please enter your name." });
   if (!Number.isInteger(age) || age < 18 || age > 99) return res.status(400).json({ error: "Kandi is 18+. Enter an age between 18 and 99." });
-  const exists = await db.prepare(`SELECT id FROM users WHERE username=?`).get(username);
+  const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
   const hash = bcrypt.hashSync(password, 10);
   const info = await db.prepare(`INSERT INTO users (username,password_hash,name,age) VALUES (?,?,?,?)`).run(username, hash, name, age);
@@ -164,8 +165,12 @@ app.post("/api/signup", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
-  const user = await db.prepare(`SELECT * FROM users WHERE username=?`).get(username);
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  const user = await db.prepare(`SELECT * FROM users WHERE lower(username)=?`).get(username);
+  if (!user) return res.status(401).json({ error: "Wrong username or password." });
+  if (!user.password_hash || String(user.password_hash).startsWith("!")) {
+    return res.status(403).json({ error: "This account isn't ready yet. Open the setup link you were given to choose a password and enter your age." });
+  }
+  if (!bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Wrong username or password." });
   }
   const token = crypto.randomBytes(24).toString("hex");
@@ -529,6 +534,49 @@ app.post("/api/subscribe/cancel", auth, async (req, res) => {
   await db.prepare(`UPDATE users SET subscription=NULL WHERE id=?`).run(req.user.id);
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   res.json({ user: publicUser(user), stub: true });
+});
+
+function sha256(s) {
+  return crypto.createHash("sha256").update(String(s)).digest("hex");
+}
+
+app.get("/api/claim/:token", async (req, res) => {
+  const token = String(req.params.token || "");
+  if (!token) return res.status(400).json({ error: "Missing setup token." });
+  const row = await db.prepare(
+    `SELECT t.expires_at, u.username, u.name FROM setup_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash=?`
+  ).get(sha256(token));
+  if (!row) return res.status(404).json({ error: "That setup link is invalid or has expired." });
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    return res.status(404).json({ error: "That setup link has expired. Ask for a new one." });
+  }
+  res.json({ ok: true, name: row.name, username: row.username });
+});
+
+app.post("/api/claim", async (req, res) => {
+  const token = String(req.body.token || "");
+  const password = String(req.body.password || "");
+  const age = Number(req.body.age);
+  if (!token) return res.status(400).json({ error: "Missing setup token." });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  if (!Number.isInteger(age) || age < 18 || age > 99) {
+    return res.status(400).json({ error: "Kandi is 18+. Enter your real age, between 18 and 99." });
+  }
+  const row = await db.prepare(`SELECT * FROM setup_tokens WHERE token_hash=?`).get(sha256(token));
+  if (!row || new Date(row.expires_at).getTime() < Date.now()) {
+    return res.status(404).json({ error: "That setup link is invalid or has expired." });
+  }
+  const hash = bcrypt.hashSync(password, 10);
+  await db.prepare(`UPDATE users SET password_hash=?, age=?, needs_profile=0 WHERE id=?`).run(hash, age, row.user_id);
+  await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(row.user_id);
+  const session = crypto.randomBytes(24).toString("hex");
+  await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(session, row.user_id);
+  setSessionCookie(res, session, req);
+  const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(row.user_id);
+  res.json({
+    user: publicUser(user),
+    likesLeft: isPlus(user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)),
+  });
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
