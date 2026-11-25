@@ -6,9 +6,9 @@ const crypto = require("crypto");
 const sharp = require("sharp");
 const heicConvert = require("heic-convert");
 
-const MAX_EDGE = 1280;
-const FULL_EDGE = 1280;
-const MEDIUM_EDGE = 1280;
+const MAX_EDGE = 1080;
+const FULL_EDGE = 1080;
+const MEDIUM_EDGE = 1080;
 const THUMB_EDGE = 320;
 const MIN_EDGE = 1080;
 const TARGET_BYTES = Math.round(1.5 * 1024 * 1024);
