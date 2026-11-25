@@ -24,6 +24,24 @@
 </head>
 <body>
   <div id="app"></div>
+  <script>
+    // Boot watchdog: if the app script never starts (bad network, stale cache), offer a clean reload instead of a frozen black screen.
+    setTimeout(function () {
+      if (window.__kandiBooted) return;
+      var a = document.getElementById("app");
+      if (!a) return;
+      a.innerHTML = '<div style="color:#fff;font-family:-apple-system,system-ui,sans-serif;text-align:center;padding:120px 24px"><h1 style="color:#ff6a00;margin:0 0 12px">Kandi</h1><p>Kandi is taking too long to load.</p><button id="kandi-reload" style="margin-top:18px;padding:14px 28px;border:0;border-radius:14px;background:#ff5c00;color:#fff;font-size:16px;font-weight:700">Reload</button></div>';
+      document.getElementById("kandi-reload").onclick = function () {
+        var go = function () { location.reload(); };
+        try {
+          var jobs = [];
+          if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+          if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+          Promise.all(jobs).then(go, go); setTimeout(go, 2500);
+        } catch (e) { go(); }
+      };
+    }, 20000);
+  </script>
   <script src="/app.js" defer></script>
 </body>
 </html>

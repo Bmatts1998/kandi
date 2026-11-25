@@ -1,5 +1,6 @@
 /* Kandi v1 client */
 (function () {
+  window.__kandiBooted = true;
   const DAILY = 8;
   const MAX_STORY_VIDEO_BYTES = 8 * 1024 * 1024;
   const MAX_STORY_VIDEO_SECONDS = 15;
@@ -934,14 +935,19 @@
       return;
     }
     let me;
+    state.bootSlow = 0;
+    const slow1 = setTimeout(() => { if (state.view === "boot") { state.bootSlow = 1; render(); } }, 5000);
+    const slow2 = setTimeout(() => { if (state.view === "boot") { state.bootSlow = 2; render(); } }, 20000);
     try {
-      me = await api("/api/me");
+      me = await api("/api/me", { timeout: 20000 });
     } catch (e) {
+      clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
       state.view = e && e.status === 401 ? "auth" : "offline";
       state.err = state.view === "offline" ? (e.message || "Can't reach Kandi right now.") : "";
       render();
       return;
     }
+    clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
     applyMe(me);
     state.view = needsOnboard(state.me) ? "onboard" : "app";
     connectWs();
@@ -2812,10 +2818,35 @@
     </div></div>`;
   }
 
+  let appParts = null;
+  let renderFailures = 0;
+  // Never leave the screen stuck: if drawing fails, drop whatever sheet or overlay was open and draw again.
   function render() {
+    try {
+      renderScreen();
+      renderFailures = 0;
+    } catch (err) {
+      appParts = null;
+      renderFailures++;
+      try { console.error("Kandi render failed", err); } catch (_) {}
+      if (renderFailures > 2) { showRecoveryScreen(err); return; }
+      state.overlay = null; state.overlayBack = null; state.badgeSheet = null; state.storyViewer = null; state.openPost = null;
+      try { stopStoryPlayback(); } catch (_) {}
+      render();
+      toast("Something glitched, so we reset the screen.", "err");
+    }
+  }
+  function showRecoveryScreen(err) {
+    const root = document.getElementById("app");
+    root.innerHTML = `<div class="screen splash top-pad"><div class="inner"><h1 class="wordmark grad">Kandi</h1>
+      <p style="margin-top:12px">Kandi hit a snag loading this screen.</p>
+      <p class="tiny" style="margin-top:6px;opacity:.6">${esc((err && err.message) || "")}</p>
+      <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="hard-reload">Reload Kandi</button></div></div>`;
+  }
+  function renderScreen() {
     const root = document.getElementById("app");
     let html = "";
-    if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1><p class="sub" style="margin-top:12px"><span class="spin"></span> Loading…</p></div></div>`;
+    if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1><p class="sub" style="margin-top:12px"><span class="spin"></span> ${state.bootSlow ? "Waking up Kandi…" : "Loading…"}</p>${state.bootSlow ? `<p class="tiny" style="margin-top:8px;opacity:.7">The server naps when nobody's on. This can take up to 30 seconds.</p>${state.bootSlow > 1 ? `<button class="btn primary" style="margin-top:18px;max-width:280px" data-act="hard-reload">Try again</button>` : ""}` : ""}</div></div>`;
     else if (state.view === "offline") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1>
       <p style="margin-top:12px">${esc(state.err || "Can't reach Kandi right now.")}</p>
       <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="retry-boot">Try again</button></div></div>`;
@@ -2831,7 +2862,9 @@
       else if (state.tab === "matches") body = viewMatches();
       else body = viewYou();
       const storyOpen = Boolean(state.storyViewer);
-      html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}">${body}${tabbar()}${overlays()}${viewBadgeSheet()}</div>`;
+      html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}"></div>`;
+      // Parse each part on its own so stray or nested tags in one screen stay contained inside .screen.
+      appParts = [body, tabbar(), overlays(), viewBadgeSheet()];
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
@@ -2843,6 +2876,12 @@
     let selStart = null, selEnd = null;
     if (focusField) { try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (_) {} }
     root.innerHTML = html;
+    if (appParts) {
+      const screen = root.firstElementChild;
+      screen.innerHTML = appParts[0];
+      for (let i = 1; i < appParts.length; i++) if (appParts[i]) screen.insertAdjacentHTML("beforeend", appParts[i]);
+      appParts = null;
+    }
     if (saved) {
       Array.from(root.querySelectorAll(".scroll, .overlay, .sheet")).forEach((n, i) => { if (saved[i]) n.scrollTop = saved[i]; });
     }
@@ -2927,6 +2966,7 @@
       }
       if (act === "share-post") { await shareLink("/?post=" + id, "A post on Kandi"); return; }
       if (act === "share-profile") { await shareLink("/?u=" + id, "A raver on Kandi"); return; }
+      if (act === "hard-reload") { hardReload(); return; }
       if (act === "retry-boot") { state.view = "boot"; state.err = ""; render(); await boot(); return; }
       if (act === "dismiss-ios-tip") { localStorage.setItem("kandi-hide-ios-tip", "1"); render(); return; }
       if (act === "claim-finish") {
@@ -3128,7 +3168,7 @@
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
         if (state.storyViewer) { stopStoryPlayback(); state.storyViewer = null; }
-        state.tab = id; state.overlay = null;
+        state.tab = id; state.overlay = null; state.badgeSheet = null;
         render();
         const scroller = document.querySelector(".screen > .scroll");
         if (scroller) scroller.scrollTop = 0;
@@ -3142,6 +3182,7 @@
         return;
       }
       if (act === "close") {
+        if (state.badgeSheet) { state.badgeSheet = null; render(); return; }
         if (state.storyViewer) { closeStoryViewer(); return; }
         if (state.overlay && state.overlay.type === "storyComposer") { clearStoryDraft(); state.overlay = null; render(); return; }
         if (state.overlay && state.overlay.type === "editProfile" && state.overlay.preview) {
@@ -3920,7 +3961,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
@@ -4280,12 +4321,29 @@
   });
 
   // Never fail silently: surface unexpected script errors as a visible toast.
+  function hardReload() {
+    const go = () => { try { location.reload(); } catch (_) { location.href = "/"; } };
+    try {
+      const jobs = [];
+      if (window.caches && caches.keys) jobs.push(caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))));
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+      Promise.all(jobs).catch(() => {}).then(go);
+      setTimeout(go, 2500);
+    } catch (_) { go(); }
+  }
+  function unstickTaps() {
+    busyActs.clear();
+    document.querySelectorAll("[data-act].busy").forEach((n) => { n.classList.remove("busy"); n.removeAttribute("aria-busy"); });
+    document.body.classList.remove("net-busy");
+  }
   window.addEventListener("error", (ev) => {
     if (ev && ev.target && ev.target !== window) return; // broken image etc.
+    unstickTaps();
     toast("Something glitched: " + ((ev && ev.message) || "unknown error") + ". Try again.", "err");
   });
   window.addEventListener("unhandledrejection", (ev) => {
     const r = ev && ev.reason;
+    unstickTaps();
     toast((r && r.message) || "Something didn't finish. Try again.", "err");
   });
   if ("serviceWorker" in navigator) {
