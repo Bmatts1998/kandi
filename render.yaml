@@ -23,3 +23,15 @@ services:
       # Prefer the direct (non-pooler) URI for this long-running server.
       - key: DATABASE_URL
         sync: false
+      # Stripe website billing (optional). Leave unset until keys are ready.
+      # Webhook URL: https://<this-service>.onrender.com/api/stripe/webhook
+      # Events: checkout.session.completed, customer.subscription.updated,
+      #         customer.subscription.deleted, invoice.payment_failed
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_IDS
+        sync: false
+      - key: KANDI_PUBLIC_URL
+        sync: false

@@ -1,6 +1,6 @@
 # Kandi v1
 
-A mobile-first dating app for ravers. Installable as a Progressive Web App (Add to Home Screen on iPhone or Android). This is a working v1 with real accounts, a discover feed, likes and comments on a photo or prompt, mutual matches, realtime chat, events, at-the-show mode, and report/block. Payments are **stubbed** — nothing is charged.
+A mobile-first dating app for ravers. Installable as a Progressive Web App (Add to Home Screen on iPhone or Android). This is a working v1 with real accounts, a discover feed, likes and comments on a photo or prompt, mutual matches, realtime chat, events, at-the-show mode, and report/block. Kandi+ website payments use Stripe Checkout when keys are configured; until then, purchase UI stays hidden. The iOS app never offers outside payments.
 
 ## What’s included
 
@@ -14,7 +14,7 @@ A mobile-first dating app for ravers. Installable as a Progressive Web App (Add 
 - Events with “I’m going,” plus At the show live mode and a meetup-spot picker
 - Report and block
 - Safety: in-app meetup note with a friend (demo only — no real GPS or SMS)
-- Kandi+ and Kandi VIP checkout is a **stub**. It flips a flag in the database and is clearly labeled “no real charges.” **TODO:** Stripe Checkout (web) or Apple / Google in-app purchase (native apps) before any public launch
+- Kandi+ on the website uses Stripe Checkout (subscription mode) plus a Customer Portal to manage or cancel, once `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRICE_IDS` are set. Until then, the purchase UI is hidden. Inside the iOS app, Kandi+ is listed as coming soon and will use Apple In-App Purchase — Stripe is never shown there.
 
 ## Requirements
 
@@ -93,14 +93,14 @@ For a real launch you’ll want:
 1. **Hosting.** A paid always-on plan (Render paid, Fly.io with a card, or a VPS) so the app does not sleep. Vercel is a poor fit as-is because this app is a long-running Express + WebSocket server, not a serverless Next.js app.
 2. **HTTPS and a domain.** Session cookies are marked `Secure` automatically behind an HTTPS proxy.
 3. **A hosted database** once you have more than one server or care about backups (Postgres is the usual next step). Back up `data/kandi.sqlite` if you stay on SQLite.
-4. **Payments.** Replace `POST /api/subscribe` with Stripe Checkout + webhooks, or with Apple/Google in-app purchases for native apps. Do not collect card numbers in this app.
+4. **Payments.** Website Kandi+ uses Stripe Checkout + webhooks (`POST /api/billing/checkout`, `POST /api/stripe/webhook`, `POST /api/billing/portal`). Add the Stripe keys in Render when Boston’s Stripe account is ready. iOS sales must go through Apple In-App Purchase later — never Stripe inside the iOS app. Do not collect card numbers in this app.
 5. **App Store and Google Play (optional, for a native wrapper).** A PWA can ship first. A native app would need Apple Developer ($99/year) and Google Play Console (~$25 one-time) accounts, a wrapper (e.g. Capacitor), in-app purchase setup, age rating, and review. Dating apps face extra review and often must provide in-app reporting and 18+ gating — both already exist here, but you’ll still need policies and a review plan.
 6. **Moderation.** There is report/block storage, but no admin review queue or photo moderation yet. You’ll need a process (and probably tooling) before opening this to strangers.
 7. **Legal.** Terms of service, privacy policy, and dating-app specific consent / safety copy, plus age verification stronger than a typed age if you go public.
 
 ## What’s intentionally not in v1
 
-- Real payments (stub only)
+- Stripe keys (optional until launch) and Apple In-App Purchase for iOS
 - Real GPS or SMS location sharing
 - Email / phone verification, password reset, or OAuth
 - Admin moderation dashboard

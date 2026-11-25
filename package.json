@@ -2,7 +2,7 @@
   "name": "kandi",
   "version": "1.0.0",
   "private": true,
-  "description": "Kandi \u2014 a dating app for ravers. Mobile-first PWA.",
+  "description": "Kandi — a dating app for ravers. Mobile-first PWA.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -10,7 +10,9 @@
     "dev": "node --watch src/server.js",
     "import-events": "node scripts/import-events.js",
     "test:e2e": "playwright test",
-    "test:engagement": "node scripts/test-engagement.js"
+    "test:engagement": "node scripts/test-engagement.js",
+    "test:billing": "node --test tests/stripe-billing.test.js",
+    "test": "node --test tests/stripe-billing.test.js"
   },
   "engines": {
     "node": ">=22"
@@ -23,6 +25,7 @@
     "multer": "1.4.5-lts.1",
     "pg": "^8.16.3",
     "sharp": "^0.35.5",
+    "stripe": "^23.2.0",
     "ws": "^8.18.0"
   }
 }

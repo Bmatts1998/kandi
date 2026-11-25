@@ -971,6 +971,29 @@ async function migrate(db) {
   } catch (err) {
     console.error("Genre vibe migration failed:", err.message || err);
   }
+  await migrateBilling(db);
+}
+
+async function migrateBilling(db) {
+  const cols = [
+    ["stripe_customer_id", "TEXT"],
+    ["stripe_subscription_id", "TEXT"],
+    ["stripe_price_id", "TEXT"],
+    ["subscription_status", "TEXT"],
+  ];
+  if (db.driver === "postgres") {
+    for (const [col, typ] of cols) {
+      await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id)"); } catch (err) { console.error("idx_users_stripe_customer:", err.message || err); }
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_users_stripe_subscription ON users(stripe_subscription_id)"); } catch (err) { console.error("idx_users_stripe_subscription:", err.message || err); }
+  } else {
+    for (const [col, typ] of cols) {
+      try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id)"); } catch (_) {}
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_users_stripe_subscription ON users(stripe_subscription_id)"); } catch (_) {}
+  }
 }
 
 async function migrateEngagement(db) {

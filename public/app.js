@@ -622,6 +622,7 @@
     filters: { event: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
     billing: "monthly",
     pendingPlan: "plus",
+    plans: null,
     err: "",
     info: "",
     genreCatalog: null,
@@ -1067,8 +1068,22 @@
     await refreshAll();
     if (state.me) render();
     // Shared links: /?post=123 opens the post, /?u=5 opens a profile.
+    // Stripe Checkout returns to /?billing=success|cancel.
     const qs = new URLSearchParams(location.search);
-    if (state.view === "app" && (qs.get("post") || qs.get("u"))) {
+    const billingStatus = qs.get("billing");
+    if (billingStatus && !isNativeIos()) {
+      if (billingStatus === "success") {
+        const sessionId = qs.get("session_id") || qs.get("sessionId") || "";
+        try {
+          if (sessionId) {
+            const data = await api("/api/billing/sync", { method: "POST", body: { sessionId } });
+            if (data && data.user) state.me = data.user;
+          }
+        } catch (_) {}
+        if (state.view === "app") state.overlay = { type: "purchased" };
+      }
+      history.replaceState({}, "", location.pathname || "/");
+    } else if (state.view === "app" && (qs.get("post") || qs.get("u"))) {
       history.replaceState({}, "", "/");
       try {
         if (qs.get("post")) await handle("open-comments", { getAttribute: (k) => (k === "data-id" ? qs.get("post") : null) });
@@ -1506,10 +1521,22 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans()]);
     state.loaded.home = true;
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
+  }
+  async function loadPlans() {
+    try {
+      state.plans = await api("/api/plans");
+    } catch (_) {
+      if (!state.plans) state.plans = { paymentsEnabled: false, store: "disabled", plans: {} };
+    }
+  }
+  function paymentsEnabled() {
+    if (isNativeIos()) return false;
+    if (state.me && state.me.billing && state.me.billing.paymentsEnabled) return true;
+    return Boolean(state.plans && state.plans.paymentsEnabled);
   }
   async function loadStories() {
     try {
@@ -1900,12 +1927,12 @@
     const head = header("Likes You", `<span class="pill">${state.inbound.count || 0}</span>`);
     if (state.inbound.locked) {
       const preview = state.inbound.people || [];
-      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are."}</p>
+      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() || !paymentsEnabled() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are."}</p>
         <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#111111">
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">${isNativeIos() ? "Kandi+ coming soon" : "See who likes you"}</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">${isNativeIos() ? "Kandi+ is not for sale in this version. It will use Apple In-App Purchase when it launches." : "Kandi+ is free during the beta."}</p></div>`;
+        <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">${isNativeIos() || !paymentsEnabled() ? "Kandi+ coming soon" : "See who likes you"}</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">${isNativeIos() ? "Kandi+ is not for sale in this version. It will use Apple In-App Purchase when it launches." : (paymentsEnabled() ? "Kandi+ unlocks who likes you, unlimited likes, and filters." : "Kandi+ isn't available to purchase yet.")}</p></div>`;
     }
     if (!state.inbound.people.length) {
       return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes a photo or prompt, they'll land here.</p></div></div>`;
@@ -2336,9 +2363,21 @@
     const p = state.me || {};
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
     const row = (act, label, sub, extra) => `<button type="button" class="set-row" data-act="${act}" ${extra || ""}><div class="grow"><div>${label}</div>${sub ? `<div class="tiny">${sub}</div>` : ""}</div><span aria-hidden="true">›</span></button>`;
-    const plusRow = isNativeIos()
-      ? row("paywall", p.subscription ? plan + " · coming soon" : "Kandi+ coming soon", "Paid plans are not sold in this iOS version. They will use Apple In-App Purchase when they launch.", 'data-reason="upgrade"')
-      : (p.subscription ? row("cancel-sub", plan + " · free during the beta", "No payment on file. Tap to turn it off") : row("paywall", "Get Kandi+", "Free during the beta: unlimited likes, see who likes you", 'data-reason="upgrade"'));
+    const billingFlags = p.billing || {};
+    let plusRow;
+    if (isNativeIos()) {
+      plusRow = p.subscription
+        ? `<div class="set-row static"><div class="grow"><div>${esc(plan)} is on</div><div class="tiny">Managing membership on iPhone will use Apple In-App Purchase when it launches.</div></div></div>`
+        : row("paywall", "Kandi+ coming soon", "Paid plans are not sold in this iOS version. They will use Apple In-App Purchase when they launch.", 'data-reason="upgrade"');
+    } else if (p.subscription && billingFlags.managed) {
+      plusRow = row("manage-billing", plan + " is on", "Manage or cancel your membership");
+    } else if (p.subscription) {
+      plusRow = row("cancel-sub", plan + " is on", "Tap to turn it off");
+    } else if (paymentsEnabled()) {
+      plusRow = row("paywall", "Get Kandi+", "Unlimited likes, see who likes you, filters and rewinds", 'data-reason="upgrade"');
+    } else {
+      plusRow = row("paywall", "Kandi+ coming soon", "You'll be able to subscribe here when payments are ready.", 'data-reason="upgrade"');
+    }
     let html = `<div class="label">Account</div><div class="set-group">
         ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
         ${row("preview-profile", "Preview my profile", "See what other ravers see")}
@@ -2959,8 +2998,13 @@
           <button class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button>
           <p class="tiny" style="text-align:center;margin-top:10px">Free features stay available, including Discover, chat, events, and posting.</p></div></div>`;
       }
-      const prices = { weekly: { plus: "$12.99", vip: "$19.99", n: "per week" }, monthly: { plus: "$24.99", vip: "$39.99", n: "per month" }, six: { plus: "$89.99", vip: "$149.99", n: "every 6 months" } }[state.billing];
-      const pending = state.pendingPlan;
+      const interval = state.billing === "yearly" ? "yearly" : "monthly";
+      const pending = state.pendingPlan === "vip" ? "vip" : "plus";
+      const catalog = (state.plans && state.plans.plans) || {};
+      const plusPlan = catalog.plus || {};
+      const vipPlan = catalog.vip || {};
+      const plusPrice = plusPlan.intervals && plusPlan.intervals[interval];
+      const vipPrice = vipPlan.intervals && vipPlan.intervals[interval];
       const rows = [
         ["Unlimited likes", "✓", "✓"],
         ["See who likes you", "✓", "✓"],
@@ -2968,26 +3012,41 @@
         ["Rewinds", "5 / day", "Unlimited"],
         ["Priority at events and live mode", "—", "✓"],
       ];
+      if (!paymentsEnabled()) {
+        return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
+          <div class="scroll pad">${beads(8)}
+          <h2 class="h2" style="text-align:center;margin:12px 0 6px">Kandi+ coming soon</h2>
+          <p class="sub" style="text-align:center">Kandi is free to use right now. Paid Kandi+ will be available to subscribe to here when payments are ready.</p>
+          <div class="card" style="margin-top:18px">
+            <div class="feat"><span>Unlimited likes</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>See who likes you</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>Advanced filters</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>Rewinds</span><span class="tiny">Soon</span></div>
+          </div>
+          <button class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button></div></div>`;
+      }
+      const hasVip = Boolean(vipPlan.intervals && (vipPlan.intervals.monthly || vipPlan.intervals.yearly));
+      const priceLabel = (info, fallback) => (info && info.label) || fallback;
+      const period = interval === "yearly" ? "per year" : "per month";
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
         <div class="scroll pad">${beads(8)}
         <h2 class="h2" style="text-align:center;margin:12px 0 6px">Stay on the floor longer.</h2>
-        <div class="notice ok" style="text-align:center;margin:12px 0"><strong>Free during the beta.</strong> Kandi+ and VIP unlock right away with no payment. Prices below are what they'll cost after launch.</div>
-        <div class="seg" style="margin:10px 0 14px">
-          <button class="${state.billing === "weekly" ? "on" : ""}" data-act="billing" data-id="weekly">Weekly</button>
-          <button class="${state.billing === "monthly" ? "on" : ""}" data-act="billing" data-id="monthly">Monthly</button>
-          <button class="${state.billing === "six" ? "on" : ""}" data-act="billing" data-id="six">6 months</button>
+        <p class="sub" style="text-align:center;margin:8px 0 0">Unlimited likes, see who likes you, filters and rewinds. Cancel anytime.</p>
+        <div class="seg" style="margin:14px 0">
+          <button class="${interval === "monthly" ? "on" : ""}" data-act="billing" data-id="monthly">Monthly</button>
+          <button class="${interval === "yearly" ? "on" : ""}" data-act="billing" data-id="yearly">Yearly</button>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-          <button class="plan${pending === "plus" ? " on" : ""}" data-act="pick-plan" data-id="plus"><div class="tiny">KANDI+</div><div class="price">${prices.plus}</div><div class="tiny">${prices.n}</div></button>
-          <button class="plan${pending === "vip" ? " on" : ""}" data-act="pick-plan" data-id="vip"><div class="tiny">KANDI VIP</div><div class="price">${prices.vip}</div><div class="tiny">${prices.n}</div></button>
+          <button class="plan${pending === "plus" ? " on" : ""}" data-act="pick-plan" data-id="plus"><div class="tiny">KANDI+</div><div class="price">${esc(priceLabel(plusPrice, interval === "yearly" ? "Yearly" : "Monthly"))}</div><div class="tiny">${period}</div></button>
+          ${hasVip ? `<button class="plan${pending === "vip" ? " on" : ""}" data-act="pick-plan" data-id="vip"><div class="tiny">KANDI VIP</div><div class="price">${esc(priceLabel(vipPrice, interval === "yearly" ? "Yearly" : "Monthly"))}</div><div class="tiny">${period}</div></button>` : ""}
         </div>
-        <div class="card">${rows.map((r) => `<div class="feat"><span>${r[0]}</span><span class="tiny">${pending === "vip" ? r[2] : r[1]}</span></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="buy">Unlock ${pending === "vip" ? "Kandi VIP" : "Kandi+"} free</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">No card needed. Nothing will be charged. You can turn it off anytime on the You tab.</p></div></div>`;
+        <div class="card">${rows.map((r) => `<div class="feat"><span>${r[0]}</span><span class="tiny">${pending === "vip" && hasVip ? r[2] : r[1]}</span></div>`).join("")}</div>
+        <button class="btn primary" style="margin-top:18px" data-act="buy">Continue to checkout</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">Secure checkout is handled by Stripe. You can manage or cancel anytime from Settings.</p></div></div>`;
     }
     if (o.type === "purchased") {
       return `<div class="overlay"><div class="match-wrap">${beads(8, "lg")}<h2>You're in.</h2>
-        <p class="sub">Unlimited likes, see who likes you, filters and rewinds are on. It's free during the beta — no payment was taken.</p>
+        <p class="sub">Kandi+ is on. Unlimited likes, see who likes you, filters and rewinds are ready.</p>
         <button class="btn primary" style="margin-top:24px;max-width:280px" data-act="close">Start using it</button></div></div>`;
     }
     if (o.type === "match") {
@@ -4162,14 +4221,25 @@
         await loadFeed(); render(); return;
       }
       if (act === "paywall") { state.overlay = { type: "paywall", reason: el.getAttribute("data-reason") || "upgrade", returnTo: state.overlay && ["settings", "event"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
-      if (act === "billing") { state.billing = id; render(); return; }
+      if (act === "billing") { state.billing = id === "yearly" ? "yearly" : "monthly"; render(); return; }
       if (act === "pick-plan") { state.pendingPlan = id; render(); return; }
       if (act === "buy") {
-        if (isNativeIos()) { state.overlay = { type: "paywall", reason: "upgrade" }; render(); return; }
-        const data = await api("/api/subscribe", { method: "POST", body: { plan: state.pendingPlan } });
-        state.me = data.user; state.overlay = { type: "purchased" }; await refreshAll(); render(); return;
+        if (isNativeIos() || !paymentsEnabled()) { state.overlay = { type: "paywall", reason: "upgrade" }; render(); return; }
+        const data = await api("/api/billing/checkout", { method: "POST", body: { plan: state.pendingPlan === "vip" ? "vip" : "plus", interval: state.billing === "yearly" ? "yearly" : "monthly" } });
+        if (data && data.url) { location.href = data.url; return; }
+        throw new Error("Checkout could not be started.");
       }
-      if (act === "cancel-sub") { const data = await api("/api/subscribe/cancel", { method: "POST", body: {} }); state.me = data.user; render(); return; }
+      if (act === "manage-billing") {
+        if (isNativeIos() || !paymentsEnabled()) return;
+        const data = await api("/api/billing/portal", { method: "POST", body: {} });
+        if (data && data.url) { location.href = data.url; return; }
+        throw new Error("Could not open the membership portal.");
+      }
+      if (act === "cancel-sub") {
+        if (isNativeIos()) return;
+        const data = await api("/api/subscribe/cancel", { method: "POST", body: {} });
+        state.me = data.user; render(); return;
+      }
       if (act === "event") {
         if (!state.events.length) await loadEvents();
         if (state.overlay && state.overlay.type !== "event") state.overlayBack = state.overlay;

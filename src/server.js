@@ -70,6 +70,7 @@ const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar")
 const { createEngagement, compareDiscover, compareGoers } = require("./engagement");
 const { createDemoChat } = require("./demo-chat");
 const { catalog: genreCatalog, normalizeGenreIds, publicGenres, sharedGenreIds, sharedGenreChip, eventMatchesGenre, getGenre, MAX_GENRES } = require("./genres");
+const billing = require("./stripe-billing");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -138,6 +139,8 @@ for (const method of ["get", "post", "put", "delete", "patch"]) {
 }
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+// Stripe webhooks need the raw body for signature verification. Mount before express.json.
+billing.mountStripeWebhook(app, () => db);
 app.use(express.json({ limit: "1mb" }));
 app.get("/uploads/:id", async (req, res, next) => {
   try {
@@ -467,6 +470,9 @@ app.delete("/api/account", auth, async (req, res) => {
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
+  try { await billing.cancelStripeForUser(req.user, billing.getConfig()); } catch (err) {
+    console.error("Stripe cancel on account delete failed:", err && err.message);
+  }
   await db.prepare(`DELETE FROM users WHERE id=?`).run(id);
   clearSessionCookie(res);
   res.json({ ok: true });
@@ -478,7 +484,11 @@ app.get("/api/me", auth, async (req, res) => {
   const share = await db.prepare(`SELECT * FROM location_shares WHERE user_id=? ORDER BY id DESC LIMIT 1`).get(req.user.id);
   const upcoming = await listUpcomingForProfile(db, req.user, req.user);
   res.json({
-    user: publicUser(req.user, { events: going.length ? going : JSON.parse(req.user.events || "[]"), upcomingShows: upcoming.shows }),
+    user: publicUser(req.user, {
+      events: going.length ? going : JSON.parse(req.user.events || "[]"),
+      upcomingShows: upcoming.shows,
+      billing: billing.publicBillingForUser(req.user, billing.getConfig(), { ios: isNativeIosClient(req) }),
+    }),
     likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
     live: live ? { on: true, eventId: live.event_id, meetupSpot: live.meetup_spot } : { on: false },
     locationShare: share ? { with: share.share_with, event: share.event_label, at: share.created_at } : null,
@@ -1040,41 +1050,39 @@ app.post("/api/safety/share", auth, async (req, res) => {
   res.json({ ok: true, demo: true, message: "Location share recorded in-app only. No real location was sent." });
 });
 
-// ---- billing stub ----
-// TODO: Replace this stub with Stripe Checkout or Apple/Google in-app purchases before any public launch.
-// Do not collect card numbers here. No charges are made.
-app.get("/api/plans", (_req, res) => {
-  res.json({
-    note: "Example pricing — payment is stubbed. No real charges. TODO: Stripe or App Store / Play billing.",
-    todo: "Connect Stripe Billing or Apple In-App Purchase / Google Play Billing before launch.",
-    plans: {
-      plus: { weekly: 12.99, monthly: 24.99, six: 89.99, features: ["Unlimited likes", "See who likes you", "Advanced filters", "5 rewinds / day"] },
-      vip: { weekly: 19.99, monthly: 39.99, six: 149.99, features: ["Everything in Kandi+", "Unlimited rewinds", "Priority at events and live mode", "VIP badge"] },
-    },
-  });
+// ---- billing (Stripe on the web; never exposed inside the iOS app) ----
+billing.installStripeBilling({
+  app,
+  getDb: () => db,
+  auth,
+  isNativeIosClient,
+  publicUser,
 });
 
 app.post("/api/subscribe", auth, async (req, res) => {
   if (isNativeIosClient(req)) {
     return res.status(403).json({ error: "Kandi+ is coming soon and will be sold only through Apple In-App Purchase.", code: "plus_coming_soon" });
   }
-  const plan = req.body.plan === "vip" ? "vip" : req.body.plan === "plus" ? "plus" : null;
-  if (!plan) return res.status(400).json({ error: "Pick Kandi+ or Kandi VIP." });
-  // TODO: create a Stripe Checkout Session (or IAP) and only set subscription after a verified webhook.
-  await db.prepare(`UPDATE users SET subscription=? WHERE id=?`).run(plan, req.user.id);
-  const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
-  res.json({
-    user: publicUser(user),
-    stub: true,
-    warning: "No payment was taken. This is a development stub. TODO: Stripe or Apple/Google in-app purchase.",
-  });
+  const config = billing.getConfig();
+  if (config.enabled) {
+    return res.status(400).json({ error: "Start a membership from checkout.", code: "use_checkout" });
+  }
+  return res.status(503).json({ error: "Kandi+ payments are not available yet.", code: "billing_disabled" });
 });
 
 app.post("/api/subscribe/cancel", auth, async (req, res) => {
-  // TODO: cancel the real Stripe/IAP subscription when payments are connected.
-  await db.prepare(`UPDATE users SET subscription=NULL WHERE id=?`).run(req.user.id);
+  if (isNativeIosClient(req)) {
+    return res.status(403).json({ error: "Kandi+ is coming soon and will be sold only through Apple In-App Purchase.", code: "plus_coming_soon" });
+  }
+  const config = billing.getConfig();
+  if (config.enabled && req.user.stripe_customer_id) {
+    return res.status(400).json({ error: "Manage or cancel your membership in the billing portal.", code: "use_portal" });
+  }
+  await db.prepare(`UPDATE users SET subscription=NULL, subscription_status=NULL WHERE id=?`).run(req.user.id);
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
-  res.json({ user: publicUser(user), stub: true });
+  res.json({
+    user: publicUser(user, { billing: billing.publicBillingForUser(user, config, { ios: false }) }),
+  });
 });
 
 function sha256(s) {

@@ -84,7 +84,7 @@ Apple will review a store build against the [App Review Guidelines](https://deve
 
 **Sign in with Apple.** If we later add a third-party social login (Google, Facebook, etc.), Apple requires Sign in with Apple as an option. Username + password only does **not** require it today. Prefer to keep it that way until we are ready to add both.
 
-**In-app purchases (3.1.1).** Kandi+ / VIP are stubs and do not charge. Before any real paid upgrade ships on iOS, it must go through StoreKit / IAP, not Stripe in a WebView. Leave the stub clearly labeled until then, and do not market paid features in the store listing until IAP works.
+**In-app purchases (3.1.1).** Kandi+ is not for sale in the iOS app. The web app can take Stripe Checkout payments, but the iOS Capacitor shell must never show Stripe buttons or any link/text pointing to an outside payment. Until Apple In-App Purchase ships, the iOS UI says “Kandi+ coming soon.” Do not market paid features in the store listing until IAP works. A membership bought on the website still unlocks Kandi+ inside the iOS app.
 
 **Other listing must-haves.** Support URL (can be the same host, or `/privacy` until a support page exists). A real support email in App Store Connect. Accurate screenshots from an iPhone (black + neon orange UI). No placeholder “lorem ipsum” in the listing. Export compliance: HTTPS only, so usually the standard exemption applies.
 
