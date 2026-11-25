@@ -27,7 +27,7 @@ function slimMember(row, extra) {
   return {
     id: Number(row.user_id != null ? row.user_id : row.id),
     username: row.username,
-    name: row.name,
+    name: row.member_name || row.name,
     age: row.age == null || row.age === "" ? null : Number(row.age),
     avatar: firstAvatar(row.photos || row.user_photos),
     role: row.role || "member",
@@ -120,7 +120,7 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
       const now = new Date().toISOString();
       const rows = await db().prepare(`
         SELECT e.id, e.name, e.emoji, e.city, e.venue, e.date_label, e.starts_at, e.address, e.color,
-               g.user_id, u.username, u.name, u.photos
+               g.user_id, u.username, u.name AS member_name, u.photos
         FROM event_going g
         JOIN events e ON e.id=g.event_id
         JOIN crew_members m ON m.user_id=g.user_id AND m.crew_id=?
