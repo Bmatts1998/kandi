@@ -70,8 +70,8 @@ async function seed(existingDb) {
   const db = existingDb || await open();
   const hash = bcrypt.hashSync(DEMO_PASSWORD, 10);
 
-  const evIns = await db.prepare(`INSERT OR REPLACE INTO events (id,name,city,date_label,venue,genres,emoji,color,is_example) VALUES (?,?,?,?,?,?,?,?,1)`);
-  for (const e of EVENTS) await evIns.run(e.id, e.name, e.city, e.date_label, e.venue, JSON.stringify(e.genres), e.emoji, e.color);
+  // Real SLC events are loaded by scripts/import-events.js. Never re-insert the demo festivals.
+  await db.prepare(`DELETE FROM events WHERE is_example=1`).run();
 
   const userIns = await db.prepare(`INSERT INTO users (username,password_hash,name,age,vibes,looking,prompts,photos,events,is_demo) VALUES (?,?,?,?,?,?,?,?,?,1)`);
   const find = await db.prepare(`SELECT id FROM users WHERE username=?`);
@@ -102,7 +102,17 @@ async function seed(existingDb) {
       id = Number(info.lastInsertRowid);
     }
     ids[u.username] = id;
-    for (const ev of u.events) await goingIns.run(id, ev);
+    const goingIds = [];
+    for (const ev of u.events) {
+      const exists = await db.prepare(`SELECT id FROM events WHERE id=?`).get(ev);
+      if (exists) {
+        await goingIns.run(id, ev);
+        goingIds.push(ev);
+      }
+    }
+    if (JSON.stringify(goingIds) !== JSON.stringify(u.events)) {
+      await db.prepare(`UPDATE users SET events=? WHERE id=?`).run(JSON.stringify(goingIds), id);
+    }
   }
 
   // Some demo-to-demo likes so mutual matches can happen among seeds if needed
@@ -122,7 +132,7 @@ async function seed(existingDb) {
   if (owned) await db.close();
   const flag = path.join(__dirname, "..", "data", ".seeded");
   fs.writeFileSync(flag, new Date().toISOString());
-  console.log("Seeded example events and 10 demo ravers.");
+  console.log("Seeded 10 demo ravers (events come from the importer).");
   console.log("Demo login password for all of them: " + DEMO_PASSWORD);
   console.log("Usernames: " + USERS.map((u) => u.username).join(", "));
 }

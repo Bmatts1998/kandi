@@ -77,7 +77,23 @@ const SQLITE_SCHEMA = `
       genres TEXT DEFAULT '[]',
       emoji TEXT DEFAULT '',
       color TEXT DEFAULT '',
-      is_example INTEGER DEFAULT 1
+      is_example INTEGER DEFAULT 0,
+      category TEXT DEFAULT 'concert',
+      ticket_url TEXT DEFAULT '',
+      source_url TEXT DEFAULT '',
+      source TEXT DEFAULT '',
+      sources TEXT DEFAULT '[]',
+      artists TEXT DEFAULT '[]',
+      image_url TEXT DEFAULT '',
+      starts_at TEXT DEFAULT '',
+      age_limit TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
+      updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT
     );
     CREATE TABLE IF NOT EXISTS event_going (
       user_id INTEGER NOT NULL,
@@ -244,7 +260,23 @@ const PG_SCHEMA = `
       genres TEXT DEFAULT '[]',
       emoji TEXT DEFAULT '',
       color TEXT DEFAULT '',
-      is_example INTEGER DEFAULT 1
+      is_example INTEGER DEFAULT 0,
+      category TEXT DEFAULT 'concert',
+      ticket_url TEXT DEFAULT '',
+      source_url TEXT DEFAULT '',
+      source TEXT DEFAULT '',
+      sources TEXT DEFAULT '[]',
+      artists TEXT DEFAULT '[]',
+      image_url TEXT DEFAULT '',
+      starts_at TEXT DEFAULT '',
+      age_limit TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
+      updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT
     );
     CREATE TABLE IF NOT EXISTS event_going (
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -338,7 +370,8 @@ const PG_SCHEMA = `
 `;
 
 const REPLACE_CONFLICT = {
-  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example"] },
+  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example", "category", "ticket_url", "source_url", "source", "sources", "artists", "image_url", "starts_at", "age_limit", "status", "updated_at"] },
+  app_meta: { cols: ["key"], update: ["value", "updated_at"] },
   passes: { cols: ["from_id", "to_id"], update: ["created_at"] },
   blocks: { cols: ["user_id", "blocked_id"], update: ["reason"] },
 };
@@ -475,13 +508,34 @@ function makeNeonServerlessPool(url) {
 
 
 async function migrate(db) {
+  const eventCols = [
+    ["category", "TEXT DEFAULT 'concert'"],
+    ["ticket_url", "TEXT DEFAULT ''"],
+    ["source_url", "TEXT DEFAULT ''"],
+    ["source", "TEXT DEFAULT ''"],
+    ["sources", "TEXT DEFAULT '[]'"],
+    ["artists", "TEXT DEFAULT '[]'"],
+    ["image_url", "TEXT DEFAULT ''"],
+    ["starts_at", "TEXT DEFAULT ''"],
+    ["age_limit", "TEXT DEFAULT ''"],
+    ["status", "TEXT DEFAULT 'active'"],
+    ["updated_at", "TEXT"],
+  ];
   if (db.driver === "postgres") {
     await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
     await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile INTEGER DEFAULT 0");
     await db.exec("ALTER TABLE reports ADD COLUMN IF NOT EXISTS post_id INTEGER");
+    for (const [col, typ] of eventCols) {
+      await db.exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+    await db.exec("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)");
   } else {
     try { await db.exec("ALTER TABLE users ADD COLUMN needs_profile INTEGER DEFAULT 0"); } catch (_) {}
     try { await db.exec("ALTER TABLE reports ADD COLUMN post_id INTEGER"); } catch (_) {}
+    for (const [col, typ] of eventCols) {
+      try { await db.exec(`ALTER TABLE events ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+    await db.exec("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)");
   }
 }
 

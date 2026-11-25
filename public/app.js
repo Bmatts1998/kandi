@@ -39,6 +39,8 @@
     inbound: { locked: true, count: 0, people: [] },
     matches: [],
     events: [],
+    eventsUpdatedAt: null,
+    eventCategory: "all",
     live: { on: false },
     nearby: [],
     chat: [],
@@ -59,6 +61,24 @@
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function formatUpdatedAgo(iso) {
+    if (!iso) return "";
+    const ms = Date.now() - Date.parse(iso);
+    if (Number.isNaN(ms)) return "";
+    const mins = Math.max(0, Math.round(ms / 60000));
+    if (mins < 1) return "Updated just now";
+    if (mins === 1) return "Updated 1 min ago";
+    if (mins < 60) return "Updated " + mins + " min ago";
+    const hrs = Math.round(mins / 60);
+    if (hrs === 1) return "Updated 1 hr ago";
+    if (hrs < 24) return "Updated " + hrs + " hr ago";
+    const days = Math.round(hrs / 24);
+    return days === 1 ? "Updated 1 day ago" : "Updated " + days + " days ago";
+  }
+  function eventThumb(e) {
+    if (e.imageUrl) return `<img src="${esc(e.imageUrl)}" alt="" width="56" height="56">`;
+    return esc(e.emoji || "✺");
   }
   function beads(n, size) {
     n = n || 8;
@@ -370,7 +390,8 @@
   }
   async function loadEvents() {
     const data = await api("/api/events");
-    state.events = data.events;
+    state.events = data.events || [];
+    state.eventsUpdatedAt = data.updatedAt || null;
   }
   async function loadBlocks() {
     const data = await api("/api/blocks");
@@ -483,7 +504,7 @@
         `<button class="chip${me.looking.includes(v.id) ? " on" : ""}" data-act="toggle-look" data-id="${v.id}">${esc(v.label)}</button>`
       ).join("")}</div><p class="sub">Be honest — consent starts here.</p>`;
     } else if (s === 2) {
-      body = `<div class="label">Upcoming events</div><p class="example" style="margin-bottom:8px">Example events · sample data</p><div class="chips">${(state.events.length ? state.events : []).map((e) =>
+      body = `<div class="label">Upcoming events</div><p class="sub" style="margin-bottom:8px">Real SLC raves and concerts. Mark the ones you might hit.</p><div class="chips">${(state.events.length ? state.events.slice(0, 24) : []).map((e) =>
         `<button class="chip${me.events.includes(e.id) ? " on" : ""}" data-act="toggle-event" data-id="${e.id}">${e.emoji} ${esc(e.name)}</button>`
       ).join("") || "Loading events…"}</div>`;
     } else if (s === 3) {
@@ -577,14 +598,38 @@
 
   function viewEvents() {
     const liveBtn = `<button class="btn sm ${state.live.on ? "primary" : "ghost"}" data-act="open-live">${state.live.on ? "Live · on" : "At the show"}</button>`;
-    let html = header("Events", liveBtn) + `<div class="scroll pad"><p class="example">Example events · sample data</p>
-      <p class="sub" style="margin:6px 0 14px">Mark where you're going so people can find you on the floor.</p>`;
-    state.events.forEach((e) => {
-      html += `<button class="event" data-act="event" data-id="${e.id}" style="margin-bottom:10px">
-        <div class="thumb" style="background:${esc(e.color)}">${e.emoji}</div>
-        <div class="grow"><div style="font-weight:800">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}</div>
-        <div class="muted">${esc(e.date)} · ${esc(e.city)}</div>
-        <div class="tiny" style="margin-top:4px">${e.going.length} ravers going · ${e.genres.join(", ")}</div></div></button>`;
+    const cat = state.eventCategory || "all";
+    const list = state.events.filter((e) => cat === "all" || e.category === cat);
+    const updated = formatUpdatedAgo(state.eventsUpdatedAt);
+    let html = header("Events", liveBtn) + `<div class="scroll pad">`;
+    if (updated) html += `<p class="event-updated">${esc(updated)}</p>`;
+    html += `<div class="seg event-cats" style="margin-bottom:12px">
+        <button class="${cat === "all" ? "on" : ""}" data-act="event-cat" data-id="all">All</button>
+        <button class="${cat === "rave" ? "on" : ""}" data-act="event-cat" data-id="rave">Raves &amp; EDM</button>
+        <button class="${cat === "concert" ? "on" : ""}" data-act="event-cat" data-id="concert">Concerts</button>
+      </div>
+      <p class="sub" style="margin:0 0 14px">Upcoming Salt Lake City raves and concerts. Mark where you're going so people can find you on the floor.</p>`;
+    if (!list.length) {
+      html += `<div class="empty"><p>No upcoming ${cat === "rave" ? "raves" : cat === "concert" ? "concerts" : "shows"} in this list yet. Check back soon — we refresh every hour.</p></div>`;
+    }
+    list.forEach((e) => {
+      const tix = e.ticketUrl
+        ? `<a class="btn sm event-tix" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener noreferrer">Get tickets</a>`
+        : "";
+      const meta = [e.date, e.venue, e.city].filter(Boolean).join(" · ");
+      const bits = [`${(e.going || []).length} ravers going`];
+      if (e.ageLimit) bits.push(esc(e.ageLimit));
+      if ((e.genres || []).length) bits.push(e.genres.map(esc).join(", "));
+      else if (e.category) bits.push(e.category === "rave" ? "Rave / EDM" : "Concert");
+      html += `<div class="event" style="margin-bottom:10px">
+        <button class="event-main" data-act="event" data-id="${esc(e.id)}">
+          <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${eventThumb(e)}</div>
+          <div class="grow"><div style="font-weight:800">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}</div>
+          <div class="muted">${esc(meta)}</div>
+          <div class="tiny" style="margin-top:4px">${bits.join(" · ")}</div></div>
+        </button>
+        ${tix}
+      </div>`;
     });
     return html + "</div>";
   }
@@ -893,11 +938,13 @@
       const e = state.events.find((x) => x.id === o.id);
       if (!e) return "";
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
-        <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px"><div class="emoji">${e.emoji}</div></div>
-        <p class="example" style="margin:12px 0 6px">${e.isExample ? "Example event · sample data" : "Event"}</p>
+        <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="emoji">${e.emoji}</div>`}</div>
+        <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
         <div class="muted">${esc(e.date)} · ${esc(e.venue)} · ${esc(e.city)}</div>
+        ${(e.artists || []).length ? `<div class="tiny" style="margin-top:6px">${e.artists.map(esc).join(" · ")}</div>` : ""}
         <div class="row" style="margin:14px 0"><div class="grow"><div style="font-weight:700">I'm going</div></div>
           <button class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${e.id}" aria-label="I'm going"><i></i></button></div>
+        ${e.ticketUrl ? `<a class="btn primary" style="margin-bottom:12px" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener noreferrer">Get tickets</a>` : ""}
         ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
         <div class="label">Who's going</div>
         ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px">${personAvatar(p, "av sm")}
@@ -1243,6 +1290,7 @@
       }
       if (act === "set-genre") { state.filters.genre = id; render(); return; }
       if (act === "set-event-filter") { state.filters.event = id; render(); return; }
+      if (act === "event-cat") { state.eventCategory = id || "all"; render(); return; }
       if (act === "apply-filters") { state.overlay = null; await loadFeed(); render(); return; }
       if (act === "want-like") {
         if (!isPlus() && state.likesLeft === 0) { state.overlay = { type: "paywall", reason: "likes" }; render(); return; }

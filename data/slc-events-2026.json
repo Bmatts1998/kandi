@@ -1,0 +1,3302 @@
+{
+  "generatedAt": "2026-11-25T06:44:28.740Z",
+  "timezone": "America/Denver",
+  "sources": [
+    {
+      "id": "electronicslc",
+      "ok": true,
+      "skipped": false,
+      "count": 75,
+      "error": null
+    },
+    {
+      "id": "residentadvisor",
+      "ok": true,
+      "skipped": false,
+      "count": 2,
+      "error": null
+    },
+    {
+      "id": "deltacenter",
+      "ok": true,
+      "skipped": false,
+      "count": 9,
+      "error": null
+    },
+    {
+      "id": "complex-aeg",
+      "ok": true,
+      "skipped": false,
+      "count": 66,
+      "error": null
+    },
+    {
+      "id": "ticketmaster",
+      "ok": false,
+      "skipped": true,
+      "count": 0,
+      "error": "skipped (no TICKETMASTER_API_KEY)"
+    },
+    {
+      "id": "curated-json",
+      "ok": true,
+      "skipped": false,
+      "count": 128,
+      "error": null
+    }
+  ],
+  "events": [
+    {
+      "id": "krush-depot-2026-11-25",
+      "name": "Krush",
+      "artists": [],
+      "venue": "The Depot",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-25T22:00:00-07:00",
+      "dateLabel": "Wed, Nov 25 · 10:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.ticketmaster.com/krush-salt-lake-city-utah-11-25-2026/event/1E0065510DF92CBB",
+      "sourceUrl": "https://electronicslc.com/events/krush-depot-2026-11-25/",
+      "imageUrl": "https://electronicslc.com/images/events/krush-depot-2026-11-25.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1463669",
+      "name": "Boston Manor",
+      "artists": [
+        "Boston Manor"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-27T19:30:00-07:00",
+      "dateLabel": "Fri, Nov 27 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1463669/boston-manor-tickets",
+      "sourceUrl": "https://www.axs.com/events/1463669/boston-manor-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/05/uploadedimage-jpg_6a14dc2be6727.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "yheti-toadface-soundwell-2026-11-27",
+      "name": "Yheti b2b Toadface: Sleight of Sound Tour",
+      "artists": [
+        "Yheti b2b Toadface",
+        "Flintwick"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-27T21:00:00-07:00",
+      "dateLabel": "Fri, Nov 27 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/yheti-b2b-toadface-sleight-of-sound-tour/",
+      "sourceUrl": "https://electronicslc.com/events/yheti-toadface-soundwell-2026-11-27/",
+      "imageUrl": "https://electronicslc.com/images/events/yheti-toadface-soundwell-2026-11-27.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "black-friday-blackout-sky-2026-11-27",
+      "name": "Black Friday Blackout ft. Josh Fawaz",
+      "artists": [
+        "Josh Fawaz",
+        "ok.mads b2b BLAISED"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-27T21:00:00-07:00",
+      "dateLabel": "Fri, Nov 27 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/black-friday-blackout-ft-josh-fawaz/",
+      "sourceUrl": "https://electronicslc.com/events/black-friday-blackout-sky-2026-11-27/",
+      "imageUrl": "https://electronicslc.com/images/events/black-friday-blackout-sky-2026-11-27.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "halo-retro-disco-dlc-2026-11-28",
+      "name": "Halo Retro Disco",
+      "artists": [
+        "DJ Annaconda",
+        "DJ Droolz",
+        "DJ Brown Dolla"
+      ],
+      "venue": "The DLC at Quarters",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-28T20:00:00-07:00",
+      "dateLabel": "Sat, Nov 28 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.24tix.com/event/kgndnyxtebhytgkqqdaclzmeka",
+      "sourceUrl": "https://electronicslc.com/events/halo-retro-disco-dlc-2026-11-28/",
+      "imageUrl": "https://electronicslc.com/images/events/halo-retro-disco-dlc-2026-11-28.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "the-resistance-rise-of-the-shadowcell-vip-event-center-2026-11-28",
+      "name": "The Resistance: Rise of the Shadowcell",
+      "artists": [
+        "ONARA b2b Warlord",
+        "Otsukare",
+        "Fayte"
+      ],
+      "venue": "VIP Event Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-28T20:30:00-07:00",
+      "dateLabel": "Sat, Nov 28 · 8:30 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.instagram.com/vsvbovesobelowpresents/p/DcRP8snFHMN/",
+      "sourceUrl": "https://electronicslc.com/events/the-resistance-rise-of-the-shadowcell-vip-event-center-2026-11-28/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "rinzen-soundwell-2026-11-28",
+      "name": "Rinzen: Just Noise Tour",
+      "artists": [
+        "Rinzen",
+        "Parker Andriese"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-28T21:00:00-07:00",
+      "dateLabel": "Sat, Nov 28 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House",
+        "Techno"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/rinzen/",
+      "sourceUrl": "https://electronicslc.com/events/rinzen-soundwell-2026-11-28/",
+      "imageUrl": "https://electronicslc.com/images/events/rinzen-soundwell-2026-11-28.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "murphys-law-sky-2026-11-28",
+      "name": "Murphy's Law (UK)",
+      "artists": [
+        "Murphy's Law"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-28T21:00:00-07:00",
+      "dateLabel": "Sat, Nov 28 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/murphys-law-uk/",
+      "sourceUrl": "https://electronicslc.com/events/murphys-law-sky-2026-11-28/",
+      "imageUrl": "https://electronicslc.com/images/events/murphys-law-sky-2026-11-28.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "rojo-the-rest-2026-11-28",
+      "name": "Rojo at The R{e}st",
+      "artists": [
+        "Rojo"
+      ],
+      "venue": "The R{e}st",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-28T22:30:00-07:00",
+      "dateLabel": "Sat, Nov 28 · 10:30 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.instagram.com/_therest/p/DfYbd9tsHvl/",
+      "sourceUrl": "https://electronicslc.com/events/rojo-the-rest-2026-11-28/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1457692",
+      "name": "Alter Bridge: What Lies Within Tour",
+      "artists": [
+        "Alter Bridge"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-11-29T19:00:00-07:00",
+      "dateLabel": "Sun, Nov 29 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1457692/alter-bridge-tickets",
+      "sourceUrl": "https://www.axs.com/events/1457692/alter-bridge-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/05/uploadedimage-jpg_6a108e6e5d8ec.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "frost-children-depot-2026-12-02",
+      "name": "Frost Children",
+      "artists": [
+        "Frost Children",
+        "Kuru"
+      ],
+      "venue": "The Depot",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-02T20:00:00-07:00",
+      "dateLabel": "Wed, Dec 2 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "All ages",
+      "ticketUrl": "https://soundwellslc.com/event/frost-children/",
+      "sourceUrl": "https://electronicslc.com/events/frost-children-depot-2026-12-02/",
+      "imageUrl": "https://electronicslc.com/images/events/frost-children-depot-2026-12-02.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1497619",
+      "name": "AJ McLean: AJ McLean presents Alexander James : The Better Man Tour",
+      "artists": [
+        "AJ McLean"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T19:30:00-07:00",
+      "dateLabel": "Fri, Dec 4 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1497619/aj-mclean-tickets",
+      "sourceUrl": "https://www.axs.com/events/1497619/aj-mclean-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a3577d1e7d3b.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "virtual-riot-blanke-rockwell-2026-12-04",
+      "name": "Virtual Riot & Blanke: Far From Home Tour",
+      "artists": [
+        "Virtual Riot",
+        "Blanke"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 4 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1497631/virtual-riot-blanke-tickets",
+      "sourceUrl": "https://www.axs.com/events/1497631/virtual-riot-blanke-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a3a99f99490d.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "genix-boomerangs-2026-12-04",
+      "name": "Intricacy SLC: GENIX",
+      "artists": [
+        "Genix",
+        "Mike Calvert",
+        "Buma"
+      ],
+      "venue": "Boomerang's Down Under Bar",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 4 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Trance"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://intricacynights.ticketsauce.com/e/genixslc2",
+      "sourceUrl": "https://electronicslc.com/events/genix-boomerangs-2026-12-04/",
+      "imageUrl": "https://electronicslc.com/images/events/genix-boomerangs-2026-12-04.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "biscits-sky-2026-12-04",
+      "name": "BISCITS",
+      "artists": [
+        "BISCITS"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 4 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/biscits-2/",
+      "sourceUrl": "https://electronicslc.com/events/biscits-sky-2026-12-04/",
+      "imageUrl": "https://electronicslc.com/images/events/biscits-sky-2026-12-04.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "ra-2565916",
+      "name": "GENIX",
+      "artists": [],
+      "venue": "Boomerang's",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 4 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Trance",
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://ra.co/events/2565916",
+      "sourceUrl": "https://ra.co/events/2565916",
+      "imageUrl": "",
+      "source": "residentadvisor",
+      "sources": [
+        "residentadvisor",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "taylor-torrence-plumhouse-2026-12-04",
+      "name": "The Afters: TAYLOR TORRENCE",
+      "artists": [
+        "Taylor Torrence",
+        "Wolf Byte",
+        "Desertfawx"
+      ],
+      "venue": "Plumhouse",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-04T23:59:00-07:00",
+      "dateLabel": "Fri, Dec 4",
+      "category": "rave",
+      "genres": [
+        "Trance"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://intricacynights.ticketsauce.com/e/taylorslc/tickets",
+      "sourceUrl": "https://electronicslc.com/events/taylor-torrence-plumhouse-2026-12-04/",
+      "imageUrl": "https://electronicslc.com/images/events/taylor-torrence-plumhouse-2026-12-04.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "residentadvisor",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1525658",
+      "name": "Suicide Silence: REMINDERS OF HELL TOUR",
+      "artists": [
+        "Suicide Silence: REMINDERS OF HELL TOUR"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T19:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1525658/suicide-silence-reminders-of-hell-tour-tickets",
+      "sourceUrl": "https://www.axs.com/events/1525658/suicide-silence-reminders-of-hell-tour-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/07/uploadedimage-jpg_6a5e7981d6ef3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "seth-david-rbass-eve-2026-12-05",
+      "name": "Echelon presents Seth David's R&BASS Tour",
+      "artists": [
+        "Seth David",
+        "Schmux"
+      ],
+      "venue": "EVE SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T20:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://eveinslc.com/single-event/EVE164431400020261205/r-bass-tour/",
+      "sourceUrl": "https://electronicslc.com/events/seth-david-rbass-eve-2026-12-05/",
+      "imageUrl": "https://electronicslc.com/images/events/seth-david-rbass-eve-2026-12-05.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "eptic-marquis-2026-12-05",
+      "name": "Eptic",
+      "artists": [
+        "Eptic"
+      ],
+      "venue": "The Marquis",
+      "city": "Park City",
+      "startsAt": "2026-12-05T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.tixr.com/groups/v2presents/events/eptic-at-the-marquis-park-city-179090",
+      "sourceUrl": "https://electronicslc.com/events/eptic-marquis-2026-12-05/",
+      "imageUrl": "https://electronicslc.com/images/events/eptic-marquis-2026-12-05.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "jstjr-rockwell-2026-12-05",
+      "name": "JSTJR",
+      "artists": [
+        "JSTJR",
+        "Ionic",
+        "54die"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1602547/jstjr-tickets",
+      "sourceUrl": "https://www.axs.com/events/1602547/jstjr-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aa0aca5c1833.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "dennett-soundwell-2026-12-05",
+      "name": "DENNETT (360° Set)",
+      "artists": [
+        "DENNETT"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/dennett/",
+      "sourceUrl": "https://electronicslc.com/events/dennett-soundwell-2026-12-05/",
+      "imageUrl": "https://electronicslc.com/images/events/dennett-soundwell-2026-12-05.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "chklte-bardoof-2026-12-05",
+      "name": "CHKLTE + Gabo",
+      "artists": [
+        "CHKLTE",
+        "Gabo"
+      ],
+      "venue": "BarDoof",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.instagram.com/bardoof/p/Df5omitD-RX/",
+      "sourceUrl": "https://electronicslc.com/events/chklte-bardoof-2026-12-05/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "will-sparks-sky-2026-12-05",
+      "name": "Will Sparks",
+      "artists": [
+        "Will Sparks"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-05T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 5 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Techno",
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/will-sparks/",
+      "sourceUrl": "https://electronicslc.com/events/will-sparks-sky-2026-12-05/",
+      "imageUrl": "https://electronicslc.com/images/events/will-sparks-sky-2026-12-05.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "2026-12-07-jonas-brothers-delta-center",
+      "name": "Jonas Brothers",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-07T19:30:00-07:00",
+      "dateLabel": "Mon, Dec 7 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/jonas-brothers/",
+      "sourceUrl": "https://www.deltacenter.com/events/jonas-brothers/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/08/Static_Digital_900x500_JonasBrothers_2026_Regional_DeltaCenter_1207-1.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1622826",
+      "name": "Night Lovell",
+      "artists": [
+        "Night Lovell"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-08T20:00:00-07:00",
+      "dateLabel": "Tue, Dec 8 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1622826/night-lovell-tickets",
+      "sourceUrl": "https://www.axs.com/events/1622826/night-lovell-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad913347122b.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1619467",
+      "name": "Trippie Redd: The Non-Disclosure Agreement Tour",
+      "artists": [
+        "Trippie Redd"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-09T20:00:00-07:00",
+      "dateLabel": "Wed, Dec 9 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1619467/trippie-redd-tickets",
+      "sourceUrl": "https://www.axs.com/events/1619467/trippie-redd-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ae5017fdfa7c.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "3ballmty-rockwell-2026-12-10",
+      "name": "3BallMTY: SIN PERMISO SESSIONS by 3BALLMTY",
+      "artists": [
+        "3BallMTY"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-10T20:00:00-07:00",
+      "dateLabel": "Thu, Dec 10 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1603067/3ballmty-tickets",
+      "sourceUrl": "https://www.axs.com/events/1603067/3ballmty-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aa0a98c2f897.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "alex-stein-project-pierpont-2026-12-11",
+      "name": "OTHERWORLD Presents: Alex Stein",
+      "artists": [
+        "Alex Stein"
+      ],
+      "venue": "Project Pierpont",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-11T20:00:00-07:00",
+      "dateLabel": "Fri, Dec 11 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "House",
+        "Techno"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://posh.vip/e/alex-stein",
+      "sourceUrl": "https://electronicslc.com/events/alex-stein-project-pierpont-2026-12-11/",
+      "imageUrl": "https://electronicslc.com/images/events/alex-stein-project-pierpont-2026-12-11.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "barely-alive-grand-complex-2026-12-11",
+      "name": "BARELY ALIVE: Reconnect Fall Tour",
+      "artists": [
+        "Barely Alive",
+        "Smoakland",
+        "Edison Cole"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-11T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 11 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1566046/barely-alive-tickets",
+      "sourceUrl": "https://www.axs.com/events/1566046/barely-alive-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/08/uploadedimage-jpg_6a8e17d024283.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "sippy-360-sky-2026-12-11",
+      "name": "SIPPY 360°",
+      "artists": [
+        "SIPPY"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-11T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 11 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/sippy-360o/",
+      "sourceUrl": "https://electronicslc.com/events/sippy-360-sky-2026-12-11/",
+      "imageUrl": "https://electronicslc.com/images/events/sippy-360-sky-2026-12-11.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1427046",
+      "name": "Desi Banks: YOUR FAVORITE COUSIN",
+      "artists": [
+        "Desi Banks: YOUR FAVORITE COUSIN"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T19:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1427046/desi-banks-your-favorite-cousin-tickets",
+      "sourceUrl": "https://www.axs.com/events/1427046/desi-banks-your-favorite-cousin-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/04/uploadedimage-jpg_69f10fb46ee04.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "tony-guerra-eve-2026-12-12",
+      "name": "Tony Guerra: Frequency USA Tour",
+      "artists": [
+        "Tony Guerra",
+        "Ivan Rubio",
+        "D3NIAL"
+      ],
+      "venue": "EVE SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://eveinslc.com/single-event/EVE164431400020261212/tony-guerra/",
+      "sourceUrl": "https://electronicslc.com/events/tony-guerra-eve-2026-12-12/",
+      "imageUrl": "https://electronicslc.com/images/events/tony-guerra-eve-2026-12-12.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "sodown-grand-complex-2026-12-12",
+      "name": "SoDown: Scenes of Consciousness Tour",
+      "artists": [
+        "SoDown",
+        "Phyphr"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1551449/sodown-tickets",
+      "sourceUrl": "https://www.axs.com/events/1551449/sodown-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/08/uploadedimage-jpg_6a85fecdd095d.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "midnight-tyrannosaurus-soundwell-2026-12-12",
+      "name": "Midnight Tyrannosaurus",
+      "artists": [
+        "Midnight Tyrannosaurus",
+        "Homesick",
+        "Rondo"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://v2presents.com/events/midnight-tyrannosaurus/",
+      "sourceUrl": "https://electronicslc.com/events/midnight-tyrannosaurus-soundwell-2026-12-12/",
+      "imageUrl": "https://electronicslc.com/images/events/midnight-tyrannosaurus-soundwell-2026-12-12.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "dana-vicci-yamila-2026-12-12",
+      "name": "Favi x Berlin Finest Presents: Dana Vicci",
+      "artists": [
+        "Dana Vicci",
+        "Ava Jane",
+        "Nova"
+      ],
+      "venue": "Yamila Event Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Techno"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.2myticket.com/events/dana-vicci",
+      "sourceUrl": "https://electronicslc.com/events/dana-vicci-yamila-2026-12-12/",
+      "imageUrl": "https://electronicslc.com/images/events/dana-vicci-yamila-2026-12-12.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "authentik-mrgizmoe-the-loft-2026-12-12",
+      "name": "Authentik presents mrgizmoe",
+      "artists": [
+        "mrgizmoe",
+        "soyinzey",
+        "Nachtblume"
+      ],
+      "venue": "The Loft",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-12T22:00:00-07:00",
+      "dateLabel": "Sat, Dec 12 · 10:00 PM",
+      "category": "rave",
+      "genres": [
+        "Techno"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.instagram.com/authentik.slc/p/DgIOY6NhwPH/",
+      "sourceUrl": "https://electronicslc.com/events/authentik-mrgizmoe-the-loft-2026-12-12/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1536061",
+      "name": "Honey Revenge X Dead Poet Society",
+      "artists": [
+        "Honey Revenge X Dead Poet Society"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-14T18:30:00-07:00",
+      "dateLabel": "Mon, Dec 14 · 6:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.axs.com/events/1536061/honey-revenge-x-dead-poet-society-tickets",
+      "sourceUrl": "https://www.axs.com/events/1536061/honey-revenge-x-dead-poet-society-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6ab55aaa0a4e0.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "milk-bone-kilby-court-2026-12-16",
+      "name": "Milk & Bone",
+      "artists": [
+        "Milk & Bone",
+        "Girl From The Interstate"
+      ],
+      "venue": "Kilby Court",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-16T19:00:00-07:00",
+      "dateLabel": "Wed, Dec 16 · 7:00 PM",
+      "category": "rave",
+      "genres": [
+        "Crossover"
+      ],
+      "ageLimit": "All ages",
+      "ticketUrl": "https://www.24tix.com/event/5xkachbkt5ca7o3ks5xzetkusq",
+      "sourceUrl": "https://electronicslc.com/events/milk-bone-kilby-court-2026-12-16/",
+      "imageUrl": "https://electronicslc.com/images/events/milk-bone-kilby-court-2026-12-16.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1438472",
+      "name": "Buffalo Traffic Jam: Pictures of You Tour",
+      "artists": [
+        "Buffalo Traffic Jam"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-16T20:00:00-07:00",
+      "dateLabel": "Wed, Dec 16 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "16 & Over",
+      "ticketUrl": "https://www.axs.com/events/1438472/buffalo-traffic-jam-tickets",
+      "sourceUrl": "https://www.axs.com/events/1438472/buffalo-traffic-jam-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/08/uploadedimage-jpg_6a87220e3b3de.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "neumonic-soundwell-2026-12-18",
+      "name": "Neumonic",
+      "artists": [
+        "Neumonic",
+        "Boomsayer b2b RYOUUP?"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-18T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 18 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/neumonic/",
+      "sourceUrl": "https://electronicslc.com/events/neumonic-soundwell-2026-12-18/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "austeria-eve-2026-12-18",
+      "name": "Austeria: The Fields of Asphodel Tour",
+      "artists": [
+        "Austeria"
+      ],
+      "venue": "EVE SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-18T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 18 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.tixr.com/groups/preamp/events/austeria-203751",
+      "sourceUrl": "https://electronicslc.com/events/austeria-eve-2026-12-18/",
+      "imageUrl": "https://electronicslc.com/images/events/austeria-eve-2026-12-18.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "valentino-khan-sky-2026-12-18",
+      "name": "Valentino Khan: Extramania",
+      "artists": [
+        "Valentino Khan",
+        "Jake Shore"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-18T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 18 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/valentino-khan-extramania/",
+      "sourceUrl": "https://electronicslc.com/events/valentino-khan-sky-2026-12-18/",
+      "imageUrl": "https://electronicslc.com/images/events/valentino-khan-sky-2026-12-18.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "pajama-rave-yamila-2026-12-18",
+      "name": "Favi Presents: The Nightmare Before Christmas (Pajama Rave)",
+      "artists": [
+        "Henry Shinobi",
+        "54die",
+        "Lil Dino"
+      ],
+      "venue": "Yamila Event Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-18T21:00:00-07:00",
+      "dateLabel": "Fri, Dec 18 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Techno"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.2myticket.com/events/the-nightmare-before-christmas",
+      "sourceUrl": "https://electronicslc.com/events/pajama-rave-yamila-2026-12-18/",
+      "imageUrl": "https://electronicslc.com/images/events/pajama-rave-yamila-2026-12-18.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1597351",
+      "name": "The Grouch: How The Grouch Stole Christmas Tour",
+      "artists": [
+        "The Grouch"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-19T20:00:00-07:00",
+      "dateLabel": "Sat, Dec 19 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1597351/the-grouch-tickets",
+      "sourceUrl": "https://www.axs.com/events/1597351/the-grouch-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aa17c892043e.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "phaseone-vip-event-center-2026-12-19",
+      "name": "PhaseOne: Sounds of Mayhem Takeover",
+      "artists": [
+        "PhaseOne",
+        "neotekbeats",
+        "knightshiftmusic"
+      ],
+      "venue": "VIP Event Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-19T20:30:00-07:00",
+      "dateLabel": "Sat, Dec 19 · 8:30 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "",
+      "ticketUrl": "https://www.instagram.com/vsvbovesobelowpresents/p/DfP9HLZj6fQ/",
+      "sourceUrl": "https://electronicslc.com/events/phaseone-vip-event-center-2026-12-19/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "krewella-sky-2026-12-19",
+      "name": "Krewella",
+      "artists": [
+        "Krewella"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-19T21:00:00-07:00",
+      "dateLabel": "Sat, Dec 19 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass",
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/krewella-2/",
+      "sourceUrl": "https://electronicslc.com/events/krewella-sky-2026-12-19/",
+      "imageUrl": "https://electronicslc.com/images/events/krewella-sky-2026-12-19.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "isoxo-rockwell-2026-12-30",
+      "name": "ISOxo: SLC NYE 12/30",
+      "artists": [
+        "ISOxo",
+        "PLUKO"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-30T20:00:00-07:00",
+      "dateLabel": "Wed, Dec 30 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1629384/isoxo-slc-nye-1230-tickets",
+      "sourceUrl": "https://www.axs.com/events/1629384/isoxo-slc-nye-1230-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad0011176877.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "josh-baker-slc-nye-rockwell-2026-12-31",
+      "name": "Josh Baker: SLC NYE 12/31",
+      "artists": [
+        "Josh Baker",
+        "Tommy Phillips",
+        "Blaise Bracic"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-31T19:00:00-07:00",
+      "dateLabel": "Thu, Dec 31 · 7:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1631731/josh-baker-slc-nye-1231-tickets",
+      "sourceUrl": "https://www.axs.com/events/1631731/josh-baker-slc-nye-1231-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6abc4ce005837.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "masquerave-nye-garden-event-center-2026-12-31",
+      "name": "New Years Eve MasqueRave",
+      "artists": [],
+      "venue": "The Garden Event Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-31T20:00:00-07:00",
+      "dateLabel": "Thu, Dec 31 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.tickettailor.com/events/mindgoblincollective/2471226",
+      "sourceUrl": "https://electronicslc.com/events/masquerave-nye-garden-event-center-2026-12-31/",
+      "imageUrl": "https://electronicslc.com/images/events/masquerave-nye-garden-event-center-2026-12-31.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "dillon-francis-nye-sky-2026-12-31",
+      "name": "New Year's Eve with Dillon Francis",
+      "artists": [
+        "Dillon Francis"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-31T21:00:00-07:00",
+      "dateLabel": "Thu, Dec 31 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/new-years-eve-with-dillon-francis/",
+      "sourceUrl": "https://electronicslc.com/events/dillon-francis-nye-sky-2026-12-31/",
+      "imageUrl": "https://electronicslc.com/images/events/dillon-francis-nye-sky-2026-12-31.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "new-years-eve-festival-delta-2026-12-31",
+      "name": "New Year’s Eve Festival",
+      "artists": [
+        "Post Malone",
+        "Alesso"
+      ],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2026-12-31T22:00:00-07:00",
+      "dateLabel": "Thu, Dec 31 · 10:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/new-years-eve-festival-2027/",
+      "sourceUrl": "https://www.deltacenter.com/events/new-years-eve-festival-2027/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/WinterWeekend-Concert_1920x1080-1.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "klangkuenstler-slc-nye-rockwell-2027-01-01",
+      "name": "Klangkuenstler: SLC NYE 1/1",
+      "artists": [
+        "Klangkuenstler",
+        "AIDEN",
+        "NOSCO"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-01T20:00:00-07:00",
+      "dateLabel": "Fri, Jan 1, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1631742/klangkuenstler-slc-nye-11-tickets",
+      "sourceUrl": "https://www.axs.com/events/1631742/klangkuenstler-slc-nye-11-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6abc4d1c172f9.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "blade-rave-metro-2027-01-02",
+      "name": "Blade Rave",
+      "artists": [],
+      "venue": "Metro Music Hall",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-02T19:00:00-07:00",
+      "dateLabel": "Sat, Jan 2, 2027 · 7:00 PM",
+      "category": "rave",
+      "genres": [
+        "House",
+        "Techno"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.24tix.com/event/7v4ibil5vnbkjhsqjuxzii5t3a",
+      "sourceUrl": "https://electronicslc.com/events/blade-rave-metro-2027-01-02/",
+      "imageUrl": "https://electronicslc.com/images/events/blade-rave-metro-2027-01-02.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "kettama-slc-nye-rockwell-2027-01-02",
+      "name": "KETTAMA: SLC NYE 1/2",
+      "artists": [
+        "KETTAMA",
+        "Bushbaby",
+        "Cole Knight"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-02T20:00:00-07:00",
+      "dateLabel": "Sat, Jan 2, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1632095/kettama-slc-nye-12-tickets",
+      "sourceUrl": "https://www.axs.com/events/1632095/kettama-slc-nye-12-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6abc4cff0fe45.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1606990",
+      "name": "Emo Night Karaoke",
+      "artists": [
+        "Emo Night Karaoke"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-09T20:00:00-07:00",
+      "dateLabel": "Sat, Jan 9, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1606990/emo-night-karaoke-tickets",
+      "sourceUrl": "https://www.axs.com/events/1606990/emo-night-karaoke-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aa853e950259.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "ian-asher-rockwell-2027-01-15",
+      "name": "Ian Asher",
+      "artists": [
+        "Ian Asher"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-15T21:00:00-07:00",
+      "dateLabel": "Fri, Jan 15, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1705093/ian-asher-tickets",
+      "sourceUrl": "https://www.axs.com/events/1705093/ian-asher-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afb573d4238c.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "the-floozies-soundwell-2027-01-20",
+      "name": "The Floozies: Powder Rangers Tour",
+      "artists": [
+        "The Floozies",
+        "Future Joy",
+        "Bray Radbury"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-20T19:00:00-07:00",
+      "dateLabel": "Wed, Jan 20, 2027 · 7:00 PM",
+      "category": "rave",
+      "genres": [
+        "Crossover"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/the-floozies/",
+      "sourceUrl": "https://electronicslc.com/events/the-floozies-soundwell-2027-01-20/",
+      "imageUrl": "https://electronicslc.com/images/events/the-floozies-soundwell-2027-01-20.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1678564",
+      "name": "Greensky Bluegrass: Winter Tour 2027",
+      "artists": [
+        "Greensky Bluegrass"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-22T19:00:00-07:00",
+      "dateLabel": "Fri, Jan 22, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1678564/greensky-bluegrass-tickets",
+      "sourceUrl": "https://www.axs.com/events/1678564/greensky-bluegrass-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ae4ca87ad9f0.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "nghtmre-marquis-2027-01-22",
+      "name": "NGHTMRE",
+      "artists": [
+        "NGHTMRE",
+        "Spunelli",
+        "Spencer Delava"
+      ],
+      "venue": "The Marquis",
+      "city": "Park City",
+      "startsAt": "2027-01-22T21:00:00-07:00",
+      "dateLabel": "Fri, Jan 22, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.tixr.com/groups/v2presents/events/the-snow-league-x-masv-presents-nghtmre-at-the-marquis-park-city-214926",
+      "sourceUrl": "https://electronicslc.com/events/nghtmre-marquis-2027-01-22/",
+      "imageUrl": "https://electronicslc.com/images/events/nghtmre-marquis-2027-01-22.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "baby-jane-grand-complex-2027-01-23",
+      "name": "Baby Jane: Winter Forever Tour",
+      "artists": [
+        "Baby Jane"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-23T20:00:00-07:00",
+      "dateLabel": "Sat, Jan 23, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1694847/baby-jane-tickets",
+      "sourceUrl": "https://www.axs.com/events/1694847/baby-jane-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af208a4955be.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "cyclops-soundwell-2027-01-23",
+      "name": "CYCLOPS (360°)",
+      "artists": [
+        "CYCLOPS",
+        "Paper Skies"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-23T21:00:00-07:00",
+      "dateLabel": "Sat, Jan 23, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/cyclops-360o/",
+      "sourceUrl": "https://electronicslc.com/events/cyclops-soundwell-2027-01-23/",
+      "imageUrl": "https://electronicslc.com/images/events/cyclops-soundwell-2027-01-23.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "riordan-marquis-2027-01-23",
+      "name": "Riordan",
+      "artists": [
+        "Riordan",
+        "Dallin Dance",
+        "Jaylo"
+      ],
+      "venue": "The Marquis",
+      "city": "Park City",
+      "startsAt": "2027-01-23T21:00:00-07:00",
+      "dateLabel": "Sat, Jan 23, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://v2presents.com/events/riordan/",
+      "sourceUrl": "https://electronicslc.com/events/riordan-marquis-2027-01-23/",
+      "imageUrl": "https://electronicslc.com/images/events/riordan-marquis-2027-01-23.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "lotus-commonwealth-2027-01-26",
+      "name": "Lotus",
+      "artists": [
+        "Lotus",
+        "Michael Wilbur"
+      ],
+      "venue": "The Commonwealth Room",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-26T20:00:00-07:00",
+      "dateLabel": "Tue, Jan 26, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://thestateroompresents.com/state-room-presents/lotus",
+      "sourceUrl": "https://electronicslc.com/events/lotus-commonwealth-2027-01-26/",
+      "imageUrl": "https://electronicslc.com/images/events/lotus-commonwealth-2027-01-26.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "quake-metro-2027-01-29",
+      "name": "QUAKE",
+      "artists": [
+        "FEELZ",
+        "RUBY",
+        "BVSTET"
+      ],
+      "venue": "Metro Music Hall",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-29T20:00:00-07:00",
+      "dateLabel": "Fri, Jan 29, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.24tix.com/event/xv4c64nb5jhhlcp2mnw445cmpu",
+      "sourceUrl": "https://electronicslc.com/events/quake-metro-2027-01-29/",
+      "imageUrl": "https://electronicslc.com/images/events/quake-metro-2027-01-29.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "boogie-t-rockwell-2027-01-29",
+      "name": "Boogie T: T-Man and the Masters of the Tuneiverse Tour",
+      "artists": [
+        "Boogie T",
+        "Lumasi",
+        "SHOSH"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-29T21:00:00-07:00",
+      "dateLabel": "Fri, Jan 29, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1695086/boogie-t-tickets",
+      "sourceUrl": "https://www.axs.com/events/1695086/boogie-t-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af201829910b.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "dumb-nathan-fielder-rave-grand-complex-2027-01-29",
+      "name": "Dumb Nathan Fielder Rave: Celebration of all things, Nathan Fielder",
+      "artists": [
+        "Dumb Nathan Fielder Rave"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-29T22:00:00-07:00",
+      "dateLabel": "Fri, Jan 29, 2027 · 10:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1704346/dumb-nathan-fielder-rave-tickets",
+      "sourceUrl": "https://www.axs.com/events/1704346/dumb-nathan-fielder-rave-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af75d546e9a8.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1425506",
+      "name": "Paul Wall",
+      "artists": [
+        "Paul Wall"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-30T20:00:00-07:00",
+      "dateLabel": "Sat, Jan 30, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1425506/paul-wall-tickets",
+      "sourceUrl": "https://www.axs.com/events/1425506/paul-wall-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a1f0e804347d.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "grabbitz-soundwell-2027-01-30",
+      "name": "Grabbitz",
+      "artists": [
+        "Grabbitz",
+        "AWON",
+        "The Ascendant"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-30T21:00:00-07:00",
+      "dateLabel": "Sat, Jan 30, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass",
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/grabbitz/",
+      "sourceUrl": "https://electronicslc.com/events/grabbitz-soundwell-2027-01-30/",
+      "imageUrl": "https://electronicslc.com/images/events/grabbitz-soundwell-2027-01-30.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1626456",
+      "name": "Dark Star Orchestra",
+      "artists": [
+        "Dark Star Orchestra"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-01-31T19:30:00-07:00",
+      "dateLabel": "Sun, Jan 31, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1626456/dark-star-orchestra-tickets",
+      "sourceUrl": "https://www.axs.com/events/1626456/dark-star-orchestra-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6ab6afa216008.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "ezequiel-arias-downstairs-park-city-2027-01-31",
+      "name": "Ezequiel Arias",
+      "artists": [
+        "Ezequiel Arias",
+        "Juan Cruz Bouzon b2b Agustin Artola",
+        "Jordan Zundel"
+      ],
+      "venue": "Downstairs Park City",
+      "city": "Park City",
+      "startsAt": "2027-01-31T21:00:00-07:00",
+      "dateLabel": "Sun, Jan 31, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "House"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.instagram.com/avalancheproductionspc/p/Dfz8zdumjMF/",
+      "sourceUrl": "https://electronicslc.com/events/ezequiel-arias-downstairs-park-city-2027-01-31/",
+      "imageUrl": "",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1600218",
+      "name": "Bad Suns: Disappear Here: A Ten Year Celebration",
+      "artists": [
+        "Bad Suns"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-01T20:00:00-07:00",
+      "dateLabel": "Mon, Feb 1, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1600218/bad-suns-tickets",
+      "sourceUrl": "https://www.axs.com/events/1600218/bad-suns-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aaab999782ef.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "2hollis-rockwell-2027-02-05",
+      "name": "2hollis: The Pirouette Tour",
+      "artists": [
+        "2hollis",
+        "Lucy Bedroque",
+        "Conceal"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-05T20:00:00-07:00",
+      "dateLabel": "Fri, Feb 5, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1669428/2hollis-tickets",
+      "sourceUrl": "https://www.axs.com/events/1669428/2hollis-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ada3bfe5056e.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "la-roux-depot-2027-02-13",
+      "name": "La Roux: The Old Flames Tour",
+      "artists": [
+        "La Roux"
+      ],
+      "venue": "The Depot",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-13T20:00:00-07:00",
+      "dateLabel": "Sat, Feb 13, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [
+        "Crossover"
+      ],
+      "ageLimit": "All ages",
+      "ticketUrl": "https://www.ticketmaster.com/la-roux-the-old-flames-tour-salt-lake-city-utah-02-13-2027/event/1E00652F93B84953",
+      "sourceUrl": "https://electronicslc.com/events/la-roux-depot-2027-02-13/",
+      "imageUrl": "https://electronicslc.com/images/events/la-roux-depot-2027-02-13.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "softest-hard-b2b-capozzi-soundwell-2027-02-13",
+      "name": "SOFTEST HARD b2b CAPOZZI",
+      "artists": [
+        "SOFTEST HARD b2b CAPOZZI"
+      ],
+      "venue": "Soundwell",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-13T21:00:00-07:00",
+      "dateLabel": "Sat, Feb 13, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://soundwellslc.com/event/softest-hard-b2b-capozzi/",
+      "sourceUrl": "https://electronicslc.com/events/softest-hard-b2b-capozzi-soundwell-2027-02-13/",
+      "imageUrl": "https://electronicslc.com/images/events/softest-hard-b2b-capozzi-soundwell-2027-02-13.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1376493",
+      "name": "Public Image Ltd (PiL): This Is Not The Last Tour",
+      "artists": [
+        "Public Image Ltd (PiL)"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-17T20:00:00-07:00",
+      "dateLabel": "Wed, Feb 17, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1376493/public-image-ltd-pil-tickets",
+      "sourceUrl": "https://www.axs.com/events/1376493/public-image-ltd-pil-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/05/uploadedimage-jpg_69f90f3104595.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1633779",
+      "name": "Twin Temple: Doomed Lovers Tour",
+      "artists": [
+        "Twin Temple"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-19T20:00:00-07:00",
+      "dateLabel": "Fri, Feb 19, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1633779/twin-temple-tickets",
+      "sourceUrl": "https://www.axs.com/events/1633779/twin-temple-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af4af09d81dc.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "marian-hill-urban-lounge-2027-02-23",
+      "name": "Marian Hill: ACT TWO: The Tour",
+      "artists": [
+        "Marian Hill",
+        "Terror Jr"
+      ],
+      "venue": "Urban Lounge",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-23T19:00:00-07:00",
+      "dateLabel": "Tue, Feb 23, 2027 · 7:00 PM",
+      "category": "rave",
+      "genres": [
+        "Crossover"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.24tix.com/event/qoqojw4x6rg3zfw7eh7bxy7nxa",
+      "sourceUrl": "https://electronicslc.com/events/marian-hill-urban-lounge-2027-02-23/",
+      "imageUrl": "https://electronicslc.com/images/events/marian-hill-urban-lounge-2027-02-23.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "artifakts-late-night-radio-eve-2027-02-26",
+      "name": "Late Night Radio & Artifakts: The Relic Frequencies Tour",
+      "artists": [
+        "Late Night Radio",
+        "Artifakts"
+      ],
+      "venue": "EVE SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-26T21:00:00-07:00",
+      "dateLabel": "Fri, Feb 26, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.tixr.com/groups/preamp/events/late-night-radio-artifakts-213619",
+      "sourceUrl": "https://electronicslc.com/events/artifakts-late-night-radio-eve-2027-02-26/",
+      "imageUrl": "https://electronicslc.com/images/events/artifakts-late-night-radio-eve-2027-02-26.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "layton-giordani-rockwell-2027-02-26",
+      "name": "Layton Giordani",
+      "artists": [
+        "Layton Giordani"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-26T21:00:00-07:00",
+      "dateLabel": "Fri, Feb 26, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1642508/layton-giordani-tickets",
+      "sourceUrl": "https://www.axs.com/events/1642508/layton-giordani-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ac3e9178c8a3.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1700865",
+      "name": "Supersonic Oasis Tribute",
+      "artists": [
+        "Supersonic Oasis Tribute"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-02-27T21:00:00-07:00",
+      "dateLabel": "Sat, Feb 27, 2027 · 9:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1700865/supersonic-oasis-tribute-tickets",
+      "sourceUrl": "https://www.axs.com/events/1700865/supersonic-oasis-tribute-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afb188ddab96.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1660160",
+      "name": "49 Winchester: Change of Plans Tour",
+      "artists": [
+        "49 Winchester"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-02T20:00:00-07:00",
+      "dateLabel": "Tue, Mar 2, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1660160/49-winchester-tickets",
+      "sourceUrl": "https://www.axs.com/events/1660160/49-winchester-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad66d66ec4e2.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "sylvan-esso-rockwell-2027-03-04",
+      "name": "Sylvan Esso: Ow ∞ Tour",
+      "artists": [
+        "Sylvan Esso"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-04T20:00:00-07:00",
+      "dateLabel": "Thu, Mar 4, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1484006/sylvan-esso-tickets",
+      "sourceUrl": "https://www.axs.com/events/1484006/sylvan-esso-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a29654443e26.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1438519",
+      "name": "Blue October",
+      "artists": [
+        "Blue October"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-05T20:00:00-07:00",
+      "dateLabel": "Fri, Mar 5, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1438519/blue-october-tickets",
+      "sourceUrl": "https://www.axs.com/events/1438519/blue-october-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/05/uploadedimage-jpg_69fe25e4da66d.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "paul-van-dyk-sky-2027-03-05",
+      "name": "Paul van Dyk",
+      "artists": [
+        "Paul van Dyk"
+      ],
+      "venue": "Sky SLC",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-05T21:00:00-07:00",
+      "dateLabel": "Fri, Mar 5, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM",
+        "Trance"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://skyslc.com/event/paul-van-dyk-2/",
+      "sourceUrl": "https://electronicslc.com/events/paul-van-dyk-sky-2027-03-05/",
+      "imageUrl": "https://electronicslc.com/images/events/paul-van-dyk-sky-2027-03-05.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1625668",
+      "name": "Chelsea Cutler: IS THIS THE END? Tour",
+      "artists": [
+        "Chelsea Cutler"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-09T20:00:00-07:00",
+      "dateLabel": "Tue, Mar 9, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1625668/chelsea-cutler-tickets",
+      "sourceUrl": "https://www.axs.com/events/1625668/chelsea-cutler-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6abd99664d8e9.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1622832",
+      "name": "Northlane: THE ANEMOIA TOUR",
+      "artists": [
+        "Northlane"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-10T19:00:00-07:00",
+      "dateLabel": "Wed, Mar 10, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1622832/northlane-tickets",
+      "sourceUrl": "https://www.axs.com/events/1622832/northlane-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6ab6d75180e2d.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1690830",
+      "name": "Clutch: Give the People What They Want!",
+      "artists": [
+        "Clutch"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-10T19:00:00-07:00",
+      "dateLabel": "Wed, Mar 10, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1690830/clutch-tickets",
+      "sourceUrl": "https://www.axs.com/events/1690830/clutch-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af4afe8057b5.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1666810",
+      "name": "Vincent Lima",
+      "artists": [
+        "Vincent Lima"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-12T19:30:00-07:00",
+      "dateLabel": "Fri, Mar 12, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1666810/vincent-lima-tickets",
+      "sourceUrl": "https://www.axs.com/events/1666810/vincent-lima-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad793dc9a6a8.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1608419",
+      "name": "Eluveitie",
+      "artists": [
+        "Eluveitie"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-14T20:00:00-06:00",
+      "dateLabel": "Sun, Mar 14, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1608419/eluveitie-tickets",
+      "sourceUrl": "https://www.axs.com/events/1608419/eluveitie-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aa8506b6e5b3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1674918",
+      "name": "The Plot In You: WORLD TOUR: PART 1",
+      "artists": [
+        "The Plot In You"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-17T19:00:00-06:00",
+      "dateLabel": "Wed, Mar 17, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1674918/the-plot-in-you-tickets",
+      "sourceUrl": "https://www.axs.com/events/1674918/the-plot-in-you-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6b046ec39d3e3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1616982",
+      "name": "Braxton Keith: Told You Once Tour",
+      "artists": [
+        "Braxton Keith"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-17T20:00:00-06:00",
+      "dateLabel": "Wed, Mar 17, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1616982/braxton-keith-tickets",
+      "sourceUrl": "https://www.axs.com/events/1616982/braxton-keith-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aada25eafb8b.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1695042",
+      "name": "Grace Potter: The Trespasser Tour",
+      "artists": [
+        "Grace Potter"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-19T19:30:00-06:00",
+      "dateLabel": "Fri, Mar 19, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1695042/grace-potter-tickets",
+      "sourceUrl": "https://www.axs.com/events/1695042/grace-potter-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af20c01c5548.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1477887",
+      "name": "Wheeler Walker Jr.: Pullin’ Out: The Farewell Tour",
+      "artists": [
+        "Wheeler Walker Jr."
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-20T20:00:00-06:00",
+      "dateLabel": "Sat, Mar 20, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1477887/wheeler-walker-jr-tickets",
+      "sourceUrl": "https://www.axs.com/events/1477887/wheeler-walker-jr-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6ab301182a4d3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "chvrches-rockwell-2027-03-23",
+      "name": "CHVRCHES: Live 2027",
+      "artists": [
+        "CHVRCHES"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-23T20:00:00-06:00",
+      "dateLabel": "Tue, Mar 23, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1704402/chvrches-tickets",
+      "sourceUrl": "https://www.axs.com/events/1704402/chvrches-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afb849b11c04.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1698153",
+      "name": "Noga Erez: DUCK SEASON TOUR 2027",
+      "artists": [
+        "Noga Erez"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-23T20:00:00-06:00",
+      "dateLabel": "Tue, Mar 23, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1698153/noga-erez-tickets",
+      "sourceUrl": "https://www.axs.com/events/1698153/noga-erez-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afb44b576c23.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "vnv-nation-grand-complex-2027-03-26",
+      "name": "VNV Nation",
+      "artists": [
+        "VNV Nation"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-26T19:30:00-06:00",
+      "dateLabel": "Fri, Mar 26, 2027 · 7:30 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1505213/vnv-nation-tickets",
+      "sourceUrl": "https://www.axs.com/events/1505213/vnv-nation-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a3d7a1991530.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "hol-rockwell-2027-03-26",
+      "name": "HOL! RIP Dubstep North America Tour",
+      "artists": [
+        "HOL!",
+        "VKTM",
+        "ONARA"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-26T21:00:00-06:00",
+      "dateLabel": "Fri, Mar 26, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "18+",
+      "ticketUrl": "https://www.thecomplexslc.com/events/detail/?event_id=1700866",
+      "sourceUrl": "https://electronicslc.com/events/hol-rockwell-2027-03-26/",
+      "imageUrl": "https://electronicslc.com/images/events/hol-rockwell-2027-03-26.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1700866",
+      "name": "HOL!: RIPDUBSTEP NORTH AMERICA TOUR",
+      "artists": [
+        "HOL!"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-26T21:00:00-06:00",
+      "dateLabel": "Fri, Mar 26, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1700866/hol-tickets",
+      "sourceUrl": "https://www.axs.com/events/1700866/hol-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6b008c1266d47.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "2027-03-27-hans-zimmer-delta-center",
+      "name": "Hans Zimmer",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-27T19:30:00-06:00",
+      "dateLabel": "Sat, Mar 27, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/hans-zimmer/",
+      "sourceUrl": "https://www.deltacenter.com/events/hans-zimmer/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/09/2026-HansZimmerLive-Generic-1920x1080-1.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "2027-03-29-greta-van-fleet-delta-center",
+      "name": "Greta Van Fleet",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-29T19:00:00-06:00",
+      "dateLabel": "Mon, Mar 29, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/greta-van-fleet/",
+      "sourceUrl": "https://www.deltacenter.com/events/greta-van-fleet/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/Static_Digital_900x500_GretaVanFleet_2027_Regional_DeltaCenter_0329.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "saxsquatch-urban-2027-03-30",
+      "name": "Saxsquatch: Conspiracy Theory Tour",
+      "artists": [
+        "Saxsquatch"
+      ],
+      "venue": "Urban Lounge",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-30T19:00:00-06:00",
+      "dateLabel": "Tue, Mar 30, 2027 · 7:00 PM",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "21+",
+      "ticketUrl": "https://www.24tix.com/event/jqfq7rz66vd4jgkfvvatqk7lxq",
+      "sourceUrl": "https://electronicslc.com/events/saxsquatch-urban-2027-03-30/",
+      "imageUrl": "https://electronicslc.com/images/events/saxsquatch-urban-2027-03-30.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "2027-03-31-def-leppard-and-goo-goo-dolls-delta-center",
+      "name": "Def Leppard and Goo Goo Dolls",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-31T19:00:00-06:00",
+      "dateLabel": "Wed, Mar 31, 2027 · 7:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/def-leppard-and-goo-goo-dolls/",
+      "sourceUrl": "https://www.deltacenter.com/events/def-leppard-and-goo-goo-dolls/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/Static_Digital_900x500_DefLeppard-GooGooDolls_2027_Regional_DeltaCenter_0331.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1696762",
+      "name": "Gang of Youths",
+      "artists": [
+        "Gang of Youths"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-03-31T20:00:00-06:00",
+      "dateLabel": "Wed, Mar 31, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1696762/gang-of-youths-tickets",
+      "sourceUrl": "https://www.axs.com/events/1696762/gang-of-youths-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af47cd6b00f8.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "2027-04-02-feid-delta-center",
+      "name": "FEID",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-02T20:00:00-06:00",
+      "dateLabel": "Fri, Apr 2, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/feid/",
+      "sourceUrl": "https://www.deltacenter.com/events/feid/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/11/Static_Digital_900x500_Feid_2027_Regional_DeltaCenter_0402.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "shygirl-grand-complex-2027-04-05",
+      "name": "Shygirl: SWALLOW! LIVE",
+      "artists": [
+        "Shygirl"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-05T20:00:00-06:00",
+      "dateLabel": "Mon, Apr 5, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1655364/shygirl-tickets",
+      "sourceUrl": "https://www.axs.com/events/1655364/shygirl-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ace5d6072dce.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1681864",
+      "name": "Boy Throb: Boy Throb's Real Tour",
+      "artists": [
+        "Boy Throb"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-09T20:00:00-06:00",
+      "dateLabel": "Fri, Apr 9, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1681864/boy-throb-tickets",
+      "sourceUrl": "https://www.axs.com/events/1681864/boy-throb-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6ae8b17b3897f.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1664462",
+      "name": "Alex Sampson",
+      "artists": [
+        "Alex Sampson"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-13T20:00:00-06:00",
+      "dateLabel": "Tue, Apr 13, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1664462/alex-sampson-tickets",
+      "sourceUrl": "https://www.axs.com/events/1664462/alex-sampson-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad2a197505b5.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1674590",
+      "name": "brakence: the marroW tour",
+      "artists": [
+        "brakence"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-13T20:00:00-06:00",
+      "dateLabel": "Tue, Apr 13, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1674590/brakence-tickets",
+      "sourceUrl": "https://www.axs.com/events/1674590/brakence-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6adbd25c7fd30.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "lsdream-rockwell-2027-04-17",
+      "name": "LSDREAM: BEE HERE NOW TOUR",
+      "artists": [
+        "LSDREAM",
+        "Jaenga",
+        "Ozztin"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-17T20:00:00-06:00",
+      "dateLabel": "Sat, Apr 17, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1686631/lsdream-tickets",
+      "sourceUrl": "https://www.axs.com/events/1686631/lsdream-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6aeb73d83f16d.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "2027-04-22-nickelback-delta-center",
+      "name": "Nickelback",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-22T18:30:00-06:00",
+      "dateLabel": "Thu, Apr 22, 2027 · 6:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/nickelback/",
+      "sourceUrl": "https://www.deltacenter.com/events/nickelback/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/Static_Digital_900x500_Nickleback_2027_Regional_DeltaCenter_0422.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1454533",
+      "name": "SiM: HOOMAN AFTER ALL WORLD TOUR",
+      "artists": [
+        "SiM"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-23T19:30:00-06:00",
+      "dateLabel": "Fri, Apr 23, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1454533/sim-tickets",
+      "sourceUrl": "https://www.axs.com/events/1454533/sim-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6af34e9ea405f.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "bunt-lot-complex-2027-04-24",
+      "name": "BUNT.",
+      "artists": [
+        "BUNT."
+      ],
+      "venue": "The Lot at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-24T17:00:00-06:00",
+      "dateLabel": "Sat, Apr 24, 2027 · 5:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1672976/bunt-tickets",
+      "sourceUrl": "https://www.axs.com/events/1672976/bunt-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6adbca9ee0c74.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1638954",
+      "name": "Carly Rae Jepsen: Day and Night Tour",
+      "artists": [
+        "Carly Rae Jepsen"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-27T19:30:00-06:00",
+      "dateLabel": "Tue, Apr 27, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.axs.com/events/1638954/carly-rae-jepsen-tickets",
+      "sourceUrl": "https://www.axs.com/events/1638954/carly-rae-jepsen-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ac7d0449f48c.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "fkj-rockwell-2027-04-28",
+      "name": "FKJ: TYBER TOUR",
+      "artists": [
+        "FKJ"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-28T20:00:00-06:00",
+      "dateLabel": "Wed, Apr 28, 2027 · 8:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1465854/fkj-tickets",
+      "sourceUrl": "https://www.axs.com/events/1465854/fkj-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/06/uploadedimage-jpg_6a1daccf73f7c.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "sullivan-king-rockwell-2027-04-30",
+      "name": "Sullivan King: Anthems of the Afterlife Tour",
+      "artists": [
+        "Sullivan King",
+        "Machaki"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-30T21:00:00-06:00",
+      "dateLabel": "Fri, Apr 30, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "18+",
+      "ticketUrl": "https://www.thecomplexslc.com/events/detail/?event_id=1698285",
+      "sourceUrl": "https://electronicslc.com/events/sullivan-king-rockwell-2027-04-30/",
+      "imageUrl": "https://electronicslc.com/images/events/sullivan-king-rockwell-2027-04-30.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1698285",
+      "name": "Sullivan King (4/30): Anthems of the Afterlife Tour",
+      "artists": [
+        "Sullivan King (4/30)"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-04-30T21:00:00-06:00",
+      "dateLabel": "Fri, Apr 30, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1698285/sullivan-king-430-tickets",
+      "sourceUrl": "https://www.axs.com/events/1698285/sullivan-king-430-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afba321c70f3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "sullivan-king-rockwell-2027-05-01",
+      "name": "Sullivan King: Anthems of the Afterlife Tour",
+      "artists": [
+        "Sullivan King",
+        "Casey Club"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-01T21:00:00-06:00",
+      "dateLabel": "Sat, May 1, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [
+        "Bass"
+      ],
+      "ageLimit": "18+",
+      "ticketUrl": "https://www.thecomplexslc.com/events/detail/?event_id=1698287",
+      "sourceUrl": "https://electronicslc.com/events/sullivan-king-rockwell-2027-05-01/",
+      "imageUrl": "https://electronicslc.com/images/events/sullivan-king-rockwell-2027-05-01.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1698287",
+      "name": "Sullivan King (5/01): Anthems of the Afterlife Tour",
+      "artists": [
+        "Sullivan King (5/01)"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-01T21:00:00-06:00",
+      "dateLabel": "Sat, May 1, 2027 · 9:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "18 & Over",
+      "ticketUrl": "https://www.axs.com/events/1698287/sullivan-king-501-tickets",
+      "sourceUrl": "https://www.axs.com/events/1698287/sullivan-king-501-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6afba3051e5c3.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "calvin-harris-delta-2027-05-05",
+      "name": "Calvin Harris",
+      "artists": [
+        "Calvin Harris"
+      ],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-05T19:00:00-06:00",
+      "dateLabel": "Wed, May 5, 2027 · 7:00 PM",
+      "category": "rave",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/calvin-harris/",
+      "sourceUrl": "https://www.deltacenter.com/events/calvin-harris/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/Static_Digital_900x500_CalvinHarris_2027_Regional_DeltaCenter_0505.jpg",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    },
+    {
+      "id": "complex-1617659",
+      "name": "Haiden Henderson: The Dumblond Tour",
+      "artists": [
+        "Haiden Henderson"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-06T20:00:00-06:00",
+      "dateLabel": "Thu, May 6, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1617659/haiden-henderson-tickets",
+      "sourceUrl": "https://www.axs.com/events/1617659/haiden-henderson-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/09/uploadedimage-jpg_6aad85b5c5e56.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1680079",
+      "name": "Panchiko",
+      "artists": [
+        "Panchiko"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-06T20:00:00-06:00",
+      "dateLabel": "Thu, May 6, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1680079/panchiko-tickets",
+      "sourceUrl": "https://www.axs.com/events/1680079/panchiko-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6ae8b4052bf86.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1662635",
+      "name": "CG5 Presents: The GAMER Tour",
+      "artists": [
+        "CG5 Presents: The GAMER Tour"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-07T20:00:00-06:00",
+      "dateLabel": "Fri, May 7, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1662635/cg5-presents-the-gamer-tour-tickets",
+      "sourceUrl": "https://www.axs.com/events/1662635/cg5-presents-the-gamer-tour-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ad2a521731e0.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "2027-05-11-queens-of-the-stone-age-delta-center",
+      "name": "Queens of the Stone Age",
+      "artists": [],
+      "venue": "Delta Center",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-11T18:30:00-06:00",
+      "dateLabel": "Tue, May 11, 2027 · 6:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "",
+      "ticketUrl": "https://www.deltacenter.com/events/queens-of-the-stone-age/",
+      "sourceUrl": "https://www.deltacenter.com/events/queens-of-the-stone-age/",
+      "imageUrl": "https://www.deltacenter.com/wp-content/uploads/2026/10/Static_Digital_900x500_QueensOfTheStoneAge_2027_Regional_DeltaCenter-UsePostfontainelogo-_0511.jpg",
+      "source": "deltacenter",
+      "sources": [
+        "deltacenter",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1690554",
+      "name": "Midnight Generation: Rooted Tour 2027",
+      "artists": [
+        "Midnight Generation"
+      ],
+      "venue": "The Grand at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-12T20:00:00-06:00",
+      "dateLabel": "Wed, May 12, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1690554/midnight-generation-tickets",
+      "sourceUrl": "https://www.axs.com/events/1690554/midnight-generation-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6aedecbf08a6a.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1660142",
+      "name": "Our Last Night: THE COVERS ONLY TOUR PART 2",
+      "artists": [
+        "Our Last Night"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-13T20:00:00-06:00",
+      "dateLabel": "Thu, May 13, 2027 · 8:00 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1660142/our-last-night-tickets",
+      "sourceUrl": "https://www.axs.com/events/1660142/our-last-night-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/10/uploadedimage-jpg_6ada527d6a676.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "complex-1489836",
+      "name": "Hazlett",
+      "artists": [
+        "Hazlett"
+      ],
+      "venue": "Rockwell at The Complex",
+      "city": "Salt Lake City",
+      "startsAt": "2027-05-21T19:30:00-06:00",
+      "dateLabel": "Fri, May 21, 2027 · 7:30 PM",
+      "category": "concert",
+      "genres": [],
+      "ageLimit": "All Ages",
+      "ticketUrl": "https://www.axs.com/events/1489836/hazlett-tickets",
+      "sourceUrl": "https://www.axs.com/events/1489836/hazlett-tickets",
+      "imageUrl": "https://images.discovery-prod.axs.com/2026/11/uploadedimage-jpg_6ae8e4c8e450c.jpg",
+      "source": "complex-aeg",
+      "sources": [
+        "complex-aeg",
+        "curated-json"
+      ],
+      "emoji": "🎤",
+      "color": "linear-gradient(160deg,#140c08,#3a2a20 55%,#ff8a1a)"
+    },
+    {
+      "id": "das-energi-2027-08-06",
+      "name": "Das Energi 2027",
+      "artists": [],
+      "venue": "Saltair",
+      "city": "Magna",
+      "startsAt": "2027-08-06T23:59:00-06:00",
+      "dateLabel": "Fri, Aug 6, 2027",
+      "category": "rave",
+      "genres": [
+        "EDM"
+      ],
+      "ageLimit": "18+",
+      "ticketUrl": "https://v2presents.com/events/das-energi-2027/",
+      "sourceUrl": "https://electronicslc.com/events/das-energi-2027-08-06/",
+      "imageUrl": "https://electronicslc.com/images/events/das-energi-2027-08-06.webp",
+      "source": "electronicslc",
+      "sources": [
+        "electronicslc",
+        "curated-json"
+      ],
+      "emoji": "🎧",
+      "color": "linear-gradient(160deg,#1a0a00,#ff5c00 55%,#ffc14d)"
+    }
+  ]
+}

@@ -527,8 +527,14 @@ app.post("/api/chats/:userId", auth, async (req, res) => {
 app.get("/api/events", auth, async (req, res) => {
   const blocked = await blockedSet(req.user.id);
   const raw = await db.prepare(`SELECT * FROM events`).all();
+  const meta = await db.prepare(`SELECT value FROM app_meta WHERE key=?`).get("events_updated_at");
+  const now = Date.now();
   const events = [];
   for (const e of raw) {
+    if (String(e.status || "active") === "removed") continue;
+    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
+    if (!Number.isNaN(starts) && starts < now) continue;
+    if (e.is_example) continue;
     const going = (await db.prepare(`SELECT u.* FROM event_going g JOIN users u ON u.id=g.user_id WHERE g.event_id=?`).all(e.id))
       .filter((u) => !blocked.has(Number(u.id)))
       .map((u) => publicUser(u));
@@ -536,13 +542,22 @@ app.get("/api/events", auth, async (req, res) => {
     if (req.user.subscription === "vip") {
       going.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
     }
+    let artists = [];
+    try { artists = JSON.parse(e.artists || "[]"); } catch (_) { artists = []; }
     events.push({
       id: e.id, name: e.name, city: e.city, date: e.date_label, venue: e.venue,
-      genres: JSON.parse(e.genres || "[]"), emoji: e.emoji, color: e.color,
-      isExample: Boolean(e.is_example), imGoing, going,
+      genres: JSON.parse(e.genres || "[]"), artists, emoji: e.emoji, color: e.color,
+      isExample: false, imGoing, going,
+      category: e.category || "concert",
+      ticketUrl: e.ticket_url || "",
+      sourceUrl: e.source_url || "",
+      imageUrl: e.image_url || "",
+      startsAt: e.starts_at || "",
+      ageLimit: e.age_limit || "",
     });
   }
-  res.json({ events });
+  events.sort((a, b) => String(a.startsAt || a.date).localeCompare(String(b.startsAt || b.date)));
+  res.json({ events, updatedAt: meta ? meta.value : null });
 });
 
 app.post("/api/events/:id/going", auth, async (req, res) => {
