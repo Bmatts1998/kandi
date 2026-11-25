@@ -4,8 +4,38 @@
   const DAILY = 8;
   const MAX_STORY_VIDEO_BYTES = 8 * 1024 * 1024;
   const MAX_STORY_VIDEO_SECONDS = 15;
-  const VIBES = ["house", "techno", "dubstep", "bass", "trance", "drum & bass", "hardstyle", "EDM", "hip-hop", "disco", "garage", "trap"];
-  const VIBE_LABEL = { "drum & bass": "DnB", "hip-hop": "Hip-hop" };
+  const MAX_GENRES = 5;
+  const GENRES = [
+    { id: "dubstep", name: "Dubstep", short: "Dubstep", color: "#b44aff", icon: "diamond" },
+    { id: "riddim", name: "Riddim", short: "Riddim", color: "#ff3d9a", icon: "bars" },
+    { id: "bass-music", name: "Bass Music", short: "Bass", color: "#ff5c00", icon: "bars" },
+    { id: "house", name: "House", short: "House", color: "#2ef0ff", icon: "ring" },
+    { id: "tech-house", name: "Tech House", short: "Tech Hse", color: "#1ad4c8", icon: "ring" },
+    { id: "deep-house", name: "Deep House", short: "Deep", color: "#4d7cff", icon: "ring" },
+    { id: "techno", name: "Techno", short: "Techno", color: "#e8e8e8", icon: "ring" },
+    { id: "trance", name: "Trance", short: "Trance", color: "#7ad0ff", icon: "spark" },
+    { id: "dnb", name: "Drum & Bass", short: "DnB", color: "#b6ff3f", icon: "bars" },
+    { id: "hardstyle", name: "Hardstyle", short: "Hardstyle", color: "#ff3b3b", icon: "slash" },
+    { id: "trap", name: "Trap", short: "Trap", color: "#ffc14d", icon: "diamond" },
+    { id: "future-bass", name: "Future Bass", short: "Future", color: "#ff7ad9", icon: "spark" },
+    { id: "melodic-bass", name: "Melodic Bass", short: "Melodic", color: "#ff8aa8", icon: "spark" },
+    { id: "big-room", name: "Big Room", short: "Big Room", color: "#ffe14d", icon: "diamond" },
+    { id: "progressive-house", name: "Progressive House", short: "Progressive", color: "#3dffd0", icon: "ring" },
+    { id: "psytrance", name: "Psytrance", short: "Psytrance", color: "#c8ff3f", icon: "spark" },
+    { id: "jungle", name: "Jungle", short: "Jungle", color: "#6dff6a", icon: "bars" },
+    { id: "ukg", name: "UKG/Garage", short: "UKG", color: "#ffd56a", icon: "diamond" },
+    { id: "hardcore", name: "Hardcore", short: "Hardcore", color: "#ff4d6d", icon: "slash" },
+    { id: "lofi", name: "Lo-fi/Downtempo", short: "Lo-fi", color: "#e0b08a", icon: "circle" },
+    { id: "disco-funk", name: "Disco/Funk", short: "Disco", color: "#ff7a4a", icon: "circle" },
+    { id: "experimental", name: "Experimental", short: "Experimental", color: "#d0b0ff", icon: "slash" },
+    { id: "afro-house", name: "Afro House", short: "Afro", color: "#ffb020", icon: "ring" },
+    { id: "breaks", name: "Breaks", short: "Breaks", color: "#7affc8", icon: "bars" },
+    { id: "midtempo", name: "Midtempo", short: "Midtempo", color: "#6aa8ff", icon: "circle" },
+    { id: "color-bass", name: "Color Bass", short: "Color Bass", color: "#ff5cff", icon: "spark" },
+    { id: "edm", name: "EDM", short: "EDM", color: "#ff8a1a", icon: "circle" },
+    { id: "hip-hop", name: "Hip-Hop", short: "Hip-Hop", color: "#d4924a", icon: "diamond" },
+  ];
+  const VIBES = GENRES.map((g) => g.id);
   const LOOKING = [
     { id: "date", label: "Dates" },
     { id: "friends", label: "Friends" },
@@ -61,7 +91,18 @@
   const INTERESTED_LABEL = Object.fromEntries(INTERESTED_IN.map((x) => [x.id, x.label]));
   const KANDI_TRADES_LABEL = Object.fromEntries(KANDI_TRADES.map((x) => [x.id, x.label]));
   const SEX_LABEL = Object.fromEntries(SEXES.map((x) => [x.id, x.label]));
-  function vibeLabel(v) { return VIBE_LABEL[v] || v; }
+  function genreCatalog() {
+    return (state.genreCatalog && state.genreCatalog.length) ? state.genreCatalog : GENRES;
+  }
+  function genreOf(id) {
+    const want = String((id && id.id) || id || "");
+    return genreCatalog().find((g) => g.id === want) || null;
+  }
+  function vibeLabel(v) {
+    const g = genreOf(v);
+    return (g && (g.short || g.name)) || String(v || "");
+  }
+
   function lookingLabel(id) { return LOOKING_LABEL[id] || id; }
   function genderLabel(id) { return GENDER_LABEL[id] || id; }
   function sexLabel(id) { return SEX_LABEL[id] || id; }
@@ -392,7 +433,6 @@
     if (p.pronouns) chips.push(`<span class="chip soft">${esc(p.pronouns)}</span>`);
     const height = formatHeight(p.heightIn);
     if (height) chips.push(`<span class="chip soft">${esc(height)}</span>`);
-    (p.vibes || []).forEach((v) => chips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
     (p.hobbies || []).forEach((h) => chips.push(`<span class="chip soft">${esc(h)}</span>`));
     const looking = (p.looking || []).map(lookingLabel).join(", ");
     const interested = (p.interestedIn || []).map((id) => INTERESTED_LABEL[id] || id).join(", ");
@@ -484,8 +524,9 @@
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
     const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
     let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
-      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}${personBadge(p)}</div>
+      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
       <div class="muted">@${esc(p.username)}${pronouns}</div>
+      ${genreRow(p)}
       ${buttons}
     </div></div>`;
     html += `<div class="counts">
@@ -514,7 +555,6 @@
       if (p.sex) topChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
       const height = formatHeight(p.heightIn);
       if (height) topChips.push(`<span class="chip soft">${esc(height)}</span>`);
-      (p.vibes || []).slice(0, 4).forEach((v) => topChips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
       (p.hobbies || []).slice(0, 3).forEach((h) => topChips.push(`<span class="chip soft">${esc(h)}</span>`));
       if (topChips.length) html += `<div class="chips prof-chips">${topChips.join("")}</div>`;
       if ((p.favoriteTunes || []).length) {
@@ -584,20 +624,48 @@
     pendingPlan: "plus",
     err: "",
     info: "",
-    badges: null,
-    badgeSheet: null,
+    genreCatalog: null,
+    genrePeople: [],
+    genreEvents: [],
   };
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  function personBadge(person) {
-    const b = person && person.raverBadge;
-    if (!b || !b.id) return "";
-    const name = esc(b.name || "");
-    const id = esc(b.id);
-    // A span, not a <button>: badges sit inside tappable name buttons, and a nested <button> breaks the page layout.
-    return ` <span role="button" tabindex="0" class="raver-badge ${id}" data-act="badge-info" data-id="${id}" title="${name}" aria-label="${name} badge. How to earn badges."><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${name}</span></span>`;
+  function personGenres(person, opts) {
+    opts = opts || {};
+    if (!person) return "";
+    const rawList = (person.vibes && person.vibes.length)
+      ? person.vibes
+      : (person.genres || []).map((g) => (g && g.id) || g);
+    const max = opts.max != null ? opts.max : (opts.compact ? 2 : 5);
+    const items = [];
+    const seen = new Set();
+    for (const raw of (rawList || [])) {
+      const g = genreOf(raw);
+      if (!g || seen.has(g.id)) continue;
+      seen.add(g.id);
+      items.push(g);
+      if (items.length >= max) break;
+    }
+    if (!items.length) return "";
+    const compact = opts.compact ? " compact" : "";
+    const tap = opts.tappable !== false;
+    return items.map((g) => {
+      const id = esc(g.id);
+      const label = esc(g.short || g.name || g.id);
+      const cls = "genre-badge g-" + id + compact;
+      const title = esc(g.name || label);
+      const ic = `<span class="gb-ic ${esc(g.icon || "circle")}" aria-hidden="true"></span><span class="gb-nm">${label}</span>`;
+      if (!tap) return `<span class="${cls}" title="${title}">${ic}</span>`;
+      // Span, not <button>: these often sit next to tappable rows, and a nested button breaks layout.
+      return `<span role="button" tabindex="0" class="${cls}" data-act="open-genre" data-id="${id}" title="${title}" aria-label="${label} genre. See people and events.">${ic}</span>`;
+    }).join("");
+  }
+  function genreRow(person, opts) {
+    const html = personGenres(person, opts);
+    if (!html) return "";
+    return `<div class="genre-row${opts && opts.compact ? " compact" : ""}">${html}</div>`;
   }
   function formatUpdatedAgo(iso) {
     if (!iso) return "";
@@ -698,7 +766,7 @@
     return `<div class="goer card">
       <button type="button" class="goer-main" data-act="open-profile" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${personBadge(p)}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${note}</div>
+        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}${note}</div>
       </button>
       <div class="goer-actions">${goerActions(p)}</div>
     </div>`;
@@ -1013,7 +1081,8 @@
     state.likesLeft = data.likesLeft == null ? null : data.likesLeft;
     if (data.live) state.live = data.live;
     if (data.locationShare !== undefined) state.locationShare = data.locationShare;
-    if (data.badges) state.badges = data.badges;
+    if (data.genreCatalog) state.genreCatalog = data.genreCatalog;
+    else if (data.genres) state.genreCatalog = data.genres;
   }
   function needsOnboard(u) {
     return !u || !u.age || u.needsProfile || !u.vibes.length || !u.looking.length || !u.prompts.length;
@@ -1451,7 +1520,7 @@
   }
   async function loadFeed() {
     const q = new URLSearchParams();
-    if (isPlus() && state.filters.genre !== "all") q.set("genre", state.filters.genre);
+    if (state.filters.genre && state.filters.genre !== "all") q.set("genre", state.filters.genre);
     if (state.filters.event && state.filters.event !== "all") q.set("event", state.filters.event);
     if (state.filters.gender && state.filters.gender !== "all") q.set("gender", state.filters.gender);
     const ageMin = Number(state.filters.ageMin);
@@ -1619,12 +1688,12 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}${personBadge(p)}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
-      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}${personBadge(p)}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
       <button class="heart-fab${liked ? " loved" : ""}" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
@@ -1699,8 +1768,8 @@
     const titles = ["What's your sound?", "What are you open to?", "Where might you be?", "Add a prompt", "Add a photo", "PLUR, always."];
     let body = "";
     if (s === 0) {
-      body = `<div class="label">Your vibes</div><div class="chips">${VIBES.map((v) =>
-        `<button class="chip${me.vibes.includes(v) ? " on" : ""}" data-act="toggle-vibe" data-id="${v}">${esc(v)}</button>`
+      body = `<div class="label">Your genre badges</div><p class="sub" style="margin-bottom:8px">Pick up to ${MAX_GENRES}. These show on your profile and in Discover.</p><div class="chips">${genreCatalog().map((g) =>
+        `<button type="button" class="chip genre-pick g-${esc(g.id)}${me.vibes.includes(g.id) ? " on" : ""}" data-act="toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
       ).join("")}</div>`;
     } else if (s === 1) {
       body = `<div class="label">Looking for</div><div class="chips">${LOOKING.map((v) =>
@@ -1756,14 +1825,18 @@
         ${myShows.map((e) => `<button type="button" class="chip${state.filters.event === e.id ? " on" : ""}" data-act="pick-same-event" data-id="${esc(e.id)}">${esc(eventChipLabel(e))}</button>`).join("")}
       </div>`;
     }
+    const genreOn = state.filters.genre && state.filters.genre !== "all";
+    const genreBar = genreOn
+      ? `<div class="same-show-bar"><button type="button" class="chip on" data-act="set-genre" data-id="all">Genre: ${esc(vibeLabel(state.filters.genre))} · Clear</button></div>`
+      : "";
     const p = state.feed[0];
     if (!p) {
-      return header("Kandi", right) + `<div class="scroll pad">${sameBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : "You're caught up for now. Check back when more ravers join, or rewind a pass."}</p>
+      return header("Kandi", right) + `<div class="scroll pad">${sameBar}${genreBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : "You're caught up for now. Check back when more ravers join, or rewind a pass."}</p>
         <button class="btn sm primary" style="margin-top:16px" data-act="rewind">Rewind last pass</button></div></div>`;
     }
     const parts = [];
     if ((p.photos || []).length) parts.push(photoEl(p, 0, true));
-    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}</div>
+    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
       <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
@@ -1775,16 +1848,15 @@
     if (p.sex) discoChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
     const discoHeight = formatHeight(p.heightIn);
     if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
-    (p.vibes || []).forEach((v) => discoChips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
     (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
-    parts.push(`<div class="meta-card"><div class="chips" style="margin-bottom:8px">${discoChips.join("")}</div>
+    parts.push(`<div class="meta-card">${genreRow(p)}<div class="chips" style="margin:8px 0">${discoChips.join("")}</div>
       <div class="muted">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ") || "—"}</div>
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       ${crewBadgesHtml(p.id)}
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div>
       <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" data-act="open-profile" data-id="${p.id}">View posts &amp; profile</button>
       <button type="button" class="btn sm ghost" data-act="report" data-id="${p.id}">Report</button></div></div>`);
-    return header("Kandi", right) + `<div class="scroll">${sameBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
+    return header("Kandi", right) + `<div class="scroll">${sameBar}${genreBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
         <button class="round rewind" data-act="rewind" aria-label="Rewind last pass">↺</button>
         <button class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass on ${esc(p.name)}">✕</button>
@@ -1812,7 +1884,7 @@
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
         <button class="av-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av md")}</button>
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}${personBadge(p)}</div>
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2 })}
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -1882,7 +1954,7 @@
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}${personBadge(p)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
         <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : "You matched. Say hi.")}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
@@ -2143,7 +2215,7 @@
     if (!following && (state.topRavers || []).length) {
       html += `<div class="label" style="padding:0 14px 8px">Top ravers</div><div class="stories">`;
       html += state.topRavers.map((p) =>
-        `<button class="story" data-act="open-profile" data-id="${p.id}">${avatarEl(p.avatar, "av", (p.name||"?")[0])}<div class="nm">${esc(p.name)}${personBadge(p)}</div></button>`
+        `<button class="story" data-act="open-profile" data-id="${p.id}">${avatarEl(p.avatar, "av", (p.name||"?")[0])}<div class="nm">${esc(p.name)}</div>${genreRow(p, { compact: true, max: 1, tappable: false })}</button>`
       ).join("");
       html += `</div>`;
     }
@@ -2199,7 +2271,7 @@
     return `<article class="post">
       <div class="post-hd">
         <button type="button" data-act="open-profile" data-id="${p.author.id}">${avatarEl(p.author.avatar, "av", (p.author.name||"?")[0])}</button>
-        <button type="button" class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}${personBadge(p.author)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
+        <div class="who-block"><button type="button" class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>${genreRow(p.author, { compact: true, max: 2 })}</div>
         ${followBtn}${more}
       </div>
       ${postMedia(p)}
@@ -2329,7 +2401,11 @@
       <div class="row height-row"><select data-field="editHeightFt" aria-label="Height in feet">${ftOpts}</select>
         <select data-field="editHeightIn" aria-label="Height in inches">${inOpts}</select></div>
       ${editChipRow("Interested in", INTERESTED_IN, d.interestedIn, "edit-toggle-interested", false)}
-      ${editChipRow("Music genres", VIBES.map((v) => ({ id: v, label: vibeLabel(v) })), d.vibes, "edit-toggle-vibe", false)}
+      <div class="label" style="margin-top:14px">Genre badges <span class="tiny">(${(d.vibes || []).length}/${MAX_GENRES})</span></div>
+      <p class="tiny" style="margin-bottom:8px">Pick up to ${MAX_GENRES}. These show on your profile, in Discover, and next to your name on posts.</p>
+      <div class="chips">${genreCatalog().map((g) =>
+        `<button type="button" class="chip genre-pick g-${esc(g.id)}${(d.vibes || []).includes(g.id) ? " on" : ""}" data-act="edit-toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
+      ).join("")}</div>
       ${editChipRow("Looking for", LOOKING, d.looking, "edit-toggle-look", false)}
       <div class="label" style="margin-top:14px">Hobbies</div>
       <div class="chips">${hobbySet.map((h) => `<button type="button" class="chip${(d.hobbies || []).includes(h) ? " on" : ""}" data-act="edit-toggle-hobby" data-id="${esc(h)}">${esc(h)}</button>`).join("")}</div>
@@ -2763,7 +2839,7 @@
         <h2 class="h2">Comments</h2>
         <div style="margin-top:12px">${comments.length ? comments.map((c) => `<div class="row" style="margin-bottom:12px;align-items:flex-start">
           <button class="av-btn" data-act="open-profile" data-id="${c.author && c.author.id}" aria-label="View ${esc(c.author && c.author.name)}'s profile">${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}</button>
-          <div class="grow"><div><button class="name-btn" data-act="open-profile" data-id="${c.author && c.author.id}"><strong>${esc(c.author.name)}</strong></button>${personBadge(c.author)} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
+          <div class="grow"><div><button class="name-btn" data-act="open-profile" data-id="${c.author && c.author.id}"><strong>${esc(c.author.name)}</strong></button>${personGenres(c.author, { compact: true, max: 1 })} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
           <div>${esc(c.text)}</div></div>
           ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
         </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
@@ -2819,7 +2895,7 @@
       const extra = u.isMe
         ? ""
         : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}${personBadge(u)}</span></div><div class="right">${followBtn}</div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
           ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount } })}
           ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}</div>` : ""}
@@ -2857,7 +2933,7 @@
       const rows = [
         ["Unlimited likes", "✓", "✓"],
         ["See who likes you", "✓", "✓"],
-        ["Advanced filters (genre, event)", "✓", "✓"],
+        ["Advanced event filters", "✓", "✓"],
         ["Rewinds", "5 / day", "Unlimited"],
         ["Priority at events and live mode", "—", "✓"],
       ];
@@ -2933,7 +3009,7 @@
         <div class="label" style="margin-top:14px">Gender</div><div class="chips"><button type="button" class="chip${(f.gender || "all") === "all" ? " on" : ""}" data-act="set-gender-filter" data-id="all">Everyone</button>
         ${GENDERS.map((g) => `<button type="button" class="chip${f.gender === g.id ? " on" : ""}" data-act="set-gender-filter" data-id="${g.id}">${esc(g.label)}</button>`).join("")}</div>
         <div class="label" style="margin-top:14px">Music genre</div><div class="chips"><button type="button" class="chip${(f.genre || "all") === "all" ? " on" : ""}" data-act="set-genre" data-id="all">All genres</button>
-        ${VIBES.map((g) => `<button type="button" class="chip${f.genre === g ? " on" : ""}" data-act="set-genre" data-id="${g}">${esc(vibeLabel(g))}</button>`).join("")}</div>
+        ${genreCatalog().map((g) => `<button type="button" class="chip genre-pick g-${esc(g.id)}${f.genre === g.id ? " on" : ""}" data-act="set-genre" data-id="${esc(g.id)}">${esc(g.name)}</button>`).join("")}</div>
         ${eventBlock}
         <button type="button" class="btn primary" style="margin-top:16px" data-act="apply-filters">Done</button></div></div>`;
     }
@@ -2985,8 +3061,8 @@
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
             ${personAvatar(p, "av sm")}
-            <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}${personBadge(p)}</div>
-            <div class="tiny">${esc(p.meetupSpot || "At this event")} · ${p.vibes.slice(0, 2).join(", ")}</div></div></button>`).join("")}
+            <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
+            <div class="tiny">${esc(p.meetupSpot || "At this event")}</div></div></button>`).join("")}
         `}</div></div>`;
     }
     if (o.type === "chat") {
@@ -3042,7 +3118,7 @@
       </div>` : "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
-        <button class="chat-head" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}${personBadge(p)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`}</div></button></div>
+        <div class="chat-head"><button type="button" class="chat-head-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`}</div></button>${genreRow(p, { compact: true, max: 2 })}</div></div>
         <div class="right">
           <button type="button" class="icon-btn ghost-btn${ghostOn ? " on" : ""}" data-act="open-disappear" aria-label="Disappearing messages" aria-pressed="${ghostOn}" title="Disappearing messages">👻</button>
           <button class="icon-btn" data-act="chat-menu" data-id="${p.id}" aria-label="More options">⋯</button>
@@ -3281,24 +3357,42 @@
     return "";
   }
 
-  function viewBadgeSheet() {
-    if (!state.badgeSheet) return "";
-    const guide = (state.badges && state.badges.badges) || [];
-    const focus = String(state.badgeSheet || "");
-    const items = guide.length ? guide : [
-      { id: "bass", name: "Bass", tagline: "The floor already knows your name.", how: "Top about 5% of active ravers, ranked by recent posts, likes, comments, shows, and followers." },
-      { id: "banger", name: "Banger", tagline: "You're in the mix.", how: "About the next 20% of active ravers (the top 25% overall) by recent engagement and followers." },
-      { id: "bopper", name: "Bopper", tagline: "You're showing up.", how: "Any raver who's been active recently. Post, like, comment, RSVP to shows, and keep coming back to climb." },
-    ];
-    return `<div class="sheet-bg" data-act="close-badge"><div class="sheet badge-sheet" data-stop="1"><div class="grab"></div>
-      <h2 class="h2" style="font-size:22px">Raver badges</h2>
-      <p class="sub">Badges come from how active you've been over the last 14 days, plus how many people follow you. Names may change; the idea stays the same.</p>
-      ${items.map((b) => `<button type="button" class="badge-explain${focus === b.id ? " on" : ""}" data-act="badge-info" data-id="${esc(b.id)}">
-        <div class="row" style="align-items:center;gap:10px"><span class="raver-badge ${esc(b.id)}"><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${esc(b.name)}</span></span>
-          <div class="grow"><div style="font-weight:800">${esc(b.name)}</div><div class="tiny">${esc(b.tagline || "")}</div></div></div>
-        <p class="muted" style="margin-top:8px">${esc(b.how || "")}</p>
-      </button>`).join("")}
-      <button class="btn primary" style="margin-top:16px" data-act="close-badge">Got it</button>
+  function viewGenreSheet() {
+    const o = state.overlay;
+    if (!o || o.type !== "genre") return "";
+    const g = genreOf(o.id);
+    const name = (g && g.name) || "Genre";
+    const people = state.genrePeople || [];
+    const events = state.genreEvents || [];
+    const loading = Boolean(o.loading);
+    let body = "";
+    if (loading) body += `<p class="muted"><span class="spin"></span> Finding people and shows…</p>`;
+    if (people.length) {
+      body += `<div class="label">People into ${esc(name)}</div>`;
+      body += people.map((p) => `<button type="button" class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="open-profile" data-id="${p.id}">
+        ${personAvatar(p, "av sm")}
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+          ${genreRow(p, { compact: true, max: 3, tappable: false })}
+          ${p.sharedGenreChip ? `<div class="tiny meet-mini">${esc(p.sharedGenreChip)}</div>` : ""}
+        </div></button>`).join("");
+    } else if (!loading) {
+      body += `<p class="muted">No one has this badge yet. Be one of the first — add it in Edit Profile.</p>`;
+    }
+    if (events.length) {
+      body += `<div class="label" style="margin-top:16px">Upcoming shows</div>`;
+      body += events.map((e) => `<button type="button" class="event" style="margin-bottom:8px;width:100%;text-align:left" data-act="event" data-id="${esc(e.id)}">
+        <div class="event-main"><div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${esc(e.emoji || "✺")}</div>
+          <div class="grow"><div style="font-weight:800">${esc(e.name)}</div>
+            <div class="muted">${esc(e.date || "")}${e.venue ? " · " + esc(e.venue) : ""}</div></div></div>
+      </button>`).join("");
+    }
+    return `<div class="sheet-bg" data-act="close-genre"><div class="sheet badge-sheet" data-stop="1"><div class="grab"></div>
+      <h2 class="h2" style="font-size:22px">${esc(name)}</h2>
+      <p class="sub">Ravers and upcoming shows tagged with this sound.</p>
+      ${g ? `<div style="margin-bottom:12px">${personGenres({ vibes: [g.id] })}</div>` : ""}
+      ${body}
+      <button type="button" class="btn primary" style="margin-top:16px" data-act="discover-genre" data-id="${esc((g && g.id) || o.id || "")}">Show in Discover</button>
+      <button type="button" class="btn ghost" style="margin-top:8px" data-act="close-genre">Close</button>
     </div></div>`;
   }
 
@@ -3348,11 +3442,11 @@
       const storyOpen = Boolean(state.storyViewer);
       html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}"></div>`;
       // Parse each part on its own so stray or nested tags in one screen stay contained inside .screen.
-      appParts = [body, tabbar(), overlays(), viewBadgeSheet()];
+      appParts = [body, tabbar(), overlays(), viewGenreSheet()];
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
-    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + (state.badgeSheet || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
+    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + ((state.overlay && state.overlay.type === "genre" && state.overlay.id) || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
     const scrollers = Array.from(root.querySelectorAll(".scroll, .overlay, .sheet"));
     const saved = lastRenderKey === key ? scrollers.map((n) => n.scrollTop) : null;
     const active = document.activeElement;
@@ -3480,14 +3574,46 @@
         render(); return;
       }
       if (act === "dismiss-photo-nudge") { localStorage.setItem("kandi-hide-photo-nudge", "1"); render(); return; }
-      if (act === "badge-info") {
-        if (!state.badges) {
-          try { state.badges = await api("/api/badges"); } catch (_) {}
+      if (act === "open-genre") {
+        const gid = id || "all";
+        if (!gid || gid === "all") return;
+        state.err = "";
+        state.overlay = { type: "genre", id: gid, loading: true, returnTo: (state.overlay && state.overlay.type && state.overlay.type !== "genre") ? state.overlay : null };
+        state.genrePeople = [];
+        state.genreEvents = [];
+        render();
+        try {
+          const data = await api("/api/genres/" + encodeURIComponent(gid));
+          if (state.overlay && state.overlay.type === "genre" && state.overlay.id === gid) {
+            state.genrePeople = data.people || [];
+            state.genreEvents = data.events || [];
+            state.overlay.loading = false;
+            if (data.genre) {
+              const list = genreCatalog().slice();
+              if (!list.some((x) => x.id === data.genre.id)) list.push(data.genre);
+              state.genreCatalog = list;
+            }
+          }
+        } catch (e) {
+          if (state.overlay && state.overlay.type === "genre") state.overlay.loading = false;
+          state.err = e.message || "Couldn't load that genre.";
         }
-        state.badgeSheet = id || "all";
         render(); return;
       }
-      if (act === "close-badge") { state.badgeSheet = null; render(); return; }
+      if (act === "close-genre") {
+        const prev = state.overlay && state.overlay.returnTo;
+        state.overlay = prev || null;
+        state.err = "";
+        render(); return;
+      }
+      if (act === "discover-genre") {
+        state.filters.genre = id || "all";
+        state.overlay = null;
+        state.tab = "discover";
+        render();
+        try { await loadFeed(); } catch (_) {}
+        render(); return;
+      }
 
       if (act === "edit-profile") {
         state.err = "";
@@ -3505,7 +3631,9 @@
       if (act === "edit-toggle-vibe") {
         state.editDraft = state.editDraft || { vibes: [] };
         const cur = state.editDraft.vibes || [];
-        state.editDraft.vibes = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
+        if (cur.includes(id)) state.editDraft.vibes = cur.filter((x) => x !== id);
+        else if (cur.length >= MAX_GENRES) { toast("You can pick up to " + MAX_GENRES + " genre badges.", "err"); return; }
+        else state.editDraft.vibes = cur.concat(id);
         render(); return;
       }
       if (act === "edit-toggle-look") {
@@ -3633,7 +3761,11 @@
         render(); return;
       }
       if (act === "toggle-vibe") {
-        const v = state.me.vibes.includes(id) ? state.me.vibes.filter((x) => x !== id) : state.me.vibes.concat(id);
+        const cur = state.me.vibes || [];
+        let v;
+        if (cur.includes(id)) v = cur.filter((x) => x !== id);
+        else if (cur.length >= MAX_GENRES) { toast("You can pick up to " + MAX_GENRES + " genre badges.", "err"); return; }
+        else v = cur.concat(id);
         state.me.vibes = v; await api("/api/me", { method: "PUT", body: { vibes: v } }); render(); return;
       }
       if (act === "toggle-look") {
@@ -4544,7 +4676,7 @@
     "preview-profile", "edit-back",
     "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers",
     "create-group", "pick-crew-emoji", "crew-join-mode", "edit-group", "invite-open", "close-invite",
-    "badge-info", "close-badge"]);
+    "close-genre", "discover-genre"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
@@ -4552,11 +4684,7 @@
     if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.err = ""; handle("close", t); return; }
     let actEl = t.closest("[data-act]");
     if (!actEl || !root.contains(actEl)) return;
-    // A badge shown inside a tappable row (chat, name, post header) should open that row, not the badge explainer.
-    if (actEl.getAttribute("data-act") === "badge-info" && actEl.parentElement) {
-      const outer = actEl.parentElement.closest("[data-act]");
-      if (outer && root.contains(outer) && !outer.classList.contains("sheet-bg")) actEl = outer;
-    }
+    // Genre chips inside a tappable row should win (open that genre), not the parent row.
     if (actEl.classList.contains("sheet-bg")) return; // a tap on a field, label or text inside the sheet
     if (actEl.disabled || actEl.getAttribute("aria-disabled") === "true") return;
     e.preventDefault();

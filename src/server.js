@@ -67,8 +67,9 @@ function sendBuffer(req, res, buffer, mime) {
   return res.send(buffer.subarray(start, end + 1));
 }
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
-const { createEngagement, compareDiscover, compareGoers, badgePublic, badgeGuide } = require("./engagement");
+const { createEngagement, compareDiscover, compareGoers } = require("./engagement");
 const { createDemoChat } = require("./demo-chat");
+const { catalog: genreCatalog, normalizeGenreIds, publicGenres, sharedGenreIds, sharedGenreChip, eventMatchesGenre, getGenre, MAX_GENRES } = require("./genres");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -169,7 +170,39 @@ function sendIndex(res) {
 }
 app.get(["/", "/index.html"], (_req, res) => sendIndex(res));
 app.get("/api/version", (_req, res) => { noStore(res); res.json({ build: BUILD }); });
-app.get("/api/badges", (_req, res) => { noStore(res); res.json(badgeGuide()); });
+app.get("/api/badges", (_req, res) => { noStore(res); res.json({ genres: genreCatalog() }); });
+app.get("/api/genres", (_req, res) => { noStore(res); res.json({ genres: genreCatalog(), max: MAX_GENRES }); });
+app.get("/api/genres/:id", auth, async (req, res) => {
+  const genre = getGenre(req.params.id);
+  if (!genre) return res.status(404).json({ error: "Unknown genre." });
+  const blocked = await blockedSet(req.user.id);
+  const mine = normalizeGenreIds(parseJsonList(req.user.vibes, []));
+  const rows = await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id);
+  const people = [];
+  for (const u of rows) {
+    if (!isAdult(u) || blocked.has(Number(u.id))) continue;
+    const vibes = normalizeGenreIds(parseJsonList(u.vibes, []));
+    if (!vibes.includes(genre.id)) continue;
+    people.push(publicUser(u, {
+      sharedGenres: sharedGenreIds(mine, vibes),
+      sharedGenreChip: sharedGenreChip(mine, vibes),
+    }));
+    if (people.length >= 40) break;
+  }
+  const now = Date.now();
+  const evRows = await db.prepare(`SELECT * FROM events`).all();
+  const events = [];
+  for (const e of evRows) {
+    if (String(e.status || "active") === "removed" || e.is_example) continue;
+    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
+    if (!Number.isNaN(starts) && starts < now) continue;
+    const ev = publicEventFields(e);
+    if (!eventMatchesGenre(ev, genre.id)) continue;
+    events.push(ev);
+    if (events.length >= 20) break;
+  }
+  res.json({ genre: { id: genre.id, name: genre.name, short: genre.short, color: genre.color, icon: genre.icon }, people, events });
+});
 app.use(express.static(path.join(root, "public"), {
   index: false,
   setHeaders(res, filePath) {
@@ -299,8 +332,8 @@ function publicUser(u, extra) {
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
     subscription: u.subscription || null,
     createdAt: u.created_at,
-    raverBadge: badgePublic(u.raver_badge),
-    activeRaver: Boolean(badgePublic(u.raver_badge)),
+    vibes: normalizeGenreIds(parseJsonList(u.vibes, [])),
+    genres: publicGenres(u.vibes),
     ...(extra || {}),
   };
 }
@@ -451,7 +484,7 @@ app.get("/api/me", auth, async (req, res) => {
     live: live ? { on: true, eventId: live.event_id, meetupSpot: live.meetup_spot } : { on: false },
     locationShare: share ? { with: share.share_with, event: share.event_label, at: share.created_at } : null,
     upcomingShows: upcoming.shows,
-    badges: badgeGuide(),
+    genreCatalog: genreCatalog(),
   });
 });
 
@@ -464,7 +497,7 @@ app.put("/api/me", auth, async (req, res) => {
   const body = req.body || {};
   const name = body.name != null ? String(body.name).trim() : req.user.name;
   const bio = body.bio != null ? String(body.bio).slice(0, 500) : req.user.bio;
-  const vibes = body.vibes != null ? JSON.stringify(body.vibes) : req.user.vibes;
+  const vibes = body.vibes != null ? JSON.stringify(normalizeGenreIds(body.vibes)) : req.user.vibes;
   const looking = body.looking != null ? JSON.stringify(body.looking) : req.user.looking;
   const prompts = body.prompts != null ? JSON.stringify(body.prompts) : req.user.prompts;
   if (!name || name.length < 2) return res.status(400).json({ error: "Name is required." });
@@ -615,10 +648,11 @@ app.get("/api/discover", auth, async (req, res) => {
   const gender = String(req.query.gender || "all");
   const ageMin = Number(req.query.ageMin);
   const ageMax = Number(req.query.ageMax);
-  // Genre filters stay Kandi+. "Going to the same show" is a core, free connecting filter.
-  // Age range and gender are also free Discover filters.
-  if (genre !== "all" && !isPlus(req.user.subscription)) {
-    return res.status(402).json({ error: "Advanced filters are a Kandi+ feature.", code: "plus_required", reason: "filters" });
+  // Genre badges are a core, free Discover filter. Event-specific filters stay Kandi+,
+  // except "going to the same show," which is free.
+  const genreId = genre !== "all" ? (getGenre(genre) && getGenre(genre).id) : null;
+  if (genre !== "all" && !genreId) {
+    return res.status(400).json({ error: "Unknown genre." });
   }
   const showsByUser = await upcomingByUser(db);
   const myShows = showsByUser.get(Number(req.user.id)) || [];
@@ -630,17 +664,25 @@ app.get("/api/discover", auth, async (req, res) => {
   }
   let rows = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
     .filter((u) => isAdult(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id));
+  const myGenres = normalizeGenreIds(parseJsonList(req.user.vibes, []));
   const sharedMap = new Map();
-  for (const u of rows) sharedMap.set(Number(u.id), sharedFor(u.id).length);
-  rows.sort((a, b) => compareDiscover(a, b, sharedMap));
+  const genreMap = new Map();
+  for (const u of rows) {
+    sharedMap.set(Number(u.id), sharedFor(u.id).length);
+    genreMap.set(Number(u.id), sharedGenreIds(myGenres, parseJsonList(u.vibes, [])).length);
+  }
+  rows.sort((a, b) => compareDiscover(a, b, sharedMap, genreMap));
   let people = rows.map((u) => {
     const shared = sharedFor(u.id);
+    const theirVibes = normalizeGenreIds(parseJsonList(u.vibes, []));
     return publicUser(u, {
       sharedEvents: shared,
       sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
+      sharedGenres: sharedGenreIds(myGenres, theirVibes),
+      sharedGenreChip: sharedGenreChip(myGenres, theirVibes),
     });
   });
-  if (genre !== "all") people = people.filter((p) => p.vibes.includes(genre));
+  if (genreId) people = people.filter((p) => p.vibes.includes(genreId));
   if (event === "same") {
     people = people.filter((p) => (p.sharedEvents || []).length);
   } else if (event !== "all") {
@@ -1230,6 +1272,13 @@ async function boot() {
         console.log("Ensured demo stories on boot.");
       } catch (err) {
         console.error("Story seed on boot failed:", err.message || err);
+      }
+      try {
+        const { ensureDemoGenres } = require("./seed");
+        const n = await ensureDemoGenres(db);
+        if (n) console.log("Updated genre badges on " + n + " demo profiles.");
+      } catch (err) {
+        console.error("Demo genre seed on boot failed:", err.message || err);
       }
     }
   }

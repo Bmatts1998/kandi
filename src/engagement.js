@@ -314,10 +314,13 @@ function followingRankTime(post) {
   return (Number.isFinite(t) ? t : 0) + followingBoostMs(post.authorScore);
 }
 
-function compareDiscover(a, b, sharedMap) {
+function compareDiscover(a, b, sharedMap, genreMap) {
   const sa = sharedMap.get(Number(a.id)) || 0;
   const sb = sharedMap.get(Number(b.id)) || 0;
   if (sb !== sa) return sb - sa;
+  const ga = (genreMap && genreMap.get(Number(a.id))) || 0;
+  const gb = (genreMap && genreMap.get(Number(b.id))) || 0;
+  if (gb !== ga) return gb - ga;
   const ea = Number(a.engagement_score) || 0;
   const eb = Number(b.engagement_score) || 0;
   if (eb !== ea) return eb - ea;

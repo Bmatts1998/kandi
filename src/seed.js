@@ -108,46 +108,46 @@ const EVENTS = [
 ];
 
 const USERS = [
-  { username: "nova", name: "Nova", age: 26, emoji: "🌙", gradients: ["linear-gradient(160deg,#1b1040,#6b2bd6 55%,#ff7ad9)", "linear-gradient(160deg,#0b1a3a,#2ef0ff)"], photoCaps: ["Rail, Movement weekend", "Sunrise somewhere in Detroit"], vibes: ["techno", "house"], looking: ["dance", "date"], events: ["movement", "crssd"], prompts: [
+  { username: "nova", name: "Nova", age: 26, emoji: "🌙", gradients: ["linear-gradient(160deg,#1b1040,#6b2bd6 55%,#ff7ad9)", "linear-gradient(160deg,#0b1a3a,#2ef0ff)"], photoCaps: ["Rail, Movement weekend", "Sunrise somewhere in Detroit"], vibes: ["techno", "house", "tech-house"], looking: ["dance", "date"], events: ["movement", "crssd"], prompts: [
     { id: "goto", q: "My go-to set is...", a: "A 3-hour dark techno rabbit hole with no photos, only strobes." },
     { id: "moment", q: "Best festival moment...", a: "Sunrise at the warehouse after we all thought the night was over." },
     { id: "findme", q: "You'll find me...", a: "Left rail, eyes closed, probably crying at a breakdown." },
   ]},
-  { username: "hex", name: "Hex", age: 24, emoji: "⚡", gradients: ["linear-gradient(160deg,#2a0830,#ff3d9a 50%,#ffd56a)", "linear-gradient(160deg,#12061c,#7a5cff)"], photoCaps: ["Pit, Lost Lands", "Totem duty"], vibes: ["dubstep", "bass"], looking: ["friends", "hookup"], events: ["lostlands", "basscanyon"], prompts: [
+  { username: "hex", name: "Hex", age: 24, emoji: "⚡", gradients: ["linear-gradient(160deg,#2a0830,#ff3d9a 50%,#ffd56a)", "linear-gradient(160deg,#12061c,#7a5cff)"], photoCaps: ["Pit, Lost Lands", "Totem duty"], vibes: ["dubstep", "riddim", "bass-music"], looking: ["friends", "hookup"], events: ["lostlands", "basscanyon"], prompts: [
     { id: "goto", q: "My go-to set is...", a: "If the lasers look like a spaceship landing, I'm already in the pit." },
     { id: "kandi", q: "The kandi I'm trading says...", a: "STAY BASSY" },
     { id: "talk", q: "Let's talk if you also...", a: "Have a totem and zero sense of direction at 2am." },
   ]},
-  { username: "luna", name: "Luna", age: 28, emoji: "🦋", gradients: ["linear-gradient(160deg,#0c2830,#2ee0c0 50%,#e2b0ff)", "linear-gradient(160deg,#1a2040,#8ab4ff)"], photoCaps: ["Canopy, Electric Forest", "Favorite sequin jacket, obviously"], vibes: ["trance", "house"], looking: ["date", "friends"], events: ["forest", "edc"], prompts: [
+  { username: "luna", name: "Luna", age: 28, emoji: "🦋", gradients: ["linear-gradient(160deg,#0c2830,#2ee0c0 50%,#e2b0ff)", "linear-gradient(160deg,#1a2040,#8ab4ff)"], photoCaps: ["Canopy, Electric Forest", "Favorite sequin jacket, obviously"], vibes: ["trance", "progressive-house", "deep-house"], looking: ["date", "friends"], events: ["forest", "edc"], prompts: [
     { id: "moment", q: "Best festival moment...", a: "Strangers becoming a family under the Electric Forest canopy." },
     { id: "late", q: "My 3am song is...", a: "Whatever's playing when the stars still look close enough to grab." },
     { id: "plur", q: "PLUR to me means...", a: "Handing someone water before they have to ask." },
   ]},
-  { username: "riot", name: "Riot", age: 23, emoji: "🔥", gradients: ["linear-gradient(160deg,#3a0a10,#ff5a1f 55%,#ffd56a)", "linear-gradient(160deg,#1a0810,#ff3d9a)"], photoCaps: ["The Gorge, golden hour", "Duck totem, still standing"], vibes: ["bass", "dubstep"], looking: ["friends"], events: ["basscanyon"], prompts: [
+  { username: "riot", name: "Riot", age: 23, emoji: "🔥", gradients: ["linear-gradient(160deg,#3a0a10,#ff5a1f 55%,#ffd56a)", "linear-gradient(160deg,#1a0810,#ff3d9a)"], photoCaps: ["The Gorge, golden hour", "Duck totem, still standing"], vibes: ["bass-music", "future-bass", "melodic-bass"], looking: ["friends"], events: ["basscanyon"], prompts: [
     { id: "findme", q: "You'll find me...", a: "Under a giant rubber duck totem. Come honk." },
     { id: "moment", q: "Best festival moment...", a: "The set that melted my shoes and somehow improved my personality." },
   ]},
-  { username: "vesper", name: "Vesper", age: 27, emoji: "🌸", gradients: ["linear-gradient(160deg,#3a1030,#ff6aa8 50%,#ffd1e8)", "linear-gradient(160deg,#22102a,#b44aff)"], photoCaps: ["CRSSD waterfront", "Kandi trade, still on my wrist"], vibes: ["house", "techno"], looking: ["dance", "date"], events: ["crssd", "movement"], prompts: [
+  { username: "vesper", name: "Vesper", age: 27, emoji: "🌸", gradients: ["linear-gradient(160deg,#3a1030,#ff6aa8 50%,#ffd1e8)", "linear-gradient(160deg,#22102a,#b44aff)"], photoCaps: ["CRSSD waterfront", "Kandi trade, still on my wrist"], vibes: ["house", "techno", "disco-funk"], looking: ["dance", "date"], events: ["crssd", "movement"], prompts: [
     { id: "goto", q: "My go-to set is...", a: "Sunset house, dusty boots, one last song that turns into five." },
     { id: "moment", q: "Best festival moment...", a: "Trading kandi with someone I'd just met and somehow already trusted." },
   ]},
-  { username: "sol", name: "Sol", age: 25, emoji: "☀️", gradients: ["linear-gradient(160deg,#4a2a00,#ffd56a 50%,#fff3c0)", "linear-gradient(160deg,#3a1050,#ff3d9a)"], photoCaps: ["Kinetic Field, sequins", "EDC night two"], vibes: ["trance", "bass"], looking: ["friends", "date"], events: ["edc"], prompts: [
+  { username: "sol", name: "Sol", age: 25, emoji: "☀️", gradients: ["linear-gradient(160deg,#4a2a00,#ffd56a 50%,#fff3c0)", "linear-gradient(160deg,#3a1050,#ff3d9a)"], photoCaps: ["Kinetic Field, sequins", "EDC night two"], vibes: ["trance", "big-room", "midtempo"], looking: ["friends", "date"], events: ["edc"], prompts: [
     { id: "findme", q: "You'll find me...", a: "On the rail at kinetic field, sequin jacket, cannot be missed." },
     { id: "talk", q: "Let's talk if you also...", a: "Plan your hydration like it's a professional sport." },
   ]},
-  { username: "ember", name: "Ember", age: 29, emoji: "💫", gradients: ["linear-gradient(160deg,#140816,#6b1fff 45%,#ff3d9a)", "linear-gradient(160deg,#0a0a12,#445)"], photoCaps: ["Warehouse cement and strobes", "Afters, don't ask the time"], vibes: ["techno"], looking: ["hookup", "dance"], events: ["movement", "warehouse"], prompts: [
+  { username: "ember", name: "Ember", age: 29, emoji: "💫", gradients: ["linear-gradient(160deg,#140816,#6b1fff 45%,#ff3d9a)", "linear-gradient(160deg,#0a0a12,#445)"], photoCaps: ["Warehouse cement and strobes", "Afters, don't ask the time"], vibes: ["techno", "hardcore", "experimental"], looking: ["hookup", "dance"], events: ["movement", "warehouse"], prompts: [
     { id: "goto", q: "My go-to set is...", a: "Warehouse. Cement. A kick drum that rearranges your bones." },
     { id: "looking", q: "I'm looking for someone who...", a: "Can hold a stare and a rhythm at the same time." },
   ]},
-  { username: "pixel", name: "Pixel", age: 22, emoji: "🎮", gradients: ["linear-gradient(160deg,#081820,#00d4aa 50%,#c8ff5a)", "linear-gradient(160deg,#1a1040,#7a5cff)"], photoCaps: ["Getting lost on purpose", "LED jacket test shot"], vibes: ["house", "bass"], looking: ["dance"], events: ["forest"], prompts: [
+  { username: "pixel", name: "Pixel", age: 22, emoji: "🎮", gradients: ["linear-gradient(160deg,#081820,#00d4aa 50%,#c8ff5a)", "linear-gradient(160deg,#1a1040,#7a5cff)"], photoCaps: ["Getting lost on purpose", "LED jacket test shot"], vibes: ["house", "future-bass", "ukg"], looking: ["dance"], events: ["forest"], prompts: [
     { id: "kandi", q: "The kandi I'm trading says...", a: "BE KIND, REWIND (the drop)" },
     { id: "moment", q: "Best festival moment...", a: "Getting lost on purpose and finding the better stage." },
   ]},
-  { username: "jade", name: "Jade", age: 26, emoji: "🌈", gradients: ["linear-gradient(160deg,#102018,#3dff9a 45%,#2ef0ff)", "linear-gradient(160deg,#2a1040,#ff7ad9)"], photoCaps: ["Wherever the wub meets the weird", "Crew photo, faces not included"], vibes: ["house", "techno", "trance", "bass"], looking: ["friends"], events: ["edc", "forest"], prompts: [
+  { username: "jade", name: "Jade", age: 26, emoji: "🌈", gradients: ["linear-gradient(160deg,#102018,#3dff9a 45%,#2ef0ff)", "linear-gradient(160deg,#2a1040,#ff7ad9)"], photoCaps: ["Wherever the wub meets the weird", "Crew photo, faces not included"], vibes: ["house", "techno", "bass-music", "color-bass"], looking: ["friends"], events: ["edc", "forest"], prompts: [
     { id: "plur", q: "PLUR to me means...", a: "We look out for each other. That's the whole thing." },
     { id: "findme", q: "You'll find me...", a: "Wherever the wub meets the weird." },
   ]},
-  { username: "orion", name: "Orion", age: 31, emoji: "🪐", gradients: ["linear-gradient(160deg,#0a1028,#3a6bff 50%,#c9d6ff)", "linear-gradient(160deg,#1a1028,#b44aff)"], photoCaps: ["Closing hours", "Late-night walk home in our heads"], vibes: ["techno", "trance"], looking: ["date"], events: ["movement"], prompts: [
+  { username: "orion", name: "Orion", age: 31, emoji: "🪐", gradients: ["linear-gradient(160deg,#0a1028,#3a6bff 50%,#c9d6ff)", "linear-gradient(160deg,#1a1028,#b44aff)"], photoCaps: ["Closing hours", "Late-night walk home in our heads"], vibes: ["techno", "trance", "deep-house"], looking: ["date"], events: ["movement"], prompts: [
     { id: "goto", q: "My go-to set is...", a: "Closing hours, hands up, no talking, just the ride home in our heads." },
     { id: "talk", q: "Let's talk if you also...", a: "Want breakfast after, not just a song recommendation." },
   ]},
@@ -506,4 +506,16 @@ if (require.main === module) {
   });
 }
 
-module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, DEMO_PASSWORD, EVENTS, USERS };
+
+async function ensureDemoGenres(db) {
+  const { normalizeGenreIds } = require("./genres");
+  let n = 0;
+  for (const u of USERS) {
+    const vibes = JSON.stringify(normalizeGenreIds(u.vibes));
+    const info = await db.prepare(`UPDATE users SET vibes=? WHERE username=? AND is_demo=1`).run(vibes, u.username);
+    if (info && Number(info.changes)) n += 1;
+  }
+  return n;
+}
+
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, DEMO_PASSWORD, EVENTS, USERS };

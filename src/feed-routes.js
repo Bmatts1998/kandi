@@ -47,7 +47,8 @@ function postMediaIds(post) {
   if (post.poster_id) ids.push(String(post.poster_id));
   return [...new Set(ids.filter(Boolean))];
 }
-const { popularScore: scoredPopular, followingRankTime, stripScoreFields, badgePublic } = require("./engagement");
+const { popularScore: scoredPopular, followingRankTime, stripScoreFields } = require("./engagement");
+const { normalizeGenreIds, publicGenres } = require("./genres");
 
 function weekAgoIso() {
   return new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
@@ -74,6 +75,15 @@ function firstAvatar(photosJson) {
     return null;
   }
 }
+
+function authorBits(row) {
+  const vibes = normalizeGenreIds(row.vibes || row.user_vibes || []);
+  return {
+    vibes,
+    genres: publicGenres(vibes),
+  };
+}
+
 
 function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blockedSet, maxVideoBytes, engagement }) {
   const bump = () => { if (engagement && typeof engagement.scheduleRefresh === "function") engagement.scheduleRefresh(); };
@@ -130,8 +140,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         avatar: firstAvatar(row.user_photos),
         isDemo: Boolean(row.is_demo),
         following,
-        raverBadge: badgePublic(row.raver_badge),
-        activeRaver: Boolean(badgePublic(row.raver_badge)),
+        ...authorBits(row),
       },
       authorScore: Number(row.engagement_score) || 0,
     };
@@ -190,7 +199,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
 
   const authorJoin = `
     SELECT p.*, u.username, u.name, u.photos AS user_photos, u.is_demo,
-      u.active_raver, u.engagement_score, u.raver_badge,
+      u.active_raver, u.engagement_score, u.raver_badge, u.vibes,
       (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
     FROM posts p
@@ -235,7 +244,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
   app.get("/api/feed/top-ravers", auth, async (req, res) => {
     const blocked = await blockedSet(req.user.id);
     const rows = await db().prepare(
-      `SELECT u.id, u.username, u.name, u.photos, u.is_demo, u.active_raver, u.engagement_score, u.raver_badge,
+      `SELECT u.id, u.username, u.name, u.photos, u.is_demo, u.active_raver, u.engagement_score, u.raver_badge, u.vibes,
          (SELECT COUNT(*) FROM follows f WHERE f.following_id = u.id) AS follower_count
        FROM users u
        WHERE u.id != ?
@@ -256,8 +265,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         avatar: firstAvatar(u.photos),
         isDemo: Boolean(u.is_demo),
         followerCount: Number(u.follower_count) || 0,
-        raverBadge: badgePublic(u.raver_badge),
-        activeRaver: Boolean(badgePublic(u.raver_badge)),
+        ...authorBits(u),
         following,
       });
       if (people.length >= 12) break;
@@ -393,7 +401,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     const blocked = await blockedSet(req.user.id);
     if (blocked.has(Number(post.user_id))) return res.status(403).json({ error: "Post hidden." });
     const rows = await db().prepare(
-      `SELECT c.*, u.username, u.name, u.photos AS user_photos, u.active_raver, u.raver_badge
+      `SELECT c.*, u.username, u.name, u.photos AS user_photos, u.active_raver, u.raver_badge, u.vibes
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.post_id=?
        ORDER BY c.created_at ASC, c.id ASC`
@@ -406,7 +414,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
           text: r.text,
           createdAt: r.created_at,
           mine: Number(r.user_id) === Number(req.user.id),
-          author: { id: Number(r.user_id), username: r.username, name: r.name, avatar: firstAvatar(r.user_photos), raverBadge: badgePublic(r.raver_badge), activeRaver: Boolean(badgePublic(r.raver_badge)) },
+          author: { id: Number(r.user_id), username: r.username, name: r.name, avatar: firstAvatar(r.user_photos), ...authorBits(r) },
         })),
     });
   });
@@ -426,7 +434,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     ).run(id, req.user.id, text, new Date().toISOString());
     bump();
     const row = await db().prepare(
-      `SELECT c.*, u.username, u.name, u.photos AS user_photos, u.active_raver, u.raver_badge FROM comments c JOIN users u ON u.id=c.user_id WHERE c.id=?`
+      `SELECT c.*, u.username, u.name, u.photos AS user_photos, u.active_raver, u.raver_badge, u.vibes FROM comments c JOIN users u ON u.id=c.user_id WHERE c.id=?`
     ).get(Number(info.lastInsertRowid));
     const count = await db().prepare(`SELECT COUNT(*) AS c FROM comments WHERE post_id=?`).get(id);
     res.json({
@@ -435,7 +443,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         text: row.text,
         createdAt: row.created_at,
         mine: true,
-        author: { id: Number(row.user_id), username: row.username, name: row.name, avatar: firstAvatar(row.user_photos), raverBadge: badgePublic(row.raver_badge), activeRaver: Boolean(badgePublic(row.raver_badge)) },
+        author: { id: Number(row.user_id), username: row.username, name: row.name, avatar: firstAvatar(row.user_photos), ...authorBits(row) },
       },
       commentCount: Number(count.c) || 0,
     });

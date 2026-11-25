@@ -949,6 +949,13 @@ async function migrate(db) {
     console.error("event_key backfill failed:", err.message || err);
   }
   await migrateEngagement(db);
+  try {
+    const { migrateUserVibes } = require("./genres");
+    const n = await migrateUserVibes(db);
+    if (n) console.log("Migrated genre badges on " + n + " profiles.");
+  } catch (err) {
+    console.error("Genre vibe migration failed:", err.message || err);
+  }
 }
 
 async function migrateEngagement(db) {
