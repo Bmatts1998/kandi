@@ -1,4 +1,3 @@
 # First non-comment line is the HTTPS origin the native app loads.
-# Replace this with the permanent Render (or other) URL once it exists.
-# The current 72h preview is temporary and may still be on an older build.
-https://workspace-ndancq.openpouch.sh
+# Permanent Render URL for Kandi.
+https://kandi-6rih.onrender.com
