@@ -27,6 +27,9 @@ const TEST_SECRET = "whsec_test_fixture_not_a_real_secret";
 const PRICE = {
   plus_monthly: "price_plus_month_test",
   plus_yearly: "price_plus_year_test",
+  plus_3mo: "price_plus_3mo_test",
+  plus_6mo: "price_plus_6mo_test",
+  founding_monthly: "price_founding_month_test",
 };
 
 let db;
@@ -451,6 +454,106 @@ describe("HTTP routes", () => {
       assert.ok(!result.json.url);
     } finally {
       await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test("founding checkout adds a 365-day trial only for founding members", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_xxx";
+    process.env.STRIPE_PRICE_IDS = JSON.stringify(PRICE);
+    process.env.STRIPE_WEBHOOK_SECRET = TEST_SECRET;
+    process.env.KANDI_PUBLIC_URL = "https://kandi.example";
+    billing.resetPriceCache();
+
+    const created = [];
+    billing.setStripeFactory(() => ({
+      checkout: {
+        sessions: {
+          create: async (params) => {
+            created.push(params);
+            return { id: "cs_founding", url: "https://checkout.stripe.com/c/pay/cs_founding" };
+          },
+        },
+      },
+    }));
+
+    const regular = await addUser({ username: "regularcheckout" });
+    const founder = await addUser({ username: "foundercheckout" });
+    await db.prepare(`UPDATE users SET is_founder=1, founding_number=1 WHERE id=?`).run(founder.id);
+    const founderRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(founder.id);
+
+    const app = express();
+    app.use(express.json({ limit: "1mb" }));
+    const usersById = { [regular.id]: regular, [founderRow.id]: founderRow };
+    billing.installStripeBilling({
+      app,
+      getDb: () => db,
+      auth: (req, _res, next) => {
+        const raw = String(req.headers["x-test-user"] || regular.id);
+        req.user = usersById[Number(raw)] || regular;
+        next();
+      },
+      isNativeIosClient: () => false,
+      publicUser: (u) => ({ id: Number(u.id), subscription: u.subscription || null }),
+    });
+    const server = await new Promise((resolve) => {
+      const s = app.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    const port = server.address().port;
+
+    function checkout(body, userId) {
+      return new Promise((resolve, reject) => {
+        const payload = Buffer.from(JSON.stringify(body));
+        const req = http.request({
+          hostname: "127.0.0.1",
+          port,
+          path: "/api/billing/checkout",
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "content-length": payload.length,
+            "x-test-user": String(userId),
+          },
+        }, (res) => {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => {
+            const text = Buffer.concat(chunks).toString("utf8");
+            resolve({ status: res.statusCode, json: JSON.parse(text) });
+          });
+        });
+        req.on("error", reject);
+        req.write(payload);
+        req.end();
+      });
+    }
+
+    try {
+      const denied = await checkout({ plan: "founding", interval: "monthly" }, regular.id);
+      assert.equal(denied.status, 403);
+      assert.equal(denied.json.code, "founders_only");
+      assert.equal(created.length, 0);
+
+      const plus = await checkout({ plan: "plus", interval: "monthly" }, regular.id);
+      assert.equal(plus.status, 200);
+      assert.equal(created.length, 1);
+      assert.equal(created[0].line_items[0].price, PRICE.plus_monthly);
+      assert.equal(created[0].subscription_data.trial_period_days, undefined);
+
+      const founding = await checkout({ plan: "founding", interval: "monthly" }, founderRow.id);
+      assert.equal(founding.status, 200);
+      assert.equal(created.length, 2);
+      const params = created[1];
+      assert.equal(params.mode, "subscription");
+      assert.equal(params.line_items[0].price, PRICE.founding_monthly);
+      assert.equal(params.subscription_data.trial_period_days, 365);
+      assert.equal(params.metadata.priceKey, "founding_monthly");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      billing.setStripeFactory(null);
+      delete process.env.STRIPE_SECRET_KEY;
+      delete process.env.STRIPE_PRICE_IDS;
+      delete process.env.STRIPE_WEBHOOK_SECRET;
+      delete process.env.KANDI_PUBLIC_URL;
     }
   });
 });

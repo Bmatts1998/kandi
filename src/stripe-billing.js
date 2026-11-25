@@ -504,6 +504,11 @@ function installStripeBilling({ app, getDb, auth, isNativeIosClient, publicUser 
       allow_promotion_codes: true,
     };
     if (req.user.stripe_customer_id) sessionParams.customer = req.user.stripe_customer_id;
+    // Founding members get 12 months free, then $4.99/mo. The existing
+    // founders_only check already rejects anyone who did not claim a slot.
+    if (key === "founding_monthly" && Number(req.user.is_founder)) {
+      sessionParams.subscription_data.trial_period_days = 365;
+    }
     try {
       const session = await stripe.checkout.sessions.create(sessionParams);
       if (!session || !session.url) {
