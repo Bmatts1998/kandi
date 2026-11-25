@@ -378,3 +378,19 @@
     .pick-more { position: relative; flex: 0 0 92px; height: 92px; border-radius: 12px; border: 1px dashed rgba(255,92,0,.55);
       display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--orange2); }
     .big-pick input[type=file], .pick-more input[type=file] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+    /* ---- Tab bar pinned at all times (iOS WKWebView / older Safari without dvh) ---- */
+    :root { --tabbar-h: 64px; }
+    html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+    body { position: fixed; inset: 0; width: 100%; }
+    #app { height: 100vh; height: 100dvh; }
+    @media (max-width: 430px) { #app { position: fixed; inset: 0; height: auto; max-height: none; } }
+    .screen.has-tabs { padding-bottom: calc(var(--tabbar-h) + var(--safe-b)); }
+    .screen.has-tabs .tabbar { position: fixed; z-index: 45; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 390px; min-height: calc(var(--tabbar-h) + var(--safe-b)); }
+    @media (max-width: 430px) { .screen.has-tabs .tabbar { max-width: none; } }
+    /* Bottom sheets sit above the content but leave the tab bar visible and tappable. */
+    .screen.has-tabs .sheet-bg { bottom: calc(var(--tabbar-h) + var(--safe-b)); }
+    .screen.has-tabs .sheet { padding-bottom: 18px; max-height: 92%; }
+    .screen.has-tabs .fab-post { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
+    .toast { bottom: calc(var(--tabbar-h) + 20px + env(safe-area-inset-bottom, 0px)); }

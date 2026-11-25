@@ -1091,7 +1091,7 @@
     html += `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
       <div class="tiny">${p.subscription ? "Free during the beta — no payment on file." : "Free to use. Kandi+ (free during the beta) adds unlimited likes and more."}</div></div>
       ${p.subscription ? `<button class="btn sm ghost" data-act="cancel-sub">Turn off</button>` : `<button class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
-    </div>`;
+    </div></div>`;
     html += `<h3 style="margin:22px 0 10px;font-size:16px">Safety</h3>
       <div class="notice warn" style="margin-bottom:10px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     if (state.locationShare) {
@@ -1405,7 +1405,7 @@
       else if (state.tab === "events") body = viewEvents();
       else if (state.tab === "matches") body = viewMatches();
       else body = viewYou();
-      html = `<div class="screen">${body}${tabbar()}${overlays()}</div>`;
+      html = `<div class="screen has-tabs">${body}${tabbar()}${overlays()}</div>`;
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "");
