@@ -574,7 +574,7 @@
     crewBadges: {},
     profileCrews: [],
     crewPeople: [],
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "" },
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -754,6 +754,7 @@
     const isForm = typeof FormData !== "undefined" && opts.body instanceof FormData;
     const body = opts.body && typeof opts.body !== "string" && !isForm ? JSON.stringify(opts.body) : opts.body;
     const headers = Object.assign({}, isForm ? {} : { "Content-Type": "application/json" }, opts.headers || {});
+    if (isNativeIos() && !headers["X-Kandi-Client"]) headers["X-Kandi-Client"] = "ios";
     const attempts = method === "GET" ? 3 : 2;
     netStart();
     try {
@@ -1019,6 +1020,21 @@
   }
   function isPlus() { return state.me && (state.me.subscription === "plus" || state.me.subscription === "vip"); }
   function isVip() { return state.me && state.me.subscription === "vip"; }
+  function isNativeIos() {
+    try {
+      const cap = window.Capacitor;
+      if (cap) {
+        const platform = typeof cap.getPlatform === "function" ? cap.getPlatform() : "";
+        if (platform === "ios") return true;
+        if (typeof cap.isNativePlatform === "function" && cap.isNativePlatform() && platform !== "android") {
+          const ua = navigator.userAgent || "";
+          if (/iPhone|iPad|iPod/i.test(ua)) return true;
+        }
+      }
+    } catch (_) { /* ignore */ }
+    const ua = navigator.userAgent || "";
+    return /Capacitor/i.test(ua) && /iPhone|iPad|iPod/i.test(ua);
+  }
   function isIosSafari() {
     const ua = navigator.userAgent || "";
     const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -1634,6 +1650,10 @@
           : `<div>📷 Add a profile photo</div><p class="tiny" style="margin-top:6px">Optional, but people recognize you faster with a photo. You can also add one in the next steps.</p>`}
         <input type="file" accept="image/*" data-act-file="claim-photo" />
       </label>
+      <label class="agree-row">
+        <input type="checkbox" data-act="toggle-agree-terms" ${state.drafts.agreeTerms ? "checked" : ""} />
+        <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I confirm I am 18 or older.</span>
+      </label>
       ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
       <button class="btn primary" data-act="claim-finish" style="margin-top:16px">Save and enter Kandi</button>
     </div></div>`;
@@ -1651,10 +1671,14 @@
         <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
         <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="new-password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
+        <label class="agree-row">
+          <input type="checkbox" data-act="toggle-agree-terms" ${state.drafts.agreeTerms ? "checked" : ""} />
+          <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I confirm I am 18 or older.</span>
+        </label>
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <button class="btn primary" data-act="signup" style="margin-top:16px">Create account</button>
         <button class="btn ghost" data-act="show-login" style="margin-top:8px">I already have an account</button>
-        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
       ` : `
         <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="current-password" placeholder="Password" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
@@ -1663,7 +1687,7 @@
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
         <p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>
-        <p class="tiny" style="margin-top:10px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+        <p class="tiny" style="margin-top:10px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
         ${iosTip()}
       `}
     </div></div>`;
@@ -1773,12 +1797,12 @@
     const head = header("Likes You", `<span class="pill">${state.inbound.count || 0}</span>`);
     if (state.inbound.locked) {
       const preview = state.inbound.people || [];
-      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. Unlock Kandi+ to see who they are.</p>
+      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are."}</p>
         <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#111111">
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">See who likes you</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">Kandi+ is free during the beta.</p></div>`;
+        <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">${isNativeIos() ? "Kandi+ coming soon" : "See who likes you"}</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">${isNativeIos() ? "Kandi+ is not for sale in this version. It will use Apple In-App Purchase when it launches." : "Kandi+ is free during the beta."}</p></div>`;
     }
     if (!state.inbound.people.length) {
       return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes a photo or prompt, they'll land here.</p></div></div>`;
@@ -2209,6 +2233,9 @@
     const p = state.me || {};
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
     const row = (act, label, sub, extra) => `<button type="button" class="set-row" data-act="${act}" ${extra || ""}><div class="grow"><div>${label}</div>${sub ? `<div class="tiny">${sub}</div>` : ""}</div><span aria-hidden="true">›</span></button>`;
+    const plusRow = isNativeIos()
+      ? row("paywall", p.subscription ? plan + " · coming soon" : "Kandi+ coming soon", "Paid plans are not sold in this iOS version. They will use Apple In-App Purchase when they launch.", 'data-reason="upgrade"')
+      : (p.subscription ? row("cancel-sub", plan + " · free during the beta", "No payment on file. Tap to turn it off") : row("paywall", "Get Kandi+", "Free during the beta: unlimited likes, see who likes you", 'data-reason="upgrade"'));
     let html = `<div class="label">Account</div><div class="set-group">
         ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
         ${row("preview-profile", "Preview my profile", "See what other ravers see")}
@@ -2216,7 +2243,7 @@
         <div class="set-row static"><div class="grow"><div>Username</div><div class="tiny">@${esc(p.username || "")}</div></div></div>
       </div>
       <div class="label">Subscription</div><div class="set-group">
-        ${p.subscription ? row("cancel-sub", plan + " · free during the beta", "No payment on file. Tap to turn it off") : row("paywall", "Get Kandi+", "Free during the beta: unlimited likes, see who likes you", 'data-reason="upgrade"')}
+        ${plusRow}
       </div>
       <div class="label">Community</div><div class="set-group">
         ${row("open-groups", "Rave Groups", "Form a crew or join one")}
@@ -2234,6 +2261,7 @@
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
         <a class="set-row" href="/privacy" target="_blank" rel="noopener"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
         <a class="set-row" href="/terms" target="_blank" rel="noopener"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
+        <a class="set-row" href="/support" target="_blank" rel="noopener"><div class="grow">Support</div><span aria-hidden="true">›</span></a>
       </div>
       <div class="notice warn" style="margin-bottom:18px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     html += iosTip();
@@ -2242,6 +2270,7 @@
         <button type="button" class="set-row danger-row" data-act="delete-account"><div class="grow">Delete account</div><span aria-hidden="true">›</span></button>
       </div>
       <p class="tiny" style="text-align:center;margin-top:16px">Kandi v1.2</p>`;
+
     return html;
   }
 
@@ -2809,6 +2838,20 @@
         <button class="btn ghost" style="margin-top:8px" data-act="close">Keep my account</button></div></div>`;
     }
     if (o.type === "paywall") {
+      if (isNativeIos()) {
+        return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
+          <div class="scroll pad">${beads(8)}
+          <h2 class="h2" style="text-align:center;margin:12px 0 6px">Kandi+ coming soon</h2>
+          <p class="sub" style="text-align:center">Kandi is free to use in this version. Paid Kandi+ and VIP plans are not for sale in the iOS app yet. When they launch, they will use Apple In-App Purchase — we will never ask you to pay outside the App Store.</p>
+          <div class="card" style="margin-top:18px">
+            <div class="feat"><span>Unlimited likes</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>See who likes you</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>Advanced filters</span><span class="tiny">Soon</span></div>
+            <div class="feat"><span>Rewinds</span><span class="tiny">Soon</span></div>
+          </div>
+          <button class="btn primary" style="margin-top:18px" data-act="close">Back to Kandi</button>
+          <p class="tiny" style="text-align:center;margin-top:10px">Free features stay available, including Discover, chat, events, and posting.</p></div></div>`;
+      }
       const prices = { weekly: { plus: "$12.99", vip: "$19.99", n: "per week" }, monthly: { plus: "$24.99", vip: "$39.99", n: "per month" }, six: { plus: "$89.99", vip: "$149.99", n: "every 6 months" } }[state.billing];
       const pending = state.pendingPlan;
       const rows = [
@@ -2912,7 +2955,7 @@
             `<button type="button" class="chip${(e.meetNote || "") === n ? " on" : ""}" data-act="meet-note" data-id="${esc(e.id)}" data-t="${esc(n)}">${esc(n)}</button>`).join("")}</div>
           <div class="row" style="margin-top:8px;gap:8px"><input data-field="meetNote" aria-label="Meetup note" placeholder="Or write your own (e.g. down to rail)" value="${esc(state.drafts.meetNote != null && state.drafts.meetNote !== "" ? state.drafts.meetNote : (e.meetNote || ""))}" />
           <button type="button" class="btn sm primary" data-act="save-meet-note" data-id="${esc(e.id)}">Save</button></div></div>` : ""}
-        ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
+        ${isNativeIos() ? "" : (!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`)}
         <div class="row" style="margin:6px 0 8px"><div class="label grow" style="margin:0">Photos from this show</div>
           <button class="btn sm primary" data-act="open-composer" data-event="${esc(e.id)}">📷 Add photos</button></div>
         ${(state.eventPosts && state.eventPosts.id === e.id)
@@ -3415,7 +3458,11 @@
       if (act === "claim-finish") {
         const password = (state.drafts.claimPass || "").trim();
         const age = Number(state.drafts.claimAge);
-        const data = await api("/api/claim", { method: "POST", body: { token: state.claimToken, password, age } });
+        if (!state.drafts.agreeTerms) {
+          state.err = "Please agree to the Terms of Use and Privacy Policy to continue.";
+          render(); return;
+        }
+        const data = await api("/api/claim", { method: "POST", body: { token: state.claimToken, password, age, acceptedTerms: true } });
         applyMe(data);
         connectWs();
         history.replaceState({}, "", "/");
@@ -3544,8 +3591,17 @@
       }
       if (act === "show-signup") { state.overlay = { type: "signup" }; state.info = ""; render(); return; }
       if (act === "show-login") { state.overlay = null; state.info = ""; render(); return; }
+      if (act === "toggle-agree-terms") {
+        state.drafts.agreeTerms = !state.drafts.agreeTerms;
+        state.err = "";
+        render(); return;
+      }
       if (act === "signup") {
-        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age) } });
+        if (!state.drafts.agreeTerms) {
+          state.err = "Please agree to the Terms of Use and Privacy Policy to create an account.";
+          render(); return;
+        }
+        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), acceptedTerms: true } });
         applyMe({ user: data.user, likesLeft: DAILY });
         state.view = "onboard"; state.onboardStep = 0; state.overlay = null;
         connectWs();
@@ -3945,6 +4001,7 @@
       if (act === "billing") { state.billing = id; render(); return; }
       if (act === "pick-plan") { state.pendingPlan = id; render(); return; }
       if (act === "buy") {
+        if (isNativeIos()) { state.overlay = { type: "paywall", reason: "upgrade" }; render(); return; }
         const data = await api("/api/subscribe", { method: "POST", body: { plan: state.pendingPlan } });
         state.me = data.user; state.overlay = { type: "purchased" }; await refreshAll(); render(); return;
       }
@@ -4478,7 +4535,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",

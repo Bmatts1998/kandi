@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 const { normalizePhoto, sniffImageMime } = require("./photo");
 const { listUpcomingForProfile } = require("./meetup");
+const { contentRejected } = require("./content-filter");
 
 const MAX_POST_PHOTOS = 10;
 
@@ -281,6 +282,8 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
           return res.status(400).json({ error: msg });
         }
         const caption = String((req.body && req.body.caption) || "").trim().slice(0, 2000);
+        const capBad = contentRejected(caption);
+        if (capBad) return res.status(400).json({ error: capBad });
         const eventId = String((req.body && req.body.eventId) || "").trim() || null;
         const files = req.files || {};
         const imageFiles = [...(files.photos || []), ...(files.photo || [])].slice(0, MAX_POST_PHOTOS);
@@ -412,6 +415,8 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     const id = Number(req.params.id);
     const text = String(req.body.text || "").trim().slice(0, 500);
     if (!text) return res.status(400).json({ error: "Write a comment." });
+    const commentBad = contentRejected(text);
+    if (commentBad) return res.status(400).json({ error: commentBad });
     const post = await db().prepare(`SELECT * FROM posts WHERE id=?`).get(id);
     if (!post) return res.status(404).json({ error: "Post not found." });
     const blocked = await blockedSet(req.user.id);

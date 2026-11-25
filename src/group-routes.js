@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const { normalizePhoto } = require("./photo");
+const { contentRejected } = require("./content-filter");
 
 const MAX_NAME = 40;
 const MAX_BIO = 280;
@@ -361,6 +362,8 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
     }
     const emoji = cleanEmoji(req.body && req.body.emoji);
     const bio = String((req.body && req.body.bio) || "").trim().slice(0, MAX_BIO);
+    const bioBad = contentRejected(bio);
+    if (bioBad) return res.status(400).json({ error: bioBad });
     const homeScene = String((req.body && req.body.homeScene) || "").trim().slice(0, MAX_SCENE);
     const joinMode = cleanJoinMode(req.body && req.body.joinMode);
     const info = await db().prepare(
@@ -393,6 +396,8 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
     }
     const emoji = req.body && req.body.emoji != null ? cleanEmoji(req.body.emoji) : crew.emoji;
     const bio = req.body && req.body.bio != null ? String(req.body.bio).trim().slice(0, MAX_BIO) : crew.bio;
+    const editBioBad = contentRejected(bio);
+    if (editBioBad) return res.status(400).json({ error: editBioBad });
     const homeScene = req.body && req.body.homeScene != null ? String(req.body.homeScene).trim().slice(0, MAX_SCENE) : crew.home_scene;
     const joinMode = req.body && req.body.joinMode != null ? cleanJoinMode(req.body.joinMode) : crew.join_mode;
     await db().prepare(`UPDATE crews SET name=?, emoji=?, bio=?, home_scene=?, join_mode=? WHERE id=?`)
@@ -661,6 +666,8 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
     if (!mem) return res.status(403).json({ error: "Join this crew to chat." });
     const text = String((req.body && req.body.text) || "").trim().slice(0, MAX_MESSAGE);
     if (!text) return res.status(400).json({ error: "Message is empty." });
+    const crewMsgBad = contentRejected(text);
+    if (crewMsgBad) return res.status(400).json({ error: crewMsgBad });
     const info = await db().prepare(`INSERT INTO crew_messages (crew_id, from_id, text, created_at) VALUES (?,?,?,datetime('now'))`)
       .run(id, req.user.id, text);
     const msg = await db().prepare(`SELECT id, from_id AS fromId, text, created_at AS at FROM crew_messages WHERE id=?`)

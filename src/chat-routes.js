@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
 const { normalizePhoto, servePhoto } = require("./photo");
+const { contentRejected } = require("./content-filter");
 const { sendBuffer } = require("./media");
 const {
   MAX_VOICE_SECONDS, MAX_VIDEO_SECONDS, MAX_VOICE_BYTES, MAX_VIDEO_BYTES,
@@ -256,6 +257,8 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
 
     const body = req.body || {};
     const text = String(body.text || "").trim().slice(0, 1000);
+    const msgBad = contentRejected(text);
+    if (msgBad) return res.status(400).json({ error: msgBad });
     let typ = String(body.type || body.attachType || "").trim().toLowerCase();
     if (typ === "audio") typ = "voice";
     if (typ && !["voice", "photo", "video", "music"].includes(typ)) {

@@ -1,5 +1,7 @@
 "use strict";
 
+const { contentRejected } = require("./content-filter");
+
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -272,6 +274,8 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
         if (!file) return res.status(400).json({ error: "Add a photo or a short video to post a story." });
 
         const textOverlay = String((req.body && req.body.textOverlay) || (req.body && req.body.text) || "").trim().slice(0, MAX_STORY_TEXT);
+        const storyBad = contentRejected(textOverlay);
+        if (storyBad) return res.status(400).json({ error: storyBad });
         const eventId = String((req.body && req.body.eventId) || "").trim() || null;
         if (eventId) {
           const ev = await db().prepare(`SELECT id FROM events WHERE id=?`).get(eventId);
@@ -382,6 +386,8 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
   app.post("/api/stories/:id/reply", auth, async (req, res) => {
     const id = Number(req.params.id);
     const text = String((req.body && req.body.text) || "").trim().slice(0, 1000);
+    const replyBad = contentRejected(text);
+    if (replyBad) return res.status(400).json({ error: replyBad });
     if (!text) return res.status(400).json({ error: "Message is empty." });
     const cutoff = storyCutoffIso();
     const row = await db().prepare(`SELECT * FROM stories WHERE id=? AND created_at>=?`).get(id, cutoff);

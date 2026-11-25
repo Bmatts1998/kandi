@@ -23,6 +23,7 @@ const {
 } = require("./meetup");
 const { parseTunes, MAX_TUNES } = require("./tunes");
 const { installStories } = require("./stories");
+const { contentRejected, rejectedFromAll } = require("./content-filter");
 
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
@@ -307,6 +308,19 @@ function publicUser(u, extra) {
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
+function acceptedTerms(body) {
+  const v = body && body.acceptedTerms;
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
+function isNativeIosClient(req) {
+  const h = String((req.get && req.get("x-kandi-client")) || req.headers["x-kandi-client"] || "").toLowerCase();
+  if (h === "ios" || h === "capacitor-ios") return true;
+  const ua = String((req.get && req.get("user-agent")) || req.headers["user-agent"] || "");
+  return /Capacitor/i.test(ua) && /iPhone|iPad|iPod/i.test(ua);
+}
+
 function isPlus(sub) {
   return sub === "plus" || sub === "vip";
 }
@@ -339,6 +353,9 @@ app.post("/api/signup", async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (name.length < 2) return res.status(400).json({ error: "Please enter your name." });
   if (!Number.isInteger(age) || age < 18 || age > 99) return res.status(400).json({ error: "Kandi is 18+. Enter an age between 18 and 99." });
+  if (!acceptedTerms(req.body)) return res.status(400).json({ error: "Please agree to the Terms of Use and Privacy Policy to create an account." });
+  const nameBad = contentRejected(name);
+  if (nameBad) return res.status(400).json({ error: nameBad });
   const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
   const hash = bcrypt.hashSync(password, 10);
@@ -451,6 +468,8 @@ app.put("/api/me", auth, async (req, res) => {
   const looking = body.looking != null ? JSON.stringify(body.looking) : req.user.looking;
   const prompts = body.prompts != null ? JSON.stringify(body.prompts) : req.user.prompts;
   if (!name || name.length < 2) return res.status(400).json({ error: "Name is required." });
+  const profileBad = rejectedFromAll([name, bio, body.prompts, body.favoriteArtists, body.favoriteFestival, body.favoriteVenue, body.favoriteHangout, body.raveTotem, body.hobbies]);
+  if (profileBad) return res.status(400).json({ error: profileBad });
   let showUpcoming = req.user.show_upcoming;
   if (body.showUpcoming != null || body.show_upcoming != null) {
     showUpcoming = (body.showUpcoming ?? body.show_upcoming) ? 1 : 0;
@@ -947,6 +966,8 @@ app.post("/api/block", auth, async (req, res) => {
   if (!id || id === req.user.id) return res.status(400).json({ error: "Invalid user." });
   await db.prepare(`INSERT OR REPLACE INTO blocks (user_id, blocked_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
   const [a, b] = pairIds(req.user.id, id);
+  const match = await db.prepare(`SELECT id FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
+  if (match) await db.prepare(`DELETE FROM messages WHERE match_id=?`).run(match.id);
   await db.prepare(`DELETE FROM matches WHERE a_id=? AND b_id=?`).run(a, b);
   await db.prepare(`DELETE FROM likes WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`).run(req.user.id, id, id, req.user.id);
   res.json({ ok: true });
@@ -959,6 +980,8 @@ app.post("/api/report", auth, async (req, res) => {
   await db.prepare(`INSERT INTO reports (reporter_id, target_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
   await db.prepare(`INSERT OR IGNORE INTO blocks (user_id, blocked_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
   const [ra, rb] = pairIds(req.user.id, id);
+  const reportedMatch = await db.prepare(`SELECT id FROM matches WHERE a_id=? AND b_id=?`).get(ra, rb);
+  if (reportedMatch) await db.prepare(`DELETE FROM messages WHERE match_id=?`).run(reportedMatch.id);
   await db.prepare(`DELETE FROM matches WHERE a_id=? AND b_id=?`).run(ra, rb);
   await db.prepare(`DELETE FROM likes WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`).run(req.user.id, id, id, req.user.id);
   res.json({ ok: true, blocked: true });
@@ -997,6 +1020,9 @@ app.get("/api/plans", (_req, res) => {
 });
 
 app.post("/api/subscribe", auth, async (req, res) => {
+  if (isNativeIosClient(req)) {
+    return res.status(403).json({ error: "Kandi+ is coming soon and will be sold only through Apple In-App Purchase.", code: "plus_coming_soon" });
+  }
   const plan = req.body.plan === "vip" ? "vip" : req.body.plan === "plus" ? "plus" : null;
   if (!plan) return res.status(400).json({ error: "Pick Kandi+ or Kandi VIP." });
   // TODO: create a Stripe Checkout Session (or IAP) and only set subscription after a verified webhook.
@@ -1042,6 +1068,7 @@ app.post("/api/claim", async (req, res) => {
   if (!Number.isInteger(age) || age < 18 || age > 99) {
     return res.status(400).json({ error: "Kandi is 18+. Enter your real age, between 18 and 99." });
   }
+  if (!acceptedTerms(req.body)) return res.status(400).json({ error: "Please agree to the Terms of Use and Privacy Policy to continue." });
   const row = await db.prepare(`SELECT * FROM setup_tokens WHERE token_hash=?`).get(sha256(token));
   if (!row || new Date(row.expires_at).getTime() < Date.now()) {
     return res.status(404).json({ error: "That setup link is invalid or has expired." });
@@ -1129,6 +1156,9 @@ app.get(["/privacy", "/privacy.html"], (_req, res) => {
 });
 app.get(["/terms", "/terms.html"], (_req, res) => {
   res.sendFile(path.join(root, "public", "terms.html"));
+});
+app.get(["/support", "/support.html"], (_req, res) => {
+  res.sendFile(path.join(root, "public", "support.html"));
 });
 
 app.get("*", (req, res, next) => {
