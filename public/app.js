@@ -1082,6 +1082,72 @@
     ).join("")}</div>`;
   }
 
+
+  // ---- Design system: one consistent line-icon set (24px grid, 1.75 stroke) ----
+  const KICON_PATHS = {
+    home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
+    discover: '<path d="M12 3c.6 3.9 2.1 5.4 6 6-3.9.6-5.4 2.1-6 6-.6-3.9-2.1-5.4-6-6 3.9-.6 5.4-2.1 6-6Z"/><path d="M18.5 15.5c.3 1.6.9 2.2 2.5 2.5-1.6.3-2.2.9-2.5 2.5-.3-1.6-.9-2.2-2.5-2.5 1.6-.3 2.2-.9 2.5-2.5Z"/>',
+    heart: '<path d="M12 20.5s-7.5-4.4-9.2-9.3C1.7 7.9 3.9 4.5 7.4 4.5c2 0 3.5 1.1 4.6 2.7 1.1-1.6 2.6-2.7 4.6-2.7 3.5 0 5.7 3.4 4.6 6.7-1.7 4.9-9.2 9.3-9.2 9.3Z"/>',
+    events: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    chat: '<path d="M20.5 11.6a8.4 8.4 0 0 1-12.3 7.5L3.5 20.5l1.4-4.4A8.4 8.4 0 1 1 20.5 11.6Z"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 20.5c1.2-3.8 4.3-5.5 8-5.5s6.8 1.7 8 5.5"/>',
+    bell: '<path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2H4.5l1.5-2Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+    share: '<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    back: '<path d="M15 5l-7 7 7 7"/>',
+    more: '<circle cx="5.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
+    sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+    rewind: '<path d="M4 4v5h5"/><path d="M5.1 15a7.5 7.5 0 1 0 .5-6.3L4 9"/>',
+  };
+  function kIcon(name, extraClass) {
+    const d = KICON_PATHS[name];
+    if (!d) return "";
+    return `<svg class="kic${extraClass ? " " + extraClass : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${d}</svg>`;
+  }
+  // Older templates still write text glyphs into icon buttons; swap them for the line icons as they render.
+  const GLYPH_ICONS = { "✕": "x", "‹": "back", "↗": "share", "⋯": "more", "⚙": "settings", "＋": "plus", "+": "plus", "🎙": "mic", "🔔": "bell", "♡": "heart", "♥": "heart:filled", "↺": "rewind", "💬": "chat", "✺": "sliders" };
+  const ICON_SCOPE = ".icon-btn, .heart-fab, .round, .post-actions > button, .fab-post";
+  function iconize(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll(ICON_SCOPE).forEach((el) => {
+      if (el.classList.contains("hot")) return;
+      const t = el.firstChild;
+      if (!t || t.nodeType !== 3) return;
+      const g = t.nodeValue.replace(/[\uFE0E\uFE0F\s]/g, "");
+      const hit = GLYPH_ICONS[g];
+      if (!hit) return;
+      const [name, mod] = hit.split(":");
+      const span = document.createElement("span");
+      span.className = "kic-wrap";
+      span.setAttribute("aria-hidden", "true");
+      span.innerHTML = kIcon(name, mod === "filled" ? "filled" : "");
+      el.replaceChild(span, t);
+    });
+  }
+  function startIconizer() {
+    const root = document.getElementById("app");
+    if (!root || typeof MutationObserver === "undefined") return;
+    iconize(root);
+    new MutationObserver(() => iconize(root)).observe(root, { childList: true, subtree: true });
+  }
+  // Dynamic Type: on iOS, follow the system text size (clamped so layouts stay intact).
+  function applyDynamicType() {
+    try {
+      const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (!iOS || !window.CSS || !CSS.supports("font", "-apple-system-body")) return;
+      const probe = document.createElement("span");
+      probe.style.cssText = "font:-apple-system-body;position:absolute;visibility:hidden";
+      probe.textContent = "A";
+      document.body.appendChild(probe);
+      const px = parseFloat(getComputedStyle(probe).fontSize) || 17;
+      probe.remove();
+      const base = Math.max(15, Math.min(21, px * 16 / 17));
+      document.documentElement.style.fontSize = base.toFixed(2) + "px";
+    } catch (_) { /* keep default 16px */ }
+  }
   function beads(n, size) {
     n = n || 8;
     return '<div class="beads" aria-hidden="true">' + Array.from({ length: n }, (_, i) =>
@@ -1937,7 +2003,7 @@
       </div>`;
     } else if (founding.open !== false) {
       status = `<div class="card founding-card" style="margin:12px 0">
-        <div class="tiny" style="letter-spacing:.08em;font-weight:800;color:var(--orange2)">FOUNDING MEMBERS</div>
+        <div class="tiny" style="letter-spacing:.08em;font-weight:600;color:var(--orange2)">FOUNDING MEMBERS</div>
         <p style="margin:8px 0 0">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get Kandi+ free for 12 months, a founding badge, and then ${esc(foundingOffer.label)} for life.</p>
         ${spots}
         <div class="label" style="margin-top:12px">Birthday</div>
@@ -2112,7 +2178,7 @@
     else actions = `<button class="btn primary" style="margin-top:16px" data-act="share-follow">Follow ${esc(p.name || "")}</button><button class="btn ghost" style="margin-top:8px" data-act="share-close">Not now</button>`;
     return `<div class="share-card">
       <div class="share-av">${personAvatar(p, "av prof-av")}</div>
-      <div class="nm" style="font-size:24px;font-weight:800;margin-top:12px">${esc(p.name || "")}${p.age ? ", " + esc(p.age) : ""}</div>
+      <div class="nm" style="font-size:24px;font-weight:600;margin-top:12px">${esc(p.name || "")}${p.age ? ", " + esc(p.age) : ""}</div>
       <div class="muted">@${esc(p.username || "")}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
       <div style="margin-top:8px;display:flex;justify-content:center">${genreRow(p, { compact: true, max: 3, tappable: false })}</div>
       ${p.favoriteSong ? `<div style="margin-top:14px;text-align:left">${songCard(p.favoriteSong, "sh" + p.id, { compact: true })}</div>` : ""}
@@ -2202,16 +2268,19 @@
   }
 
   function header(title, right) {
-    return `<div class="header"><div class="left">${beads(5, "sm")}<span class="wordmark grad" style="font-size:15px">${esc(title || "Kandi")}</span></div><div class="right">${right || ""}</div></div>`;
+    if (title && title !== "Kandi") {
+      return `<div class="header page-header"><div class="left"><h1 class="page-title">${esc(title)}</h1></div><div class="right">${right || ""}</div></div>`;
+    }
+    return `<div class="header"><div class="left">${beads(5, "sm")}<span class="wordmark grad" style="font-size:15px">Kandi</span></div><div class="right">${right || ""}</div></div>`;
   }
   function tabbar() {
     const items = [
-      ["home", "⌂", "Home"],
-      ["discover", "✦", "Discover"],
-      ["likes", "♡", "Likes"],
-      ["events", "✺", "Events"],
-      ["matches", "✉", "Chats"],
-      ["you", "●", "You"],
+      ["home", kIcon("home"), "Home"],
+      ["discover", kIcon("discover"), "Discover"],
+      ["likes", kIcon("heart"), "Likes"],
+      ["events", kIcon("events"), "Events"],
+      ["matches", kIcon("chat"), "Chats"],
+      ["you", kIcon("user"), "You"],
     ];
     return `<nav class="tabbar" aria-label="Main">${items.map((t) => {
       const on = state.tab === t[0];
@@ -2476,7 +2545,7 @@
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
         <button class="av-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av md")}</button>
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2 })}
+        <div class="grow"><div style="font-weight:600">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2 })}
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -2514,7 +2583,7 @@
       html += `<div class="event" style="margin-bottom:10px">
         <button type="button" class="event-main" data-act="event" data-id="${esc(e.id)}">
           <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${eventThumb(e)}</div>
-          <div class="grow"><div style="font-weight:800">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}${e.imOpenToMeet ? `<span class="chip soft">Open to meet</span>` : ""}</div>
+          <div class="grow"><div style="font-weight:600">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}${e.imOpenToMeet ? `<span class="chip soft">Open to meet</span>` : ""}</div>
           <div class="muted">${esc(eventWhen(e))}</div>
           <div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div>
           <div class="tiny going-line" style="margin-top:6px">${avatarStack(e.going)}<span>${bits.join(" · ")}</span></div></div>
@@ -2546,7 +2615,7 @@
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
+        <div class="grow"><div style="font-weight:600">${esc(p.name)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
         <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : "You matched. Say hi.")}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
@@ -3077,7 +3146,7 @@
     const evs = state.events || [];
     const photo = hiddenFileInput("post-photos", "Add photos", { accept: "image/*", multiple: true });
     const video = hiddenFileInput("post-video", "Add a short video", { accept: "video/*,video/mp4,video/quicktime,.mov,.mp4,.m4v" });
-    return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:800">New post</span></div>
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:600">New post</span></div>
       <div class="right"><button type="button" class="btn sm primary" data-act="submit-post">Post</button></div></div>
       <div class="scroll pad">
         <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:8px;min-height:96px">${esc(state.drafts.caption || "")}</textarea>
@@ -3520,18 +3589,18 @@
             ${built.error ? `<div class="err">${esc(built.error)}</div>` : profilePreview(view, posts, { isMe: false, asOthers: true, counts })}
           </div></div>`;
       }
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:800">Edit Profile</span></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:600">Edit Profile</span></div>
         <div class="right"><button type="button" class="btn sm ghost" data-act="preview-profile">Preview</button><button type="button" class="btn sm primary" data-act="save-profile">Save</button></div></div>
         <div class="scroll pad">${editProfileForm()}</div></div>`;
     }
     if (o.type === "settings") {
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:800">Settings</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Settings</span></div></div>
         <div class="scroll pad">${settingsBody()}</div></div>`;
     }
     if (o.type === "post") {
       const p = state.openPost || findPost(o.id);
       if (!p) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this post.</div></div>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Post</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">Post</span></div></div>
         <div class="scroll">${postCard(p)}</div></div>`;
     }
 
@@ -3545,7 +3614,7 @@
       const extra = u.isMe
         ? ""
         : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
           ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount } })}
           ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}</div>` : ""}
@@ -3658,7 +3727,7 @@
     if (o.type === "event") {
       const e = findEvent(o.id);
       if (!e) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this event.</div></div>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">${esc(e.name)}</span></div></div>
         <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
         <div class="event-detail-row"><div class="label" style="margin:0">Date &amp; time</div><div class="muted">${esc(eventWhen(e))}</div></div>
@@ -3774,7 +3843,7 @@
     }
     if (o.type === "notifs") {
       const list = state.notifs || [];
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:800">Notifications</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Notifications</span></div></div>
         <div class="scroll pad">${list.length ? list.map((n) => `<button class="notif row${n.unread ? " unread" : ""}" ${notifAct(n)}>
             ${n.user ? personAvatar(n.user, "av sm") : `<span class="av sm" style="background:linear-gradient(160deg,#111,#ff5c00)">♡</span>`}
             <div class="grow"><div>${notifText(n)}</div><div class="tiny">${esc(timeAgo(n.at))}</div></div>${n.unread ? `<span class="dot-new" aria-label="New"></span>` : ""}</button>`).join("")
@@ -3846,7 +3915,7 @@
       let body = "";
       if ((inbox.invites || []).length) {
         body += `<div class="label">Invites</div>` + inbox.invites.map((inv) => `<div class="card" style="margin-bottom:10px">
-          <div class="row">${crewChip(inv.group)}<div class="grow"><div style="font-weight:800">${esc(inv.group.name)}</div>
+          <div class="row">${crewChip(inv.group)}<div class="grow"><div style="font-weight:600">${esc(inv.group.name)}</div>
             <div class="tiny">${inv.invitedBy ? esc(inv.invitedBy.name) + " tagged you" : "You were tagged"} · ${inv.group.memberCount || 0} members</div></div></div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn sm primary" data-act="accept-crew-request" data-id="${inv.group.id}" data-rid="${inv.id}">Accept</button>
@@ -3855,7 +3924,7 @@
       }
       if ((inbox.requests || []).length) {
         body += `<div class="label" style="margin-top:8px">Join requests</div>` + inbox.requests.map((r) => `<div class="card" style="margin-bottom:10px">
-          <div class="row">${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:800">${esc(r.user.name)}</div>
+          <div class="row">${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:600">${esc(r.user.name)}</div>
             <div class="tiny">wants to join ${esc(r.group.emoji || "")} ${esc(r.group.name)}</div></div></div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn sm primary" data-act="accept-crew-request" data-id="${r.group.id}" data-rid="${r.id}">Approve</button>
@@ -3875,13 +3944,13 @@
       body += discover.length
         ? discover.map((c) => `<div class="card" style="margin-bottom:10px"><div class="row">
             <button type="button" class="crew-chip bare" data-act="open-group" data-id="${c.id}">${c.photoUrl ? `<span class="crew-av" ${lazyBg(c.photoUrl, 320)}></span>` : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`}</button>
-            <button type="button" class="grow left-btn stack" data-act="open-group" data-id="${c.id}"><div style="font-weight:800">${esc(c.name)}</div>
+            <button type="button" class="grow left-btn stack" data-act="open-group" data-id="${c.id}"><div style="font-weight:600">${esc(c.name)}</div>
               <div class="tiny">${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""} · ${c.joinMode === "public" ? "Open to join" : "Request to join"}</div>
               ${c.bio ? `<div class="muted" style="margin-top:4px">${esc(c.bio)}</div>` : ""}</button>
             <button class="btn sm ${c.joinMode === "public" ? "primary" : "ghost"}" data-act="join-group" data-id="${c.id}">${c.joinMode === "public" ? "Join group" : "Request"}</button>
           </div></div>`).join("")
         : `<div class="muted">No other crews to join yet.</div>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Rave Groups</span></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">Rave Groups</span></div>
         <div class="right"><button class="btn sm primary" data-act="create-group">New</button></div></div>
         <div class="scroll pad">${body}</div></div>`;
     }
@@ -3918,7 +3987,7 @@
         <div class="row" style="margin-top:12px"><input data-field="crewSearch" aria-label="Search people" autocapitalize="off" autocorrect="off" placeholder="Search by name or username" value="${esc(q)}" />
           <button class="btn sm primary" data-act="search-people">Search</button></div>
         <div style="margin-top:14px">${people.length ? people.map((u) => `<div class="row" style="margin-bottom:10px">
-          ${personAvatar(u, "av")}<div class="grow"><div style="font-weight:800">${esc(u.name)}</div><div class="tiny">@${esc(u.username)}</div></div>
+          ${personAvatar(u, "av")}<div class="grow"><div style="font-weight:600">${esc(u.name)}</div><div class="tiny">@${esc(u.username)}</div></div>
           ${u.inCrew ? `<span class="tiny">Already in</span>` : u.pending === "invite" ? `<span class="tiny">Invited</span>` : u.pending === "join" ? `<button class="btn sm primary" data-act="invite-friend" data-id="${u.id}">Approve</button>` : `<button class="btn sm primary" data-act="invite-friend" data-id="${u.id}">Tag</button>`}
         </div>`).join("") : (q ? `<div class="muted">No one matched “${esc(q)}”.</div>` : `<div class="muted">Search for someone to tag.</div>`)}</div>
         <button class="btn ghost" style="margin-top:8px" data-act="close-invite">Done</button></div></div>`;
@@ -3960,14 +4029,14 @@
       </div>`;
       if (isAdmin && (data.pendingJoins || []).length) {
         body += `<div class="label">Join requests</div>` + data.pendingJoins.map((r) => `<div class="row" style="margin-bottom:10px">
-          ${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:800">${esc(r.user.name)}</div><div class="tiny">@${esc(r.user.username)}</div></div>
+          ${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:600">${esc(r.user.name)}</div><div class="tiny">@${esc(r.user.username)}</div></div>
           <button class="btn sm primary" data-act="accept-crew-request" data-id="${g.id}" data-rid="${r.id}">Approve</button>
           <button class="btn sm ghost" data-act="deny-crew-request" data-id="${g.id}" data-rid="${r.id}">Deny</button>
         </div>`).join("");
       }
       body += `<div class="label">Members</div>` + members.map((m) => `<div class="row" style="margin-bottom:10px">
         <button type="button" class="row grow left-btn" data-act="open-profile" data-id="${m.id}" style="padding:0;gap:12px">
-          ${personAvatar(m, "av")}<span class="grow" style="text-align:left"><span style="font-weight:800;display:block">${esc(m.name)}${m.isMe ? " (you)" : ""}</span>
+          ${personAvatar(m, "av")}<span class="grow" style="text-align:left"><span style="font-weight:600;display:block">${esc(m.name)}${m.isMe ? " (you)" : ""}</span>
           <span class="tiny">${esc(roleLabel(m.role))}${m.username ? " · @" + esc(m.username) : ""}</span></span>
         </button>
         ${isAdmin && !m.isMe && m.role !== "owner" ? `<button class="btn sm ghost" data-act="remove-member" data-id="${g.id}" data-uid="${m.id}">Remove</button>` : ""}
@@ -3977,7 +4046,7 @@
         body += `<div class="label" style="margin-top:8px">Shows they're going to</div>` + upcoming.map((e) => `<button type="button" class="event" style="margin-bottom:10px" data-act="event-from-group" data-id="${esc(e.id)}">
           <div class="event-main">
             <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${esc(e.emoji || "✺")}</div>
-            <div class="grow"><div style="font-weight:800">${esc(e.name)}</div>
+            <div class="grow"><div style="font-weight:600">${esc(e.name)}</div>
               <div class="muted">${esc(e.date || eventWhen(e))}${e.venue ? " · " + esc(e.venue) : ""}</div>
               <div class="tiny">${(e.going || []).map((u) => esc(u.name)).join(", ")}</div></div>
           </div>
@@ -3993,7 +4062,7 @@
           <div class="row" style="margin-top:10px"><input data-field="crewChat" aria-label="Message the crew" enterkeyhint="send" autocomplete="off" placeholder="Message the crew..." value="${esc(state.drafts.crewChat || "")}" />
             <button class="btn sm primary" data-act="send-crew-chat" data-id="${g.id}">Send</button></div>`;
       }
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(g.name)}</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">${esc(g.name)}</span></div></div>
         <div class="scroll pad">${body}${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}</div></div>`;
     }
     return "";
@@ -4013,7 +4082,7 @@
       body += `<div class="label">People into ${esc(name)}</div>`;
       body += people.map((p) => `<button type="button" class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="open-profile" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+        <div class="grow"><div style="font-weight:600">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
           ${genreRow(p, { compact: true, max: 3, tappable: false })}
           ${p.sharedGenreChip ? `<div class="tiny meet-mini">${esc(p.sharedGenreChip)}</div>` : ""}
         </div></button>`).join("");
@@ -4024,7 +4093,7 @@
       body += `<div class="label" style="margin-top:16px">Upcoming shows</div>`;
       body += events.map((e) => `<button type="button" class="event" style="margin-bottom:8px;width:100%;text-align:left" data-act="event" data-id="${esc(e.id)}">
         <div class="event-main"><div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${esc(e.emoji || "✺")}</div>
-          <div class="grow"><div style="font-weight:800">${esc(e.name)}</div>
+          <div class="grow"><div style="font-weight:600">${esc(e.name)}</div>
             <div class="muted">${esc(e.date || "")}${e.venue ? " · " + esc(e.venue) : ""}</div></div></div>
       </button>`).join("");
     }
@@ -5975,5 +6044,7 @@
     }).catch(() => {});
   });
   if (window.matchMedia("(display-mode: standalone)").matches) document.body.classList.add("standalone");
+  applyDynamicType();
+  startIconizer();
   boot();
 })();

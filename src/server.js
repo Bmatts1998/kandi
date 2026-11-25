@@ -149,7 +149,7 @@ let indexHtmlCache = null;
 function sendIndex(res) {
   if (!indexHtmlCache) {
     indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
-      .replace(/(href|src)="\/(styles\.css|app\.js|video-prep\.js)"/g, `$1="/$2?v=${BUILD}"`);
+      .replace(/(href|src)="\/(styles\.css|design\.css|app\.js|video-prep\.js)"/g, `$1="/$2?v=${BUILD}"`);
   }
   noStore(res);
   res.type("html").send(indexHtmlCache);

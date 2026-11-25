@@ -64,11 +64,11 @@ test.describe("Profile preview, edit, and posts (iPhone WebKit)", () => {
     await expect(page.getByText("My Tunes")).toBeVisible();
     await expect(page.locator('[data-field="editTune0"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Preview" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Preview", exact: true }).first()).toBeVisible();
 
     const unique = "Preview bio " + Date.now();
     await page.locator('[data-field="editBio"]').fill(unique);
-    await page.getByRole("button", { name: "Preview" }).first().click();
+    await page.getByRole("button", { name: "Preview", exact: true }).first().click();
     await expect(page.getByRole("button", { name: "Back to editing" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
     await expect(page.getByText("how other people see your profile")).toBeVisible();
