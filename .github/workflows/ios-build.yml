@@ -1,11 +1,15 @@
 # Build Kandi for iOS and upload the archive to App Store Connect / TestFlight.
-# Do not start this workflow until repo secrets are set (see scripts/set-ios-secrets.sh).
+# Signing is App Store distribution only (manual). The team has no registered
+# devices, so automatic / development profiles cannot be generated.
 #
 # Secrets:
 #   APP_STORE_CONNECT_KEY_ID
 #   APP_STORE_CONNECT_ISSUER_ID
 #   APP_STORE_CONNECT_API_KEY   (.p8 file contents)
 #   APPLE_TEAM_ID
+#   DIST_CERT_P12_BASE64        (Apple Distribution cert + private key, base64 p12)
+#   DIST_CERT_PASSWORD
+#   APPSTORE_PROFILE_BASE64     (iOS App Store provisioning profile, base64)
 name: Kandi iOS (TestFlight)
 
 on:
@@ -28,6 +32,10 @@ jobs:
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+      DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+      APPSTORE_PROFILE_BASE64: ${{ secrets.APPSTORE_PROFILE_BASE64 }}
+      BUNDLE_ID: com.marshandbarb.kandi
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +75,33 @@ jobs:
             echo "No Podfile found; building with the Xcode project (Swift Package Manager)."
           fi
 
+      - name: Disable code signing on CocoaPods targets
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("ios/App/Pods/Pods.xcodeproj/project.pbxproj")
+          if not path.exists():
+              print("No Pods project to patch.")
+              raise SystemExit(0)
+          text = path.read_text()
+          needle = "buildSettings = {"
+          insert = (
+              "buildSettings = {\n"
+              "\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n"
+              "\t\t\t\tCODE_SIGNING_REQUIRED = NO;\n"
+              '\t\t\t\tCODE_SIGN_IDENTITY = "";\n'
+              "\t\t\t\tEXPANDED_CODE_SIGN_IDENTITY = \"\";"
+          )
+          if "CODE_SIGNING_ALLOWED = NO;" in text:
+              print("Pods project already has CODE_SIGNING_ALLOWED = NO.")
+          else:
+              count = text.count(needle)
+              path.write_text(text.replace(needle, insert))
+              print(f"Disabled signing in {count} Pods buildSettings blocks.")
+          PY
+
       - name: Set marketing version 1.0 and build number from github.run_number
         run: |
           set -euo pipefail
@@ -92,7 +127,6 @@ jobs:
           chmod 700 "${KEY_DIR}"
           KEY_PATH="${KEY_DIR}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
           echo "KEY_PATH=${KEY_PATH}" >> "${GITHUB_ENV}"
-          # altool looks in these default folders if a later fallback upload is needed
           mkdir -p "${HOME}/.appstoreconnect/private_keys" "${HOME}/private_keys"
           export KEY_PATH
           python3 - <<'PY'
@@ -121,11 +155,182 @@ jobs:
           print("Wrote AuthKey file,", path.stat().st_size, "bytes")
           PY
 
+      - name: Import Apple Distribution certificate and App Store profile
+        working-directory: .
+        run: |
+          set -euo pipefail
+          set +x
+          : "${DIST_CERT_P12_BASE64:?DIST_CERT_P12_BASE64 secret is not set}"
+          : "${DIST_CERT_PASSWORD:?DIST_CERT_PASSWORD secret is not set}"
+          : "${APPSTORE_PROFILE_BASE64:?APPSTORE_PROFILE_BASE64 secret is not set}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID secret is not set}"
+
+          CERT_P12="${RUNNER_TEMP}/dist-cert.p12"
+          PROFILE_PATH="${RUNNER_TEMP}/Kandi_App_Store.mobileprovision"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/kandi.keychain-db"
+          echo "CERT_P12=${CERT_P12}" >> "${GITHUB_ENV}"
+          echo "PROFILE_PATH=${PROFILE_PATH}" >> "${GITHUB_ENV}"
+          echo "KEYCHAIN_PATH=${KEYCHAIN_PATH}" >> "${GITHUB_ENV}"
+          export CERT_P12 PROFILE_PATH
+
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
+          import secrets
+          import subprocess
+          import sys
+
+          def decode_b64(name: str) -> bytes:
+              raw = os.environ[name].strip()
+              raw = "".join(raw.split())
+              return base64.b64decode(raw)
+
+          cert_path = pathlib.Path(os.environ["CERT_P12"])
+          cert_path.write_bytes(decode_b64("DIST_CERT_P12_BASE64"))
+          cert_path.chmod(0o600)
+          if cert_path.stat().st_size < 100:
+              raise SystemExit("Decoded distribution certificate p12 is unexpectedly small")
+
+          profile_path = pathlib.Path(os.environ["PROFILE_PATH"])
+          profile_path.write_bytes(decode_b64("APPSTORE_PROFILE_BASE64"))
+          profile_path.chmod(0o600)
+          if profile_path.stat().st_size < 100:
+              raise SystemExit("Decoded provisioning profile is unexpectedly small")
+
+          print(f"Wrote p12 ({cert_path.stat().st_size} bytes) and profile ({profile_path.stat().st_size} bytes)")
+
+          # Persist a keychain password for this job only (not a repo secret).
+          kc_pass_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "kandi-keychain-pass"
+          kc_pass_path.write_text(secrets.token_urlsafe(32))
+          kc_pass_path.chmod(0o600)
+          pathlib.Path(os.environ["RUNNER_TEMP"], "kandi-keychain-pass-path").write_text(str(kc_pass_path))
+          PY
+
+          KEYCHAIN_PASSWORD="$(python3 -c 'from pathlib import Path; import os; print(Path(os.environ["RUNNER_TEMP"], "kandi-keychain-pass").read_text(), end="")')"
+          P12_PASSWORD="$(python3 -c 'import os; print(os.environ["DIST_CERT_PASSWORD"].strip(), end="")')"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+
+          # Keep the login keychain on the search list for system roots / WWDR.
+          LOGIN_KC="${HOME}/Library/Keychains/login.keychain-db"
+          if [ ! -f "${LOGIN_KC}" ]; then
+            LOGIN_KC="${HOME}/Library/Keychains/login.keychain"
+          fi
+          if [ -f "${LOGIN_KC}" ]; then
+            security list-keychains -d user -s "${KEYCHAIN_PATH}" "${LOGIN_KC}"
+          else
+            security list-keychains -d user -s "${KEYCHAIN_PATH}"
+          fi
+          security default-keychain -d user -s "${KEYCHAIN_PATH}"
+
+          security import "${CERT_P12}" \
+            -P "${P12_PASSWORD}" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "${KEYCHAIN_PATH}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/xcodebuild \
+            -T /usr/bin/xcrun
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "${KEYCHAIN_PASSWORD}" \
+            "${KEYCHAIN_PATH}" >/dev/null
+
+          echo "Codesigning identities in the temporary keychain:"
+          IDENTITIES="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}")"
+          echo "${IDENTITIES}"
+          if ! echo "${IDENTITIES}" | grep -q "Apple Distribution"; then
+            echo "Apple Distribution identity was not found after importing the p12."
+            exit 1
+          fi
+
+          # Decode profile metadata (name + UUID) and install where Xcode looks.
+          PROFILE_PLIST="${RUNNER_TEMP}/kandi-profile.plist"
+          security cms -D -i "${PROFILE_PATH}" > "${PROFILE_PLIST}"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "${PROFILE_PLIST}")"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "${PROFILE_PLIST}")"
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "${PROFILE_PLIST}")"
+          echo "Installed profile name=${PROFILE_NAME} uuid=${PROFILE_UUID} app_id=${PROFILE_APP_ID}"
+          if [ -z "${PROFILE_NAME}" ] || [ -z "${PROFILE_UUID}" ]; then
+            echo "Could not read the provisioning profile name or UUID."
+            exit 1
+          fi
+          echo "APPSTORE_PROFILE_NAME=${PROFILE_NAME}" >> "${GITHUB_ENV}"
+          echo "APPSTORE_PROFILE_UUID=${PROFILE_UUID}" >> "${GITHUB_ENV}"
+
+          for dest in \
+            "${HOME}/Library/MobileDevice/Provisioning Profiles" \
+            "${HOME}/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          do
+            mkdir -p "${dest}"
+            cp "${PROFILE_PATH}" "${dest}/${PROFILE_UUID}.mobileprovision"
+            chmod 600 "${dest}/${PROFILE_UUID}.mobileprovision"
+          done
+
+      - name: Configure App target for manual App Store signing
+        run: |
+          set -euo pipefail
+          set +x
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID secret is not set}"
+          : "${APPSTORE_PROFILE_NAME:?APPSTORE_PROFILE_NAME was not set}"
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          path = pathlib.Path("ios/App/App.xcodeproj/project.pbxproj")
+          text = path.read_text()
+          team = os.environ["APPLE_TEAM_ID"].strip()
+          profile = os.environ["APPSTORE_PROFILE_NAME"]
+          bundle = os.environ.get("BUNDLE_ID", "com.marshandbarb.kandi")
+
+          def patch_block(block: str) -> str:
+              if f"PRODUCT_BUNDLE_IDENTIFIER = {bundle};" not in block:
+                  return block
+              replacements = {
+                  "CODE_SIGN_STYLE": "Manual",
+                  "CODE_SIGN_IDENTITY": '"Apple Distribution"',
+                  "DEVELOPMENT_TEAM": team,
+                  "PROVISIONING_PROFILE_SPECIFIER": f'"{profile}"',
+              }
+              for key, value in replacements.items():
+                  pattern = rf"{key} = [^;]+;"
+                  line = f"{key} = {value};"
+                  if re.search(pattern, block):
+                      block = re.sub(pattern, line, block)
+                  else:
+                      block = block.replace(
+                          "buildSettings = {",
+                          "buildSettings = {\n\t\t\t\t" + line,
+                          1,
+                      )
+              return block
+
+          parts = re.split(r"(buildSettings = \{.*?\n\t\t\t\};)", text, flags=re.S)
+          new_parts = [patch_block(p) if p.startswith("buildSettings = {") else p for p in parts]
+          new_text = "".join(new_parts)
+          if f'PROVISIONING_PROFILE_SPECIFIER = "{profile}"' not in new_text:
+              raise SystemExit("Failed to set PROVISIONING_PROFILE_SPECIFIER on the App target")
+          if "CODE_SIGN_STYLE = Manual;" not in new_text:
+              raise SystemExit("Failed to set CODE_SIGN_STYLE = Manual on the App target")
+          path.write_text(new_text)
+          print(f"App target signing set to Manual / Apple Distribution / {profile} / team {team}")
+          PY
+
       - name: Write ExportOptions.plist
         working-directory: .
         run: |
           set -euo pipefail
           set +x
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID secret is not set}"
+          : "${APPSTORE_PROFILE_NAME:?APPSTORE_PROFILE_NAME was not set}"
           EXPORT_PLIST="${RUNNER_TEMP}/ExportOptions.plist"
           echo "EXPORT_PLIST=${EXPORT_PLIST}" >> "${GITHUB_ENV}"
           export EXPORT_PLIST
@@ -133,7 +338,9 @@ jobs:
           import os
           import pathlib
 
-          team = os.environ["APPLE_TEAM_ID"]
+          team = os.environ["APPLE_TEAM_ID"].strip()
+          profile = os.environ["APPSTORE_PROFILE_NAME"]
+          bundle = os.environ.get("BUNDLE_ID", "com.marshandbarb.kandi")
           pathlib.Path(os.environ["EXPORT_PLIST"]).write_text(
               """<?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -142,13 +349,24 @@ jobs:
           	<key>method</key>
           	<string>app-store-connect</string>
           	<key>destination</key>
-          	<string>upload</string>
+          	<string>export</string>
           	<key>signingStyle</key>
-          	<string>automatic</string>
+          	<string>manual</string>
+          	<key>signingCertificate</key>
+          	<string>Apple Distribution</string>
           	<key>teamID</key>
           	<string>"""
               + team
               + """</string>
+          	<key>provisioningProfiles</key>
+          	<dict>
+          		<key>"""
+              + bundle
+              + """</key>
+          		<string>"""
+              + profile
+              + """</string>
+          	</dict>
           	<key>uploadSymbols</key>
           	<true/>
           	<key>manageAppVersionAndBuildNumber</key>
@@ -157,7 +375,7 @@ jobs:
           </plist>
           """
           )
-          print("Wrote ExportOptions.plist")
+          print("Wrote ExportOptions.plist (manual App Store signing)")
           PY
 
       - name: Archive
@@ -172,80 +390,33 @@ jobs:
           fi
           ARCHIVE_PATH="${RUNNER_TEMP}/Kandi.xcarchive"
           echo "ARCHIVE_PATH=${ARCHIVE_PATH}" >> "${GITHUB_ENV}"
+          # Do not pass global CODE_SIGN_* or PROVISIONING_PROFILE_SPECIFIER —
+          # those would also apply to Pods. The App target was patched above.
+          # Do not use -allowProvisioningUpdates; that tries to create a
+          # development profile and fails when the team has no devices.
           xcodebuild archive \
             "${PROJECT_FLAGS[@]}" \
             -scheme App \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "${ARCHIVE_PATH}" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "${KEY_PATH}" \
-            -authenticationKeyID "${APP_STORE_CONNECT_KEY_ID}" \
-            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}" \
-            DEVELOPMENT_TEAM="${APPLE_TEAM_ID}" \
-            CODE_SIGN_STYLE=Automatic \
-            PRODUCT_BUNDLE_IDENTIFIER=com.marshandbarb.kandi \
             MARKETING_VERSION=1.0 \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
-      - name: Export and upload to App Store Connect
+      - name: Export IPA and upload to App Store Connect
         working-directory: .
         run: |
           set -euo pipefail
           set +x
+          : "${KEY_PATH:?KEY_PATH is not set}"
+          : "${APP_STORE_CONNECT_KEY_ID:?APP_STORE_CONNECT_KEY_ID secret is not set}"
+          : "${APP_STORE_CONNECT_ISSUER_ID:?APP_STORE_CONNECT_ISSUER_ID secret is not set}"
           EXPORT_DIR="${RUNNER_TEMP}/export"
           mkdir -p "${EXPORT_DIR}"
-          if xcodebuild -exportArchive \
-            -archivePath "${ARCHIVE_PATH}" \
-            -exportPath "${EXPORT_DIR}" \
-            -exportOptionsPlist "${EXPORT_PLIST}" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "${KEY_PATH}" \
-            -authenticationKeyID "${APP_STORE_CONNECT_KEY_ID}" \
-            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}"; then
-            echo "Upload via xcodebuild -exportArchive (destination: upload) finished."
-            exit 0
-          fi
-          echo "exportArchive with destination=upload failed; exporting an IPA and uploading with altool."
-          FALLBACK_PLIST="${RUNNER_TEMP}/ExportOptions-ipa.plist"
-          export FALLBACK_PLIST
-          python3 - <<'PY'
-          import os
-          import pathlib
-
-          team = os.environ["APPLE_TEAM_ID"]
-          pathlib.Path(os.environ["FALLBACK_PLIST"]).write_text(
-              """<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-          	<key>method</key>
-          	<string>app-store-connect</string>
-          	<key>destination</key>
-          	<string>export</string>
-          	<key>signingStyle</key>
-          	<string>automatic</string>
-          	<key>teamID</key>
-          	<string>"""
-              + team
-              + """</string>
-          	<key>uploadSymbols</key>
-          	<true/>
-          	<key>manageAppVersionAndBuildNumber</key>
-          	<false/>
-          </dict>
-          </plist>
-          """
-          )
-          PY
           xcodebuild -exportArchive \
             -archivePath "${ARCHIVE_PATH}" \
             -exportPath "${EXPORT_DIR}" \
-            -exportOptionsPlist "${FALLBACK_PLIST}" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "${KEY_PATH}" \
-            -authenticationKeyID "${APP_STORE_CONNECT_KEY_ID}" \
-            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}"
+            -exportOptionsPlist "${EXPORT_PLIST}"
           IPA="$(find "${EXPORT_DIR}" -name '*.ipa' | head -n 1)"
           if [ -z "${IPA}" ]; then
             echo "No IPA was exported; cannot upload."
@@ -253,6 +424,7 @@ jobs:
           fi
           echo "Uploading IPA with altool (filename only, no secrets)."
           echo "IPA path basename: $(basename "${IPA}")"
+          echo "Build number: ${{ github.run_number }}"
           xcrun altool --upload-app \
             --type ios \
             --file "${IPA}" \
