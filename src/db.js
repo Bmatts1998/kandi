@@ -537,6 +537,7 @@ async function migrate(db) {
     await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
     await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile INTEGER DEFAULT 0");
     await db.exec("ALTER TABLE reports ADD COLUMN IF NOT EXISTS post_id INTEGER");
+    await db.exec("ALTER TABLE posts ADD COLUMN IF NOT EXISTS extra_photos TEXT DEFAULT '[]'");
     for (const [col, typ] of eventCols) {
       await db.exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
     }
@@ -544,6 +545,7 @@ async function migrate(db) {
   } else {
     try { await db.exec("ALTER TABLE users ADD COLUMN needs_profile INTEGER DEFAULT 0"); } catch (_) {}
     try { await db.exec("ALTER TABLE reports ADD COLUMN post_id INTEGER"); } catch (_) {}
+    try { await db.exec("ALTER TABLE posts ADD COLUMN extra_photos TEXT DEFAULT '[]'"); } catch (_) {}
     for (const [col, typ] of eventCols) {
       try { await db.exec(`ALTER TABLE events ADD COLUMN ${col} ${typ}`); } catch (_) {}
     }

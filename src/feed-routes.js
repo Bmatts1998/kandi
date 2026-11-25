@@ -30,6 +30,17 @@ function firstAvatar(photosJson) {
   }
 }
 
+function parseIds(raw) {
+  try {
+    const list = typeof raw === "string" ? JSON.parse(raw || "[]") : raw || [];
+    return Array.isArray(list) ? list.filter((x) => typeof x === "string" && /^[\w.-]+$/.test(x)) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+const MAX_POST_PHOTOS = 10;
+
 function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
   function db() {
     return getDb();
@@ -49,6 +60,7 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
       id: Number(row.id),
       caption: row.caption || "",
       photoUrl: row.photo_id ? "/uploads/" + row.photo_id : null,
+      photoUrls: (row.photo_id ? [row.photo_id] : []).concat(parseIds(row.extra_photos)).map((pid) => "/uploads/" + pid),
       event: ev ? { id: ev.id, name: ev.name, emoji: ev.emoji, city: ev.city } : null,
       createdAt: row.created_at,
       likeCount: Number(row.like_count != null ? row.like_count : row.likeCount) || 0,
@@ -130,6 +142,14 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
     res.json({ posts: posts.slice(0, 40) });
   });
 
+  // Photos and posts people shared from a specific show (event gallery).
+  app.get("/api/events/:id/posts", auth, async (req, res) => {
+    const blocked = await blockedSet(req.user.id);
+    const rows = await db().prepare(`${authorJoin} WHERE p.event_id=? ORDER BY p.created_at DESC`).all(String(req.params.id));
+    const visible = rows.filter((r) => !blocked.has(Number(r.user_id))).slice(0, 60);
+    res.json({ posts: await shapePosts(visible, req.user.id) });
+  });
+
   app.get("/api/feed/top-ravers", auth, async (req, res) => {
     const blocked = await blockedSet(req.user.id);
     const rows = await db().prepare(
@@ -160,14 +180,17 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
   });
 
   app.post("/api/posts", auth, (req, res) => {
-    upload.single("photo")(req, res, async (err) => {
+    upload.array("photo", MAX_POST_PHOTOS)(req, res, async (err) => {
       try {
         if (err) {
           const msg = err.code === "LIMIT_FILE_SIZE"
             ? "That file is over 30 MB, which is too big to send. Try another photo from your camera roll."
+            : err.code === "LIMIT_UNEXPECTED_FILE" ? `You can add up to ${MAX_POST_PHOTOS} photos per post.`
             : (err.message || "Upload failed");
           return res.status(400).json({ error: msg });
         }
+        const files = Array.isArray(req.files) ? req.files : [];
+        req.file = files[0];
         const caption = String((req.body && req.body.caption) || "").trim().slice(0, 2000);
         const eventId = String((req.body && req.body.eventId) || "").trim() || null;
         if (!caption && !req.file) return res.status(400).json({ error: "Add a photo or a caption." });
@@ -175,18 +198,25 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
           const ev = await db().prepare(`SELECT id FROM events WHERE id=?`).get(eventId);
           if (!ev) return res.status(400).json({ error: "Unknown event." });
         }
-        let photoId = null;
-        if (req.file) {
-          const normalized = await normalizePhoto(req.file.buffer);
-          photoId = `${Date.now()}-${require("crypto").randomBytes(6).toString("hex")}${normalized.ext}`;
+        const ids = [];
+        for (const f of files) {
+          let normalized;
+          try {
+            normalized = await normalizePhoto(f.buffer);
+          } catch (normErr) {
+            return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process one of those photos." });
+          }
+          const pid = `${Date.now()}-${require("crypto").randomBytes(6).toString("hex")}${normalized.ext}`;
           await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-            photoId, req.user.id, normalized.mime, normalized.buffer.toString("base64")
+            pid, req.user.id, normalized.mime, normalized.buffer.toString("base64")
           );
+          ids.push(pid);
         }
+        const photoId = ids[0] || null;
         const createdAt = new Date().toISOString();
         const info = await db().prepare(
-          `INSERT INTO posts (user_id, caption, photo_id, event_id, created_at) VALUES (?,?,?,?,?)`
-        ).run(req.user.id, caption, photoId, eventId, createdAt);
+          `INSERT INTO posts (user_id, caption, photo_id, event_id, created_at, extra_photos) VALUES (?,?,?,?,?,?)`
+        ).run(req.user.id, caption, photoId, eventId, createdAt, JSON.stringify(ids.slice(1)));
         const row = await db().prepare(`${authorJoin} WHERE p.id=?`).get(Number(info.lastInsertRowid));
         const [post] = await shapePosts([row], req.user.id);
         res.json({ post });

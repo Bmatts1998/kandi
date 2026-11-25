@@ -722,6 +722,14 @@
     state.events = data.events || [];
     state.eventsUpdatedAt = data.updatedAt || null;
   }
+  async function loadEventPosts(id) {
+    try {
+      const data = await api("/api/events/" + encodeURIComponent(id) + "/posts");
+      state.eventPosts = { id, posts: data.posts || [] };
+    } catch (_) {
+      state.eventPosts = { id, posts: [] };
+    }
+  }
   async function loadBlocks() {
     const data = await api("/api/blocks");
     state.blocked = data.blocked;
@@ -1030,7 +1038,7 @@
       ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete" aria-label="Delete">✕</button>`
       : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report" aria-label="Report">⋯</button>`;
     const photo = p.photoUrl
-      ? `<div class="post-photo" style="background-image:url('${esc(mediaUrl(p.photoUrl))}')" data-act="post-like-tap" data-id="${p.id}">${burst}</div>`
+      ? postGallery(p, burst)
       : (p.caption ? `<div class="post-photo" style="display:grid;place-items:center;padding:24px;aspect-ratio:auto;min-height:160px" data-act="post-like-tap" data-id="${p.id}"><div style="font-size:20px;font-weight:700;line-height:1.4;padding:12px">${esc(p.caption)}</div>${burst}</div>` : "");
     return `<article class="post">
       <div class="post-hd">
@@ -1104,6 +1112,33 @@
     return html;
   }
 
+  const MAX_POST_PHOTOS = 10;
+  function composerPhotos() {
+    const list = state.drafts.postFiles || [];
+    const picker = (label, big) => `<label class="${big ? "card photo-upload big-pick" : "pick-more"}">${label}
+      <input type="file" accept="image/*" multiple data-act-file="post-photo" aria-label="Add photos from camera or library" /></label>`;
+    if (!list.length) {
+      return picker(`<div style="font-size:30px">📷</div><div style="font-weight:700;margin-top:6px">Add photos</div><div class="tiny" style="margin-top:4px">Take a photo or pick up to ${MAX_POST_PHOTOS} from your library. Any size works.</div>`, true);
+    }
+    return `<div class="composer-strip">${list.map((f, i) => `<div class="composer-thumb" style="background-image:url('${esc(f.url)}')">
+        <button type="button" class="slot-x" data-act="remove-post-photo" data-id="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join("")}
+      ${list.length < MAX_POST_PHOTOS ? picker(`<span style="font-size:26px">＋</span><span class="tiny">Add</span>`, false) : ""}</div>
+      <p class="tiny" style="margin-top:6px">${list.length} photo${list.length === 1 ? "" : "s"} · swipe through them in the post</p>`;
+  }
+  function clearPostFiles() {
+    (state.drafts.postFiles || []).forEach((f) => { try { URL.revokeObjectURL(f.url); } catch (_) {} });
+    state.drafts.postFiles = [];
+  }
+  function postGallery(p, burst) {
+    const urls = (p.photoUrls && p.photoUrls.length) ? p.photoUrls : (p.photoUrl ? [p.photoUrl] : []);
+    if (urls.length <= 1) {
+      return `<div class="post-photo" style="background-image:url('${esc(mediaUrl(urls[0]))}')" data-act="post-like-tap" data-id="${p.id}" role="img" aria-label="Photo by ${esc(p.author.name)}. Double-tap to like.">${burst}</div>`;
+    }
+    return `<div class="post-carousel-wrap"><div class="post-carousel" data-act="post-like-tap" data-id="${p.id}">
+      ${urls.map((u, i) => `<div class="post-photo slide" style="background-image:url('${esc(mediaUrl(u))}')" role="img" aria-label="Photo ${i + 1} of ${urls.length} by ${esc(p.author.name)}"></div>`).join("")}
+      </div>${burst}<span class="carousel-count">1/${urls.length}</span></div>`;
+  }
+
   function overlays() {
     const o = state.overlay;
     if (!o) return "";
@@ -1112,7 +1147,7 @@
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">New post</h2>
         <p class="muted" style="margin-top:6px">Share a photo, a caption, or both. Optional festival tag.</p>
-        ${state.drafts.postPreview ? `<div class="composer-preview" style="background-image:url('${esc(state.drafts.postPreview)}')"></div>` : `<div class="card photo-upload" style="margin-top:12px;text-align:center;padding:28px">📷 Add a photo<input type="file" accept="image/*" data-act-file="post-photo" /></div>`}
+        ${composerPhotos()}
         <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:10px">${esc(state.drafts.caption || "")}</textarea>
         <div class="label" style="margin-top:12px">Tag an event (optional)</div>
         <div class="chips"><button class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
@@ -1281,6 +1316,15 @@
         <div class="row" style="margin:14px 0"><div class="grow"><div style="font-weight:700">I'm going</div></div>
           <button class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${e.id}" aria-label="I'm going"><i></i></button></div>
         ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
+        <div class="row" style="margin:6px 0 8px"><div class="label grow" style="margin:0">Photos from this show</div>
+          <button class="btn sm primary" data-act="open-composer" data-event="${esc(e.id)}">📷 Add photos</button></div>
+        ${(state.eventPosts && state.eventPosts.id === e.id)
+          ? ((state.eventPosts.posts || []).length
+            ? `<div class="post-grid" style="margin-bottom:16px">${state.eventPosts.posts.map((post) => post.photoUrl
+                ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}" aria-label="Photo by ${esc(post.author.name)}">${(post.photoUrls || []).length > 1 ? `<span class="multi">▣ ${post.photoUrls.length}</span>` : ""}</button>`
+                : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`).join("")}</div>`
+            : `<p class="tiny" style="margin-bottom:16px">No photos yet. Going? Be the first to share the vibe.</p>`)
+          : `<p class="tiny" style="margin-bottom:16px"><span class="spin"></span> Loading photos…</p>`}
         <div class="label">Who's going</div>
         ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px">${personAvatar(p, "av sm")}
           <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>
@@ -1535,7 +1579,11 @@
         if (state.tab === id) render();
         return;
       }
-      if (act === "close") { state.overlay = null; render(); return; }
+      if (act === "close") {
+        const back = state.overlay && state.overlay.returnTo;
+        if (state.overlay && state.overlay.type === "composer") clearPostFiles();
+        state.overlay = back || null; render(); return;
+      }
 
       if (act === "feed-tab") {
         state.feedTab = id || "following";
@@ -1545,33 +1593,50 @@
         render(); return;
       }
       if (act === "open-composer") {
-        if (!state.events.length) await loadEvents();
+        const fromEvent = el && el.getAttribute("data-event");
         state.drafts.caption = "";
-        state.drafts.postEvent = "";
-        state.drafts.postPreview = "";
-        state.drafts.postFile = null;
-        state.overlay = { type: "composer" };
+        state.drafts.postEvent = fromEvent || "";
+        clearPostFiles();
+        state.overlay = { type: "composer", returnTo: fromEvent ? { type: "event", id: fromEvent } : null };
+        render();
+        if (!state.events.length) { await loadEvents(); render(); }
+        return;
+      }
+      if (act === "remove-post-photo") {
+        const i = Number(id);
+        const list = state.drafts.postFiles || [];
+        if (list[i]) { try { URL.revokeObjectURL(list[i].url); } catch (_) {} list.splice(i, 1); }
         render(); return;
       }
       if (act === "post-event") { state.drafts.postEvent = id || ""; render(); return; }
       if (act === "submit-post") {
+        const files = state.drafts.postFiles || [];
+        if (!files.length && !(state.drafts.caption || "").trim()) throw new Error("Add a photo or write a caption.");
         const fd = new FormData();
         fd.append("caption", state.drafts.caption || "");
         if (state.drafts.postEvent) fd.append("eventId", state.drafts.postEvent);
-        if (state.drafts.postFile) {
-          let photo = state.drafts.postFile;
+        for (let i = 0; i < files.length; i++) {
+          if (files.length > 1) toast(`Preparing photo ${i + 1} of ${files.length}…`);
+          let photo = files[i].file;
           try {
             const compressed = await compressImage(photo);
             if (compressed) photo = compressed;
           } catch (_) { /* send the original; the server will normalize it */ }
-          fd.append("photo", photo);
+          fd.append("photo", photo, "photo-" + (i + 1) + ".jpg");
         }
-        const res = await fetch("/api/posts", { method: "POST", body: fd, credentials: "include" });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Could not post.");
+        await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
+        clearPostFiles();
+        const back = state.overlay && state.overlay.returnTo;
+        toast(files.length ? "Posted! 📸" : "Posted!");
+        if (back && back.type === "event") {
+          state.overlay = back;
+          await loadEventPosts(back.id);
+          render(); return;
+        }
         state.overlay = null;
         state.feedTab = "following";
         state.tab = "home";
+        render();
         await loadHome();
         if (state.me) await loadProfile(state.me.id);
         render(); return;
@@ -1625,7 +1690,8 @@
         state.comments = data.comments || [];
         state.commentPostId = Number(id);
         state.drafts.commentText = "";
-        state.overlay = { type: "comments" };
+        const prev = state.overlay;
+        state.overlay = { type: "comments", returnTo: prev && (prev.type === "event" || prev.type === "profile") ? prev : null };
         render(); return;
       }
       if (act === "send-comment") {
@@ -1721,7 +1787,13 @@
         state.me = data.user; state.overlay = { type: "purchased" }; await refreshAll(); render(); return;
       }
       if (act === "cancel-sub") { const data = await api("/api/subscribe/cancel", { method: "POST", body: {} }); state.me = data.user; render(); return; }
-      if (act === "event") { state.overlay = { type: "event", id }; render(); return; }
+      if (act === "event") {
+        state.overlay = { type: "event", id };
+        render();
+        await loadEventPosts(id);
+        if (state.overlay && state.overlay.type === "event" && state.overlay.id === id) render();
+        return;
+      }
       if (act === "toggle-going") {
         const ev = state.events.find((e) => e.id === id);
         await api("/api/events/" + id + "/going", { method: "POST", body: { going: !ev.imGoing } });
@@ -1803,12 +1875,12 @@
   // Actions that only change local UI never need a busy guard.
   const INSTANT = new Set(["close", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
-    "edit-profile", "event", "paywall", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters"]);
+    "edit-profile", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
     // Tapping the dimmed backdrop of a bottom sheet closes it; taps inside the sheet never do.
-    if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.overlay = null; state.err = ""; render(); return; }
+    if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.err = ""; handle("close", t); return; }
     const actEl = t.closest("[data-act]");
     if (!actEl || !root.contains(actEl)) return;
     if (actEl.classList.contains("sheet-bg")) return; // a tap on a field, label or text inside the sheet
@@ -1865,13 +1937,13 @@
   async function onPickedFile(e) {
     const kind = e.target.getAttribute("data-act-file");
     if (kind === "post-photo") {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      state.drafts.postFile = file;
-      if (state.drafts.postPreview && String(state.drafts.postPreview).startsWith("blob:")) {
-        try { URL.revokeObjectURL(state.drafts.postPreview); } catch (_) {}
-      }
-      state.drafts.postPreview = URL.createObjectURL(file);
+      const picked = Array.from((e.target.files) || []);
+      if (!picked.length) return;
+      const list = state.drafts.postFiles || (state.drafts.postFiles = []);
+      const room = MAX_POST_PHOTOS - list.length;
+      picked.slice(0, Math.max(0, room)).forEach((file) => list.push({ file, url: URL.createObjectURL(file) }));
+      if (picked.length > room) toast(`Up to ${MAX_POST_PHOTOS} photos per post — added the first ${Math.max(0, room)}.`, "warn");
+      e.target.value = "";
       render();
       return;
     }
@@ -1895,6 +1967,16 @@
   }
   root.addEventListener("change", onPickedFile);
   root.addEventListener("input", onPickedFile);
+
+  // Multi-photo posts: keep the "2/5" counter in sync while swiping.
+  root.addEventListener("scroll", (e) => {
+    const c = e.target;
+    if (!c || !c.classList || !c.classList.contains("post-carousel")) return;
+    const n = c.children.length;
+    const i = Math.min(n, Math.round(c.scrollLeft / Math.max(1, c.clientWidth)) + 1);
+    const badge = c.parentNode && c.parentNode.querySelector(".carousel-count");
+    if (badge) badge.textContent = i + "/" + n;
+  }, true);
 
   let dragFrom = null;
   root.addEventListener("dragstart", (e) => {
