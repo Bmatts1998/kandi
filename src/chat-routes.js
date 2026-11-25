@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
-const { normalizePhoto, servePhoto } = require("./photo");
+const { buildVariants, variantForQuery } = require("./photo");
 const { contentRejected } = require("./content-filter");
 const { sendBuffer } = require("./media");
 const {
@@ -70,11 +70,25 @@ function cachePath(id) {
 }
 
 async function saveChatFile(db, { userId, matchId, buffer, mime, ext }) {
-  const id = newFileId(ext);
-  await db.prepare(`INSERT INTO chat_files (id, user_id, match_id, mime, data) VALUES (?,?,?,?,?)`)
-    .run(id, userId, matchId, mime, buffer.toString("base64"));
-  try { fs.writeFileSync(cachePath(id), buffer); } catch (_) { /* ephemeral disk is ok */ }
-  return id;
+  let outBuf = buffer;
+  let outMime = mime;
+  let outExt = ext;
+  let thumbBuf = null;
+  let thumbMime = null;
+  const looksImage = String(mime || "").toLowerCase().startsWith("image/");
+  if (looksImage) {
+    const variants = await buildVariants(buffer);
+    outBuf = variants.full.buffer;
+    outMime = variants.full.mime;
+    outExt = variants.full.ext;
+    thumbBuf = variants.thumb.buffer;
+    thumbMime = variants.thumb.mime;
+  }
+  const id = newFileId(outExt || ext);
+  await db.prepare(`INSERT INTO chat_files (id, user_id, match_id, mime, data, thumb_data, thumb_mime) VALUES (?,?,?,?,?,?,?)`)
+    .run(id, userId, matchId, outMime, outBuf.toString("base64"), thumbBuf ? thumbBuf.toString("base64") : null, thumbMime);
+  try { fs.writeFileSync(cachePath(id), outBuf); } catch (_) { /* ephemeral disk is ok */ }
+  return { id, mime: outMime };
 }
 
 async function deleteChatFiles(db, ids) {
@@ -204,19 +218,18 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
     if ((await blockedSet(req.user.id)).has(Number(otherId))) {
       return res.status(403).json({ error: "You can't view this." });
     }
-    let buffer = null;
-    try {
-      const cached = cachePath(id);
-      if (fs.existsSync(cached)) buffer = fs.readFileSync(cached);
-    } catch (_) { /* fall through to db */ }
-    if (!buffer) buffer = Buffer.from(file.data, "base64");
+    const variant = variantForQuery(req.query);
     let typ = baseMime(file.mime);
-    if (typ.startsWith("image/")) {
+    let buffer = null;
+    if (typ.startsWith("image/") && variant === "thumb" && file.thumb_data) {
+      buffer = Buffer.from(file.thumb_data, "base64");
+      typ = baseMime(file.thumb_mime) || typ;
+    } else {
       try {
-        const served = await servePhoto(buffer, typ);
-        buffer = served.buffer;
-        typ = served.mime;
-      } catch (_) { /* send raw */ }
+        const cached = cachePath(id);
+        if (fs.existsSync(cached)) buffer = fs.readFileSync(cached);
+      } catch (_) { /* fall through to db */ }
+      if (!buffer) buffer = Buffer.from(file.data, "base64");
     }
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Disposition", "inline");
@@ -302,9 +315,9 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
       }
       const sniffed = sniffMedia(mediaFile.buffer);
       if (typ === "photo") {
-        const normalized = await normalizePhoto(mediaFile.buffer);
-        mime = normalized.mime;
-        mediaId = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: normalized.buffer, mime, ext: normalized.ext });
+        const savedPhoto = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime: mediaFile.mimetype || "image/jpeg", ext: ".jpg" });
+        mediaId = savedPhoto.id;
+        mime = savedPhoto.mime;
       } else if (typ === "voice") {
         if (mediaFile.buffer.length > MAX_VOICE_BYTES) {
           return res.status(400).json({ error: "That voice message is too large. Try a shorter one." });
@@ -320,7 +333,8 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
         }
         const peaks = sanitizeWaveform(body.waveform);
         waveform = peaks.length ? JSON.stringify(peaks) : "";
-        mediaId = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime, ext: extForMime(mime) });
+        const savedVoice = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime, ext: extForMime(mime) });
+        mediaId = savedVoice.id;
       } else {
         if (mediaFile.buffer.length > MAX_VIDEO_BYTES) {
           return res.status(400).json({ error: "That video is over 50 MB. Try a shorter clip." });
@@ -331,11 +345,12 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
         if (duration > MAX_VIDEO_SECONDS) {
           return res.status(400).json({ error: "Videos can be up to 60 seconds." });
         }
-        mediaId = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime, ext: extForMime(mime) });
+        const savedVideo = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: mediaFile.buffer, mime, ext: extForMime(mime) });
+        mediaId = savedVideo.id;
         if (posterFile && posterFile.buffer) {
           try {
-            const normalized = await normalizePhoto(posterFile.buffer);
-            posterId = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: normalized.buffer, mime: normalized.mime, ext: normalized.ext });
+            const savedPoster = await saveChatFile(db(), { userId: req.user.id, matchId: match.id, buffer: posterFile.buffer, mime: posterFile.mimetype || "image/jpeg", ext: ".jpg" });
+            posterId = savedPoster.id;
           } catch (_) {
             /* poster is optional */
           }

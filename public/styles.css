@@ -780,3 +780,5 @@
     .agree-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; text-align: left; color: var(--muted); font-size: 13px; line-height: 1.4; }
     .agree-row input { margin-top: 2px; flex: 0 0 auto; accent-color: #ff5c00; width: 18px; height: 18px; }
     .agree-row a { color: #ff8a1a; }
+    [data-bg]:not([data-bg-on]) { background-color: #1a1a1a; background-size: cover; background-position: center; }
+    img[loading="lazy"] { content-visibility: auto; }

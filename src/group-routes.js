@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { normalizePhoto } = require("./photo");
+const { normalizePhoto, savePhotoFile } = require("./photo");
 const { contentRejected } = require("./content-filter");
 
 const MAX_NAME = 40;
@@ -420,15 +420,17 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
         const crew = await getCrew(id);
         if (!crew) return res.status(404).json({ error: "Crew not found." });
         if (!req.file) return res.status(400).json({ error: "Choose a photo to upload." });
-        let normalized;
+        let fileId;
         try {
-          normalized = await normalizePhoto(req.file.buffer);
+          fileId = await savePhotoFile(db(), {
+            id: `crew-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.webp`,
+            userId: req.user.id,
+            buffer: req.file.buffer,
+            mime: req.file.mimetype,
+          });
         } catch (normErr) {
           return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process that photo." });
         }
-        const fileId = `crew-${Date.now()}-${crypto.randomBytes(6).toString("hex")}${normalized.ext}`;
-        await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`)
-          .run(fileId, req.user.id, normalized.mime, normalized.buffer.toString("base64"));
         await db().prepare(`UPDATE crews SET photo_id=? WHERE id=?`).run(fileId, id);
         res.json(await shapeGroup(id, req.user.id));
       } catch (e) {

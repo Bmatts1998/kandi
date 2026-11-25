@@ -662,6 +662,7 @@ function makePgPool(url) {
     connectionString: url,
     max: Number(process.env.PG_POOL_MAX || 8),
     connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 8000),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 20000),
     ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
   });
 }
@@ -926,6 +927,11 @@ async function migrate(db) {
       created_at TEXT DEFAULT (NOW()::text)
     )`);
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_messages_media_id ON messages(media_id)"); } catch (err) { console.error("idx_messages_media_id:", err.message || err); }
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS thumb_data TEXT");
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS thumb_mime TEXT");
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS ready INTEGER DEFAULT 0");
+    await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS thumb_data TEXT");
+    await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS thumb_mime TEXT");
   } else {
     try { await db.exec("ALTER TABLE matches ADD COLUMN disappear INTEGER DEFAULT 0"); } catch (_) {}
     for (const [col, typ] of messageCols) {
@@ -940,6 +946,15 @@ async function migrate(db) {
       created_at TEXT DEFAULT (datetime('now'))
     )`);
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_messages_media_id ON messages(media_id)"); } catch (_) {}
+    for (const sql of [
+      "ALTER TABLE photo_files ADD COLUMN thumb_data TEXT",
+      "ALTER TABLE photo_files ADD COLUMN thumb_mime TEXT",
+      "ALTER TABLE photo_files ADD COLUMN ready INTEGER DEFAULT 0",
+      "ALTER TABLE chat_files ADD COLUMN thumb_data TEXT",
+      "ALTER TABLE chat_files ADD COLUMN thumb_mime TEXT",
+    ]) {
+      try { await db.exec(sql); } catch (_) { /* already exists */ }
+    }
   }
 
   try {

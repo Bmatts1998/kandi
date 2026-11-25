@@ -15,7 +15,7 @@ const { installFeed } = require("./feed-routes");
 const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
-const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
+const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, MAX_UPLOAD_BYTES } = require("./photo");
 const { eventKey, chipLabel } = require("./event-key");
 const {
   isAdult, loadGoingRows, shapeGoers, resolveEvent, setRsvp,
@@ -141,18 +141,17 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
 app.get("/uploads/:id", async (req, res, next) => {
   try {
-    const row = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(req.params.id);
-    if (row) {
-      const raw = Buffer.from(row.data, "base64");
-      const mime = String(row.mime || "");
-      if (mime.startsWith("video/")) return sendBuffer(req, res, raw, mime);
-      const served = await servePhoto(raw, row.mime);
-      return sendBuffer(req, res, served.buffer, served.mime);
-    }
+    if (await sendUploadedMedia(req, res, db)) return;
     next();
   } catch (err) { next(err); }
 });
-app.use("/uploads", express.static(uploadDir, { maxAge: "7d" }));
+app.use("/uploads", express.static(uploadDir, {
+  maxAge: "365d",
+  immutable: true,
+  setHeaders(res) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  },
+}));
 const BUILD = String(process.env.RENDER_GIT_COMMIT || Date.now().toString(36)).slice(0, 12);
 function noStore(res) {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -568,24 +567,18 @@ app.post("/api/me/photo", auth, async (req, res) => {
     if (photos.length >= MAX_PROFILE_PHOTOS) {
       return res.status(400).json({ error: "You can add up to 6 photos. Remove one to add another." });
     }
-    let normalized;
+    let fileId;
     try {
-      normalized = await normalizePhoto(req.file.buffer);
+      fileId = await savePhotoFile(db, { userId: req.user.id, buffer: req.file.buffer, mime: req.file.mimetype, uploadDir });
     } catch (normErr) {
       return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process that photo." });
     }
-    const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${normalized.ext}`;
-    const mime = normalized.mime;
-    await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-      fileId, req.user.id, mime, normalized.buffer.toString("base64")
-    );
-    try { fs.writeFileSync(path.join(uploadDir, fileId), normalized.buffer); } catch (_) { /* ephemeral disk is ok */ }
     const entry = { type: "file", url: "/uploads/" + fileId, caption: String((req.body && req.body.caption) || "") };
     const asMain = req.body && (req.body.main === "1" || req.body.main === "true" || req.body.asMain === "1");
     if (asMain || photos.length === 0) photos.unshift(entry);
     else photos.push(entry);
     const user = await saveUserPhotos(req.user.id, photos);
-    console.log("photo-upload ok", { userId: Number(req.user.id), bytesIn: req.file.size, bytesOut: normalized.buffer.length, main: Boolean(asMain) });
+    console.log("photo-upload ok", { userId: Number(req.user.id), bytesIn: req.file.size, fileId, main: Boolean(asMain) });
     res.json({ user });
   });
 });
@@ -1294,6 +1287,7 @@ async function boot() {
   engagement.startPeriodicRefresh();
   server.listen(PORT, HOST, () => {
     console.log(`Kandi v1 listening on http://${HOST}:${PORT}`);
+    startPhotoBackfill(db);
   });
 }
 

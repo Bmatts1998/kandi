@@ -413,7 +413,7 @@
     const list = (photos || []).filter(Boolean);
     if (!list.length) return "";
     return `<div class="photo-strip" aria-label="Photos">` + list.map((ph) => {
-      if (ph.type === "file" && ph.url) return `<div class="photo-strip-item" style="background-image:url('${esc(mediaUrl(ph.url))}')"></div>`;
+      if (ph.type === "file" && ph.url) return `<div class="photo-strip-item" ${lazyBg(ph.url, 320)}></div>`;
       const bg = ph.gradient ? `background:${esc(ph.gradient)}` : "background:#141414";
       return `<div class="photo-strip-item" style="${bg}"><span>${esc(ph.emoji || "")}</span></div>`;
     }).join("") + `</div>`;
@@ -463,7 +463,7 @@
     const play = post.videoUrl ? `<span class="grid-play" aria-hidden="true">▶</span>` : "";
     const src = post.posterUrl || post.photoUrl || ((post.photoUrls || [])[0]);
     if (src) {
-      return `<button type="button" class="grid-tile" style="background-image:url('${esc(mediaUrl(src))}')" data-act="open-post" data-id="${post.id}" aria-label="Open post">${play}</button>`;
+      return `<button type="button" class="grid-tile" ${lazyBg(src, 320)} data-act="open-post" data-id="${post.id}" aria-label="Open post">${play}</button>`;
     }
     const txt = post.caption || (post.event && post.event.name) || "Post";
     return `<button type="button" class="grid-tile" data-act="open-post" data-id="${post.id}" aria-label="Open post"><span class="txt">${esc(String(txt).slice(0, 80))}</span></button>`;
@@ -682,7 +682,7 @@
     return days === 1 ? "Updated 1 day ago" : "Updated " + days + " days ago";
   }
   function eventThumb(e) {
-    if (e.imageUrl) return `<img src="${esc(e.imageUrl)}" alt="" width="56" height="56">`;
+    if (e.imageUrl) return `<img src="${esc(e.imageUrl)}" alt="" width="56" height="56" loading="lazy" decoding="async">`;
     return esc(e.emoji || "✺");
   }
   function eventWhen(e) {
@@ -1129,14 +1129,45 @@
     if (days < 7) return days + "d";
     return days + "d";
   }
-  function mediaUrl(url) {
+  function mediaUrl(url, width) {
     if (!url || String(url).startsWith("blob:") || String(url).startsWith("data:")) return url;
-    if (/[?&]o=1(?:&|$)/.test(url)) return url;
-    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "o=1";
+    let u = String(url).replace(/[?&](o|w)=[^&]*/g, "").replace(/\?&/, "?").replace(/[?&]$/, "");
+    if (/\.(mp4|m4v|mov|webm|qt)(?:\?|$)/i.test(u)) return u;
+    const w = width == null ? 1280 : Number(width);
+    if (!Number.isFinite(w) || w <= 0) return u;
+    return u + (u.indexOf("?") >= 0 ? "&" : "?") + "w=" + Math.round(w);
+  }
+  function thumbUrl(url) { return mediaUrl(url, 320); }
+  function lazyBg(url, width) {
+    const src = mediaUrl(url, width);
+    if (!src) return "";
+    return `data-bg="${esc(src)}"`;
+  }
+  function hydrateLazy(root) {
+    const nodes = Array.from((root || document).querySelectorAll("[data-bg]:not([data-bg-on])"));
+    if (!nodes.length) return;
+    const apply = (el) => {
+      const u = el.getAttribute("data-bg");
+      if (!u || el.getAttribute("data-bg-on")) return;
+      el.style.backgroundImage = 'url("' + u + '")';
+      el.setAttribute("data-bg-on", "1");
+    };
+    if (!("IntersectionObserver" in window)) { nodes.forEach(apply); return; }
+    if (!hydrateLazy.io) {
+      hydrateLazy.io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting || entry.intersectionRatio > 0) {
+            apply(entry.target);
+            hydrateLazy.io.unobserve(entry.target);
+          }
+        }
+      }, { rootMargin: "240px 0px", threshold: 0.01 });
+    }
+    nodes.forEach((el) => hydrateLazy.io.observe(el));
   }
   function avatarEl(av, cls, emojiFallback) {
     cls = cls || "av";
-    if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(mediaUrl(av.url))}')"></span>`;
+    if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(thumbUrl(av.url))}')"></span>`;
     const g = (av && av.gradient) || "linear-gradient(160deg,#111,#ff5c00)";
     const e = (av && av.emoji) || emojiFallback || "●";
     return `<span class="${cls}" style="background:${g}">${esc(e)}</span>`;
@@ -1157,7 +1188,7 @@
     return avatarEl(mainPhotoOf(p), cls || "av", initialOf(p));
   }
   function photoThumbStyle(ph) {
-    if (ph && ph.type === "file" && ph.url) return `background-image:url('${esc(mediaUrl(ph.url))}')`;
+    if (ph && ph.type === "file" && ph.url) return `background-image:url('${esc(thumbUrl(ph.url))}')`;
     return `background:${esc((ph && ph.gradient) || "#1a1a1a")}`;
   }
   function uploadBusy() {
@@ -1638,7 +1669,7 @@
   }
   function crewChip(c, extraClass) {
     const photo = c.photoUrl
-      ? `<span class="crew-av" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>`
+      ? `<span class="crew-av" ${lazyBg(c.photoUrl, 320)}></span>`
       : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`;
     return `<button type="button" class="crew-chip${extraClass ? " " + extraClass : ""}" data-act="open-group" data-id="${c.id}" aria-label="${esc(c.name)}">${photo}<span class="crew-chip-name">${esc(c.name)}</span></button>`;
   }
@@ -1688,7 +1719,7 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
@@ -2131,8 +2162,8 @@
     const idx = state.storyViewer.storyIndex;
     const mine = u && u.isMe;
     const media = story.kind === "video"
-      ? `<video src="${esc(mediaUrl(story.mediaUrl))}"${story.posterUrl ? ` poster="${esc(mediaUrl(story.posterUrl))}"` : ""} autoplay muted playsinline webkit-playsinline loop="false"></video>`
-      : `<img src="${esc(mediaUrl(story.mediaUrl))}" alt="">`;
+      ? `<video src="${esc(mediaUrl(story.mediaUrl))}"${story.posterUrl ? ` poster="${esc(thumbUrl(story.posterUrl))}"` : ""} autoplay muted playsinline webkit-playsinline loop="false"></video>`
+      : `<img src="${esc(mediaUrl(story.mediaUrl, 1280))}" alt="" decoding="async">`;
     const progs = stories.map((_, i) => `<div class="story-prog${i < idx ? " done" : ""}${i === idx ? " now" : ""}"><i></i></div>`).join("");
     const demo = u.isDemo && !mine ? `<span class="meta"> · Demo</span>` : "";
     const viewersSheet = (state.storyViewer.showViewers)
@@ -2242,7 +2273,7 @@
     if (p.videoUrl) {
       const poster = p.posterUrl || p.photoUrl;
       return `<div class="post-video-wrap">
-        <video src="${esc(mediaUrl(p.videoUrl))}"${poster ? ` poster="${esc(mediaUrl(poster))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>
+        <video src="${esc(mediaUrl(p.videoUrl))}"${poster ? ` poster="${esc(thumbUrl(poster))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>
         ${burst}
       </div>`;
     }
@@ -2354,10 +2385,10 @@
     const urls = (p.photoUrls && p.photoUrls.length) ? p.photoUrls : (p.photoUrl ? [p.photoUrl] : []);
     if (!urls.length) return "";
     if (urls.length <= 1) {
-      return `<div class="post-photo" style="background-image:url('${esc(mediaUrl(urls[0]))}')" data-act="post-like-tap" data-id="${p.id}" role="img" aria-label="Photo by ${esc(p.author.name)}. Double-tap to like.">${burst || ""}</div>`;
+      return `<div class="post-photo" ${lazyBg(urls[0], 1280)} data-act="post-like-tap" data-id="${p.id}" role="img" aria-label="Photo by ${esc(p.author.name)}. Double-tap to like.">${burst || ""}</div>`;
     }
     return `<div class="post-carousel-wrap"><div class="post-carousel" data-act="post-like-tap" data-id="${p.id}">
-      ${urls.map((u, i) => `<div class="post-photo slide" style="background-image:url('${esc(mediaUrl(u))}')" role="img" aria-label="Photo ${i + 1} of ${urls.length} by ${esc(p.author.name)}"></div>`).join("")}
+      ${urls.map((u, i) => `<div class="post-photo slide" ${lazyBg(u, 1280)} role="img" aria-label="Photo ${i + 1} of ${urls.length} by ${esc(p.author.name)}"></div>`).join("")}
       </div>${burst || ""}<span class="carousel-count">1/${urls.length}</span></div>`;
   }
 
@@ -2520,10 +2551,10 @@
       <audio data-voice-id="${m.id}" src="${esc(m.mediaUrl || "")}" preload="none" playsinline webkit-playsinline></audio>`;
     } else if (typ === "photo") {
       inner = `<button type="button" class="chat-media-btn" data-act="open-chat-media" data-id="${m.id}" aria-label="View photo">
-        <img class="chat-photo" src="${esc(m.mediaUrl || "")}" alt="">
+        <img class="chat-photo" src="${esc(thumbUrl(m.mediaUrl || ""))}" alt="" loading="lazy" decoding="async">
       </button>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
     } else if (typ === "video") {
-      inner = `<video class="chat-video" src="${esc(m.mediaUrl || "")}" ${m.posterUrl ? `poster="${esc(m.posterUrl)}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+      inner = `<video class="chat-video" src="${esc(mediaUrl(m.mediaUrl || ""))}" ${m.posterUrl ? `poster="${esc(thumbUrl(m.posterUrl))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
     } else if (typ === "music" && m.music && m.music.embedUrl) {
       const prov = m.music.source || m.music.provider || "spotify";
       const hgt = (typeof tuneFrameHeight === "function") ? tuneFrameHeight(m.music) : 152;
@@ -3017,7 +3048,7 @@
       const e = findEvent(o.id);
       if (!e) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this event.</div></div>`;
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
-        <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="emoji">${e.emoji}</div>`}</div>
+        <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
         <div class="event-detail-row"><div class="label" style="margin:0">Date &amp; time</div><div class="muted">${esc(eventWhen(e))}</div></div>
         <div class="event-detail-row"><div class="label" style="margin:0">Venue</div><div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div></div>
@@ -3037,7 +3068,7 @@
         ${(state.eventPosts && state.eventPosts.id === e.id)
           ? ((state.eventPosts.posts || []).length
             ? `<div class="post-grid" style="margin-bottom:16px">${state.eventPosts.posts.map((post) => post.photoUrl
-                ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-post" data-id="${post.id}" aria-label="Photo by ${esc(post.author.name)}">${(post.photoUrls || []).length > 1 ? `<span class="multi">▣ ${post.photoUrls.length}</span>` : ""}</button>`
+                ? `<button ${lazyBg(post.photoUrl, 320)} data-act="open-post" data-id="${post.id}" aria-label="Photo by ${esc(post.author.name)}">${(post.photoUrls || []).length > 1 ? `<span class="multi">▣ ${post.photoUrls.length}</span>` : ""}</button>`
                 : `<button data-act="open-post" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`).join("")}</div>`
             : `<p class="tiny" style="margin-bottom:16px">No photos yet. Going? Be the first to share the vibe.</p>`)
           : `<p class="tiny" style="margin-bottom:16px"><span class="spin"></span> Loading photos…</p>`}
@@ -3223,7 +3254,7 @@
       body += `<div class="label">Your crews</div>`;
       body += mine.length
         ? `<div class="crew-list">${mine.map((c) => `<button type="button" class="crew-list-item" data-act="open-group" data-id="${c.id}">
-            ${c.photoUrl ? `<span class="crew-av lg" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>` : `<span class="crew-av lg emoji">${esc(c.emoji || "🧡")}</span>`}
+            ${c.photoUrl ? `<span class="crew-av lg" style="background-image:url('${esc(thumbUrl(c.photoUrl))}')"></span>` : `<span class="crew-av lg emoji">${esc(c.emoji || "🧡")}</span>`}
             <span class="grow"><span class="nm">${esc(c.name)}</span>
             <span class="tiny">${esc(roleLabel(c.myRole))} · ${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""}</span></span>
           </button>`).join("")}</div>`
@@ -3232,7 +3263,7 @@
       body += `<div class="label">Join a rave group</div>`;
       body += discover.length
         ? discover.map((c) => `<div class="card" style="margin-bottom:10px"><div class="row">
-            <button type="button" class="crew-chip bare" data-act="open-group" data-id="${c.id}">${c.photoUrl ? `<span class="crew-av" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>` : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`}</button>
+            <button type="button" class="crew-chip bare" data-act="open-group" data-id="${c.id}">${c.photoUrl ? `<span class="crew-av" ${lazyBg(c.photoUrl, 320)}></span>` : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`}</button>
             <button type="button" class="grow left-btn" data-act="open-group" data-id="${c.id}"><div style="font-weight:800">${esc(c.name)}</div>
               <div class="tiny">${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""} · ${c.joinMode === "public" ? "Open to join" : "Request to join"}</div>
               ${c.bio ? `<div class="muted" style="margin-top:4px">${esc(c.bio)}</div>` : ""}</button>
@@ -3304,7 +3335,7 @@
         action = `<button class="btn sm primary" data-act="join-group" data-id="${g.id}">${g.joinMode === "public" ? "Join group" : "Request to join"}</button>`;
       }
       const av = g.photoUrl
-        ? `<div class="crew-hero-av" style="background-image:url('${esc(mediaUrl(g.photoUrl))}')"></div>`
+        ? `<div class="crew-hero-av" style="background-image:url('${esc(mediaUrl(g.photoUrl, 1280))}')"></div>`
         : `<div class="crew-hero-av emoji">${esc(g.emoji || "🧡")}</div>`;
       let body = `<div class="crew-hero">${av}<div class="grow">
           <div class="nm">${esc(g.name)}</div>
@@ -3475,6 +3506,7 @@
       const k = n.getAttribute("data-act") + ":" + (n.getAttribute("data-id") || "");
       if (busyActs.has(k)) { n.classList.add("busy"); n.setAttribute("aria-busy", "true"); }
     });
+    hydrateLazy(root);
     if (state.storyViewer) startStoryPlayback();
     else stopStoryPlayback();
     bindVoiceControls();
@@ -4461,7 +4493,7 @@
         const id = Number(el && el.getAttribute("data-id"));
         const m = state.chat.find((x) => Number(x.id) === id);
         if (!m || !m.mediaUrl) return;
-        state.chatLightbox = { type: m.attachType || "photo", url: m.mediaUrl, poster: m.posterUrl || "", messageId: m.id };
+        state.chatLightbox = { type: m.attachType || "photo", url: mediaUrl(m.mediaUrl, 1280), poster: m.posterUrl ? thumbUrl(m.posterUrl) : "", messageId: m.id };
         render(); return;
       }
       if (act === "hold-mic") {

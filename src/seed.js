@@ -7,6 +7,7 @@ const path = require("path");
 const bcrypt = require("bcryptjs");
 const { open } = require("./db");
 const { seedDemoMeetups } = require("./meetup");
+const { savePhotoFile } = require("./photo");
 
 const DEMO_PASSWORD = "plur-demo";
 
@@ -235,7 +236,7 @@ async function storeSeedPhoto(db, userId, name) {
   const fileId = "seed-" + name + "-" + userId + ".png";
   const existing = await db.prepare(`SELECT id FROM photo_files WHERE id=?`).get(fileId);
   if (!existing) {
-    await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(fileId, userId, img.mime, img.data);
+    await savePhotoFile(db, { id: fileId, userId, buffer: Buffer.from(img.data, "base64"), mime: img.mime, ext: ".png" });
   }
   return fileId;
 }

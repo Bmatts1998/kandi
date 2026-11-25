@@ -1,4 +1,4 @@
-// Kandi service worker: network-first for everything, cache only as an offline fallback.
+// Kandi service worker: network-first for the app shell, cache-first for /uploads images.
 // Never serve a stale app shell while online (old cached app.js was a cause of "nothing works").
 const CACHE = "kandi-v10";
 self.addEventListener("install", () => self.skipWaiting());
@@ -14,7 +14,22 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/api") || url.pathname.startsWith("/ws") || url.pathname.startsWith("/uploads")) return;
+  if (url.pathname.startsWith("/api") || url.pathname.startsWith("/ws")) return;
+  if (url.pathname.startsWith("/uploads")) {
+    if (req.headers.get("range")) return;
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const hit = await cache.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      const ctype = String((res && res.headers.get("content-type")) || "");
+      if (res && res.ok && res.status === 200 && ctype.startsWith("image/")) {
+        cache.put(req, res.clone()).catch(() => {});
+      }
+      return res;
+    })());
+    return;
+  }
   e.respondWith(
     fetch(req, { cache: "no-store" }).then((res) => {
       if (res && res.ok && res.type === "basic") {

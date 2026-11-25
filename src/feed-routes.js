@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { normalizePhoto, sniffImageMime } = require("./photo");
+const { normalizePhoto, sniffImageMime, savePhotoFile } = require("./photo");
 const { listUpcomingForProfile } = require("./meetup");
 const { contentRejected } = require("./content-filter");
 
@@ -158,11 +158,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
   }
 
   async function storeBuffer(userId, buffer, mime, ext) {
-    const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
-    await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-      fileId, userId, mime, buffer.toString("base64")
-    );
-    return fileId;
+    return savePhotoFile(db(), { userId, buffer, mime, ext });
   }
 
   async function attachCounts(rows) {

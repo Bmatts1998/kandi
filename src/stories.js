@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
-const { normalizePhoto, sniffImageMime, MAX_UPLOAD_BYTES } = require("./photo");
+const { normalizePhoto, sniffImageMime, savePhotoFile, MAX_UPLOAD_BYTES } = require("./photo");
 const {
   sniffVideoMime,
   MAX_STORY_VIDEO_BYTES,
@@ -71,14 +71,7 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
   }
 
   async function storeBuffer(userId, buffer, mime, ext) {
-    const id = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext || ""}`;
-    await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-      id, userId, mime, buffer.toString("base64")
-    );
-    if (uploadDir) {
-      try { fs.writeFileSync(path.join(uploadDir, id), buffer); } catch (_) { /* ephemeral disk is ok */ }
-    }
-    return id;
+    return savePhotoFile(db(), { userId, buffer, mime, ext, uploadDir });
   }
 
   async function cleanupExpired() {
