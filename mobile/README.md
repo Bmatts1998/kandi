@@ -12,7 +12,7 @@ No developer accounts were created for you. A Mac is not required if you use a c
 |---|---|---|---|
 | Apple ID | Free | Everything Apple | He almost certainly has one. |
 | [Apple Developer Program](https://developer.apple.com/programs/) | **$99 / year** | TestFlight, App Store, signing | Enroll as an individual (or a company if he has a legal entity). Apple can take 24–48 hours, sometimes longer, to approve enrollment. This is the only paid Apple requirement. |
-| Cloud build (pick one) | Free tier is enough to start | Building the `.ipa` without a Mac | **Codemagic** (recommended for Capacitor): free tier is typically 500 macOS minutes / month. Or **GitHub Actions** `macos-14` runners (private-repo minutes are limited; macOS minutes count at a higher rate). Do **not** pay for Expo EAS unless we later rewrite this as an Expo app — EAS is for Expo/React Native, not Capacitor. |
+| Cloud build | Free on this public repo | Building the `.ipa` without a Mac | **GitHub Actions** (`macos-latest`, Xcode 16+) is the primary path. The repo is public, so macOS runners are free. **Codemagic** is the fallback. Do **not** pay for Expo EAS unless we later rewrite this as an Expo app — EAS is for Expo/React Native, not Capacitor. |
 | [App Store Connect](https://appstoreconnect.apple.com) | Included with the Developer Program | TestFlight groups, App Store listing, privacy nutrition labels | Same Apple ID as the Developer Program. |
 | Google Play Console (optional, Android) | **$25 one-time** | Publishing on Play | Cheap and worth doing once iOS works. Internal testing does not need a review as strict as production. |
 
@@ -24,7 +24,7 @@ Do not create these accounts from this machine. Boston should enroll himself, th
 2. `cd mobile && npm install && npx cap sync`
 3. Rebuild.
 
-Until a lasting host exists, the file points at the temporary 72h preview `https://workspace-ndancq.openpouch.sh`, which expires and may not have the latest Neon-backed build.
+The file currently points at the Render host `https://kandi-6rih.onrender.com`.
 
 ## Local generate (optional, needs a Mac for iOS run)
 
@@ -48,20 +48,25 @@ Opening Xcode (`npx cap open ios`) only works on a Mac. Cloud build is the path 
 3. In [App Store Connect](https://appstoreconnect.apple.com) → Users and Access → Integrations → App Store Connect API, create an **API key** with the App Manager or Admin role. Download the `.p8` once, and note the Key ID and Issuer ID. Keep the file off git.
 4. In App Store Connect, create the app: name **Kandi**, bundle id **com.marshandbarb.kandi** (create that identifier first under Certificates, Identifiers & Profiles if it is not listed), primary language English (US), SKU something like `kandi-ios`.
 
-### B. Codemagic (recommended)
+### B. GitHub Actions (primary)
 
-1. Create a free [Codemagic](https://codemagic.io) account (GitHub or email). Connect the Kandi git repo.
-2. New app → point it at this repo. Use the `mobile/codemagic.yaml` workflow (set the working directory / yaml path to `mobile/codemagic.yaml`).
-3. In Codemagic settings, add code signing: App Store Connect API key (the `.p8`, Key ID, Issuer ID) and let Codemagic manage certificates and the `com.marshandbarb.kandi` profile.
-4. Confirm `hosted-url.txt` is the lasting production URL, then start the **kandi_ios** workflow.
-5. When the build succeeds, Codemagic uploads the `.ipa` to App Store Connect (TestFlight).
-6. In App Store Connect → TestFlight, add Boston as an internal tester (his Apple ID email). On his iPhone, install the **TestFlight** app from the App Store, accept the invite, and install Kandi.
+1. In App Store Connect, finish the items in section A (API key with **Admin** role, bundle id `com.marshandbarb.kandi`, app record **Kandi**). Also accept the **Free Apps** agreement under Agreements, Tax, and Banking, or the first upload can fail. Copy the 10-character Team ID from [Membership](https://developer.apple.com/account) — it is not the same as the Issuer ID.
+2. On a machine that has the `.p8` (do not commit it), set the repo secrets:
 
-Internal TestFlight usually becomes available within a few minutes to an hour after processing. It does not need App Review. External testers (people outside his App Store Connect users) do need a brief Beta App Review the first time.
+   ```bash
+   KEY_ID=YOUR_KEY_ID ISSUER_ID=YOUR_ISSUER_UUID TEAM_ID=YOUR_TEAM_ID      P8_PATH=/path/to/AuthKey_YOUR_KEY_ID.p8      ./scripts/set-ios-secrets.sh
+   ```
 
-### C. GitHub Actions alternative
+   This sets `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY`, and `APPLE_TEAM_ID` on `Bmatts1998/kandi`.
+3. In the GitHub repo, open Actions → **Kandi iOS (TestFlight)** → Run workflow. It also runs when you push a tag like `v1.0.0`. Do not start it until the secrets exist.
+4. The workflow uses `macos-latest` (Xcode 16+), `npm ci` in `mobile/`, `npx cap sync ios`, CocoaPods if a Podfile is present, automatic signing, marketing version `1.0`, and `github.run_number` as the build number. It archives and uploads to App Store Connect.
+5. In App Store Connect → TestFlight, wait for processing (often 5–30 minutes). Add Boston as an **internal tester** (his Apple ID email, under Users and Access first if needed). On his iPhone, install the **TestFlight** app from the App Store, accept the invite, and install Kandi.
 
-A starter workflow is in `.github/workflows/ios-build.yml`. It needs repo secrets `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, and `APP_STORE_CONNECT_API_KEY` (the `.p8` contents), plus a GitHub account with Actions enabled. Use this if he already prefers GitHub and does not want a second dashboard.
+Internal TestFlight does not need App Review. External testers do, the first time.
+
+### C. Codemagic (fallback)
+
+If GitHub Actions is not usable, create a free [Codemagic](https://codemagic.io) account, connect this repo, use `mobile/codemagic.yaml`, and add the same App Store Connect API key for signing. Then start the **kandi_ios** workflow and follow the TestFlight steps above.
 
 ## App Store review — what can get Kandi rejected
 
