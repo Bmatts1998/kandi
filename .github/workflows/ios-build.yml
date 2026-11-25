@@ -1,0 +1,36 @@
+# Template only. Requires a GitHub repo and these Actions secrets:
+#   APP_STORE_CONNECT_KEY_ID
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY   (contents of the .p8)
+# Boston must create the Apple Developer and GitHub accounts himself.
+name: Kandi iOS (TestFlight)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install and sync
+        run: |
+          npm ci || npm install
+          npx cap sync ios
+      - name: Install pods
+        run: cd ios/App && pod install
+      - name: Build and upload
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          echo "Add a signing step (Fastlane deliver / Apple official actions) after certificates are configured in the repo."
+          echo "This workflow is a starter; it does not sign until secrets and a match/fastlane setup exist."
+          exit 1

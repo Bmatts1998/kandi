@@ -257,6 +257,7 @@
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <button class="btn primary" data-act="signup" style="margin-top:16px">Create account</button>
         <button class="btn ghost" data-act="show-login" style="margin-top:8px">I already have an account</button>
+        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
       ` : `
         <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" placeholder="Password" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
@@ -264,6 +265,7 @@
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
         <p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>
+        <p class="tiny" style="margin-top:10px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
         ${iosTip()}
       `}
     </div></div>`;
@@ -435,13 +437,25 @@
     }
     html += iosTip();
     html += `<button class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
-      <p class="tiny" style="text-align:center;margin-top:10px">Kandi v1 · Add to Home Screen in Safari for the full app</p></div>`;
+      <button class="btn danger" style="margin-top:8px;width:100%" data-act="delete-account">Delete account</button>
+      <p class="tiny" style="text-align:center;margin-top:12px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a></p>
+      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1 · Add to Home Screen in Safari for the full app</p></div>`;
     return html;
   }
 
   function overlays() {
     const o = state.overlay;
     if (!o) return "";
+    if (o.type === "deleteAccount") {
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">Delete your account?</h2>
+        <p class="muted" style="margin-top:8px">This permanently deletes your profile, photos, likes, matches, and messages. You can't undo it. Demo profiles can't be deleted.</p>
+        <input data-field="deleteUser" placeholder="Type your username" value="${esc(state.drafts.deleteUser || "")}" style="margin-top:16px" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <input data-field="deleteConfirm" placeholder="Type DELETE in all caps" value="${esc(state.drafts.deleteConfirm || "")}" style="margin-top:8px" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" />
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <button class="btn danger" style="margin-top:16px;width:100%" data-act="delete-account-confirm">Delete my account</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Keep my account</button></div></div>`;
+    }
     if (o.type === "paywall") {
       const prices = { weekly: { plus: "$12.99", vip: "$19.99", n: "per week" }, monthly: { plus: "$24.99", vip: "$39.99", n: "per month" }, six: { plus: "$89.99", vip: "$149.99", n: "every 6 months" } }[state.billing];
       const pending = state.pendingPlan;
@@ -640,6 +654,13 @@
         render(); return;
       }
       if (act === "logout") { await api("/api/logout", { method: "POST", body: {} }); state.me = null; state.view = "auth"; render(); return; }
+      if (act === "delete-account") { state.err = ""; state.drafts.deleteUser = ""; state.drafts.deleteConfirm = ""; state.overlay = { type: "deleteAccount" }; render(); return; }
+      if (act === "delete-account-confirm") {
+        await api("/api/account", { method: "DELETE", body: { username: state.drafts.deleteUser, confirm: state.drafts.deleteConfirm } });
+        state.me = null; state.view = "auth"; state.overlay = null; state.err = ""; state.info = "Your account and data were deleted.";
+        if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+        render(); return;
+      }
       if (act === "toggle-vibe") {
         const v = state.me.vibes.includes(id) ? state.me.vibes.filter((x) => x !== id) : state.me.vibes.concat(id);
         state.me.vibes = v; await api("/api/me", { method: "PUT", body: { vibes: v } }); render(); return;

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kandi</string>
+    <string name="title_activity_main">Kandi</string>
+    <string name="package_name">com.marshandbarb.kandi</string>
+    <string name="custom_url_scheme">com.marshandbarb.kandi</string>
+</resources>

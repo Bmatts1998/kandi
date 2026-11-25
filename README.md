@@ -106,3 +106,7 @@ For a real launch you’ll want:
 - Admin moderation dashboard
 - Production-grade photo scanning or ID checks
 - Native iOS / Android store builds
+
+## Native iOS / Android
+
+A Capacitor wrapper (bundle id `com.marshandbarb.kandi`) lives in `mobile/`. It loads the hosted app URL, uses the black + neon orange icon and splash, and is set up for a cloud build to TestFlight. See [mobile/README.md](mobile/README.md) for the accounts and steps. Users can delete their account from the You tab (required for App Store review). Privacy and terms are at `/privacy` and `/terms`.

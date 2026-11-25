@@ -186,6 +186,39 @@ app.post("/api/logout", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete("/api/account", auth, async (req, res) => {
+  if (req.user.is_demo) {
+    return res.status(403).json({ error: "Demo profiles can't be deleted." });
+  }
+  const username = String(req.body.username || "").trim().toLowerCase();
+  const confirm = String(req.body.confirm || "").trim();
+  if (username !== String(req.user.username).toLowerCase() || confirm !== "DELETE") {
+    return res.status(400).json({ error: "Type your username and DELETE (all caps) to confirm." });
+  }
+  const id = req.user.id;
+  const matchIds = (await db.prepare(`SELECT id FROM matches WHERE a_id=? OR b_id=?`).all(id, id)).map((r) => r.id);
+  for (const mid of matchIds) {
+    await db.prepare(`DELETE FROM messages WHERE match_id=?`).run(mid);
+  }
+  await db.prepare(`DELETE FROM messages WHERE from_id=?`).run(id);
+  await db.prepare(`DELETE FROM matches WHERE a_id=? OR b_id=?`).run(id, id);
+  await db.prepare(`DELETE FROM likes WHERE from_id=? OR to_id=?`).run(id, id);
+  await db.prepare(`DELETE FROM passes WHERE from_id=? OR to_id=?`).run(id, id);
+  await db.prepare(`DELETE FROM blocks WHERE user_id=? OR blocked_id=?`).run(id, id);
+  await db.prepare(`DELETE FROM reports WHERE reporter_id=? OR target_id=?`).run(id, id);
+  await db.prepare(`DELETE FROM sessions WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM live WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM event_going WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM like_days WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM rewind_days WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM location_shares WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM users WHERE id=?`).run(id);
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
 app.get("/api/me", auth, async (req, res) => {
   const going = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
   const live = await db.prepare(`SELECT * FROM live WHERE user_id=?`).get(req.user.id);
@@ -580,6 +613,13 @@ app.post("/api/claim", async (req, res) => {
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
+
+app.get(["/privacy", "/privacy.html"], (_req, res) => {
+  res.sendFile(path.join(root, "public", "privacy.html"));
+});
+app.get(["/terms", "/terms.html"], (_req, res) => {
+  res.sendFile(path.join(root, "public", "terms.html"));
+});
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/ws")) return next();
