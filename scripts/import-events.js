@@ -17,6 +17,7 @@ const http = require("http");
 const { URL } = require("url");
 
 const ROOT = path.join(__dirname, "..");
+const { eventKey } = require("../src/event-key");
 const JSON_PATH = path.join(ROOT, "data", "slc-events-2026.json");
 const USER_AGENT = "KandiEventBot/1.0 (+https://github.com/Bmatts1998/kandi)";
 const FETCH_TIMEOUT_MS = 20000;
@@ -38,7 +39,7 @@ function loadEnv() {
   for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
     const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!m) continue;
-    if (process.env[m[1]] != null && process.env[m[1]] !== "") continue;
+    if (Object.prototype.hasOwnProperty.call(process.env, m[1])) continue;
     let v = m[2].trim();
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
     process.env[m[1]] = v;
@@ -913,6 +914,7 @@ function mergeEvents(groups) {
 function toRow(ev) {
   return {
     id: ev.id,
+    event_key: ev.eventKey || eventKey(ev),
     name: ev.name,
     city: ev.city,
     date_label: ev.dateLabel,
@@ -944,16 +946,58 @@ async function upsertDatabase(events, sourceResults) {
   const db = await open();
   await db.prepare(`DELETE FROM events WHERE is_example=1`).run();
 
-  const upsertSql = `INSERT OR REPLACE INTO events (
-      id, name, city, date_label, venue, genres, emoji, color, is_example,
+  // Upsert in place (never INSERT OR REPLACE): SQLite REPLACE deletes the row first
+  // and would CASCADE-wipe event_going RSVPs. Reuse an existing id when the stable
+  // event_key already exists so hourly source-id changes don't drop attendance.
+  const upsertSql = `INSERT INTO events (
+      id, event_key, name, city, date_label, venue, genres, emoji, color, is_example,
       category, ticket_url, source_url, source, sources, artists, image_url,
       starts_at, age_limit, status, updated_at, address, ticket_seller, time_tba, ends_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      event_key=excluded.event_key, name=excluded.name, city=excluded.city,
+      date_label=excluded.date_label, venue=excluded.venue, genres=excluded.genres,
+      emoji=excluded.emoji, color=excluded.color, is_example=excluded.is_example,
+      category=excluded.category, ticket_url=excluded.ticket_url, source_url=excluded.source_url,
+      source=excluded.source, sources=excluded.sources, artists=excluded.artists,
+      image_url=excluded.image_url, starts_at=excluded.starts_at, age_limit=excluded.age_limit,
+      status=excluded.status, updated_at=excluded.updated_at, address=excluded.address,
+      ticket_seller=excluded.ticket_seller, time_tba=excluded.time_tba, ends_at=excluded.ends_at`;
   const stmt = await db.prepare(upsertSql);
+
+  async function moveRsvps(fromId, toId, key) {
+    if (!fromId || fromId === toId) return;
+    const rows = await db.prepare(`SELECT * FROM event_going WHERE event_id=? OR event_key=?`).all(fromId, key);
+    for (const row of rows) {
+      const exists = await db.prepare(`SELECT user_id FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).get(row.user_id, toId, key);
+      if (exists) {
+        await db.prepare(`DELETE FROM event_going WHERE user_id=? AND event_id=?`).run(row.user_id, fromId);
+      } else {
+        await db.prepare(`UPDATE event_going SET event_id=?, event_key=? WHERE user_id=? AND event_id=?`).run(toId, key, row.user_id, fromId);
+      }
+    }
+    await db.prepare(`UPDATE posts SET event_id=? WHERE event_id=?`).run(toId, fromId);
+    await db.prepare(`UPDATE live SET event_id=? WHERE event_id=?`).run(toId, fromId);
+  }
+
   for (const ev of events) {
     const r = toRow(ev);
+    const byId = await db.prepare(`SELECT id, event_key FROM events WHERE id=?`).get(r.id);
+    const byKey = r.event_key ? await db.prepare(`SELECT id, event_key FROM events WHERE event_key=?`).get(r.event_key) : null;
+    if (byKey && byKey.id !== r.id) {
+      // Keep the already-stored id so /api/events/:id and RSVPs stay stable.
+      await moveRsvps(r.id, byKey.id, r.event_key);
+      r.id = byKey.id;
+    } else if (byId && r.event_key && byId.event_key && byId.event_key !== r.event_key) {
+      const other = await db.prepare(`SELECT id FROM events WHERE event_key=?`).get(r.event_key);
+      if (other && other.id !== byId.id) {
+        await moveRsvps(other.id, byId.id, r.event_key);
+      }
+    }
+    ev.id = r.id;
+    ev.eventKey = r.event_key;
     await stmt.run(
-      r.id, r.name, r.city, r.date_label, r.venue, r.genres, r.emoji, r.color, r.is_example,
+      r.id, r.event_key, r.name, r.city, r.date_label, r.venue, r.genres, r.emoji, r.color, r.is_example,
       r.category, r.ticket_url, r.source_url, r.source, r.sources, r.artists, r.image_url,
       r.starts_at, r.age_limit, r.status, r.updated_at, r.address, r.ticket_seller, r.time_tba, r.ends_at
     );

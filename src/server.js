@@ -13,6 +13,11 @@ const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
 const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
+const { eventKey, chipLabel } = require("./event-key");
+const {
+  isAdult, loadGoingRows, shapeGoers, resolveEvent, setRsvp,
+  listUpcomingForProfile, sharedShows, upcomingByUser, seedDemoMeetups, compactShow, truthy,
+} = require("./meetup");
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 
 const PORT = Number(process.env.PORT || 8787);
@@ -187,6 +192,7 @@ function publicUser(u, extra) {
     events: JSON.parse(u.events || "[]"),
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
+    showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
     subscription: u.subscription || null,
     createdAt: u.created_at,
     ...(extra || {}),
@@ -311,11 +317,13 @@ app.get("/api/me", auth, async (req, res) => {
   const going = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
   const live = await db.prepare(`SELECT * FROM live WHERE user_id=?`).get(req.user.id);
   const share = await db.prepare(`SELECT * FROM location_shares WHERE user_id=? ORDER BY id DESC LIMIT 1`).get(req.user.id);
+  const upcoming = await listUpcomingForProfile(db, req.user, req.user);
   res.json({
-    user: publicUser(req.user, { events: going.length ? going : JSON.parse(req.user.events || "[]") }),
+    user: publicUser(req.user, { events: going.length ? going : JSON.parse(req.user.events || "[]"), upcomingShows: upcoming.shows }),
     likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
     live: live ? { on: true, eventId: live.event_id, meetupSpot: live.meetup_spot } : { on: false },
     locationShare: share ? { with: share.share_with, event: share.event_label, at: share.created_at } : null,
+    upcomingShows: upcoming.shows,
   });
 });
 
@@ -327,9 +335,14 @@ app.put("/api/me", auth, async (req, res) => {
   const looking = body.looking != null ? JSON.stringify(body.looking) : req.user.looking;
   const prompts = body.prompts != null ? JSON.stringify(body.prompts) : req.user.prompts;
   if (!name || name.length < 2) return res.status(400).json({ error: "Name is required." });
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=? WHERE id=?`).run(name, bio, vibes, looking, prompts, req.user.id);
+  let showUpcoming = req.user.show_upcoming;
+  if (body.showUpcoming != null || body.show_upcoming != null) {
+    showUpcoming = (body.showUpcoming ?? body.show_upcoming) ? 1 : 0;
+  }
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, show_upcoming=? WHERE id=?`).run(name, bio, vibes, looking, prompts, showUpcoming, req.user.id);
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
-  res.json({ user: publicUser(user) });
+  const upcoming = await listUpcomingForProfile(db, user, user);
+  res.json({ user: publicUser(user, { upcomingShows: upcoming.shows }) });
 });
 
 app.post("/api/me/photo", auth, async (req, res) => {
@@ -423,14 +436,41 @@ app.get("/api/discover", auth, async (req, res) => {
   );
   const genre = String(req.query.genre || "all");
   const event = String(req.query.event || "all");
-  if ((genre !== "all" || event !== "all") && !isPlus(req.user.subscription)) {
+  // Genre filters stay Kandi+. "Going to the same show" is a core, free connecting filter.
+  if (genre !== "all" && !isPlus(req.user.subscription)) {
     return res.status(402).json({ error: "Advanced filters are a Kandi+ feature.", code: "plus_required", reason: "filters" });
   }
+  const showsByUser = await upcomingByUser(db);
+  const myShows = showsByUser.get(Number(req.user.id)) || [];
+  const myIds = new Set(myShows.map((e) => e.id));
+  const myKeys = new Set(myShows.map((e) => e.event_key || e.id));
+  function sharedFor(uid) {
+    const theirs = showsByUser.get(Number(uid)) || [];
+    return theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id)).map((e) => compactShow(e));
+  }
   let people = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
-    .filter((u) => !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id))
-    .map((u) => publicUser(u));
+    .filter((u) => isAdult(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id))
+    .map((u) => {
+      const shared = sharedFor(u.id);
+      return publicUser(u, {
+        sharedEvents: shared,
+        sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
+      });
+    });
   if (genre !== "all") people = people.filter((p) => p.vibes.includes(genre));
-  if (event !== "all") people = people.filter((p) => p.events.includes(event));
+  if (event === "same") {
+    people = people.filter((p) => (p.sharedEvents || []).length);
+  } else if (event !== "all") {
+    people = people.filter((p) => {
+      const theirs = showsByUser.get(Number(p.id)) || [];
+      return theirs.some((e) => e.id === event || e.event_key === event) || (p.events || []).includes(event);
+    });
+  }
+  people.sort((a, b) => {
+    const ds = (b.sharedEvents || []).length - (a.sharedEvents || []).length;
+    if (ds) return ds;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
   res.json({
     people,
     likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
@@ -539,7 +579,20 @@ app.get("/api/matches", auth, async (req, res) => {
     const otherId = m.a_id === req.user.id ? m.b_id : m.a_id;
     const other = await db.prepare(`SELECT * FROM users WHERE id=?`).get(otherId);
     const last = await db.prepare(`SELECT * FROM messages WHERE match_id=? ORDER BY id DESC LIMIT 1`).get(m.id);
-    const item = { matchId: m.id, user: publicUser(other), lastMessage: last ? { text: last.text, fromId: last.from_id, at: last.created_at } : null, createdAt: m.created_at };
+    const shared = other ? await sharedShows(db, req.user.id, otherId) : [];
+    const item = {
+      matchId: m.id,
+      user: publicUser(other),
+      lastMessage: last ? { text: last.text, fromId: last.from_id, at: last.created_at } : null,
+      createdAt: m.created_at,
+      sharedEvents: shared,
+      meetPlan: (m.meet_spot || m.meet_time) ? {
+        eventKey: m.meet_event_key || "",
+        event: shared.find((s) => s.eventKey === m.meet_event_key || s.id === m.meet_event_key) || shared[0] || null,
+        spot: m.meet_spot || "",
+        time: m.meet_time || "",
+      } : null,
+    };
     if (item.user && !blocked.has(item.user.id)) out.push(item);
   }
   res.json({ matches: out });
@@ -551,7 +604,41 @@ app.get("/api/chats/:userId", auth, async (req, res) => {
   const match = await db.prepare(`SELECT * FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
   if (!match) return res.status(404).json({ error: "You can only chat after you match." });
   const messages = await db.prepare(`SELECT id, from_id as fromId, text, created_at as at FROM messages WHERE match_id=? ORDER BY id ASC`).all(match.id);
-  res.json({ matchId: match.id, messages });
+  const shared = await sharedShows(db, req.user.id, otherId);
+  res.json({
+    matchId: match.id,
+    messages,
+    sharedEvents: shared,
+    meetPlan: (match.meet_spot || match.meet_time) ? {
+      eventKey: match.meet_event_key || "",
+      event: shared.find((s) => s.eventKey === match.meet_event_key || s.id === match.meet_event_key) || shared[0] || null,
+      spot: match.meet_spot || "",
+      time: match.meet_time || "",
+    } : null,
+  });
+});
+
+app.post("/api/matches/:id/meet", auth, async (req, res) => {
+  const match = await db.prepare(`SELECT * FROM matches WHERE id=?`).get(Number(req.params.id));
+  if (!match || (Number(match.a_id) !== Number(req.user.id) && Number(match.b_id) !== Number(req.user.id))) {
+    return res.status(404).json({ error: "Match not found." });
+  }
+  const otherId = Number(match.a_id) === Number(req.user.id) ? match.b_id : match.a_id;
+  if ((await blockedSet(req.user.id)).has(Number(otherId))) {
+    return res.status(403).json({ error: "You can't plan a meetup with this person." });
+  }
+  const shared = await sharedShows(db, req.user.id, otherId);
+  if (!shared.length) return res.status(400).json({ error: "You two need to be going to the same show first." });
+  const wanted = String(req.body.eventKey || req.body.eventId || "");
+  const ev = shared.find((s) => s.eventKey === wanted || s.id === wanted) || shared[0];
+  const spot = String(req.body.spot || "").trim().slice(0, 80);
+  const time = String(req.body.time || "").trim().slice(0, 40);
+  if (!spot && !time) return res.status(400).json({ error: "Add a meet spot or a time." });
+  await db.prepare(`UPDATE matches SET meet_event_key=?, meet_spot=?, meet_time=? WHERE id=?`)
+    .run(ev.eventKey || ev.id, spot, time, match.id);
+  const plan = { eventKey: ev.eventKey || ev.id, event: ev, spot, time };
+  broadcastToUser(otherId, { type: "meet-plan", matchId: match.id, meetPlan: plan, from: publicUser(req.user) });
+  res.json({ ok: true, meetPlan: plan, sharedEvents: shared });
 });
 
 app.post("/api/chats/:userId", auth, async (req, res) => {
@@ -596,6 +683,7 @@ function publicEventFields(e) {
     timeTba,
     ageLimit: e.age_limit || "",
     icsUrl: "/api/events/" + encodeURIComponent(e.id) + ".ics",
+    eventKey: e.event_key || eventKey(e),
   };
   ev.googleCalendarUrl = googleCalendarUrl(ev);
   ev.mapsUrl = ev.address
@@ -612,29 +700,28 @@ app.get("/api/events", auth, async (req, res) => {
   const now = Date.now();
   const events = [];
   // One query for everyone going to anything (was 2 queries per event: slow on Neon with 100+ shows).
-  const goingByEvent = new Map();
-  const goingRows = await db.prepare(`SELECT g.event_id AS going_event_id, u.* FROM event_going g JOIN users u ON u.id=g.user_id`).all();
-  for (const row of goingRows) {
-    const k = String(row.going_event_id);
-    if (!goingByEvent.has(k)) goingByEvent.set(k, []);
-    goingByEvent.get(k).push(row);
-  }
+  const goingRows = await loadGoingRows(db);
   for (const e of raw) {
     if (String(e.status || "active") === "removed") continue;
     const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
     if (!Number.isNaN(starts) && starts < now) continue;
     if (e.is_example) continue;
-    const goers = goingByEvent.get(String(e.id)) || [];
-    const going = goers
-      .filter((u) => !blocked.has(Number(u.id)))
-      .map((u) => publicUser(u));
-    const imGoing = goers.some((u) => Number(u.id) === Number(req.user.id));
+    const going = shapeGoers(goingRows, e, req.user, blocked, publicUser);
+    const open = going.filter((u) => u.openToMeet);
+    const mine = going.find((u) => Number(u.id) === Number(req.user.id));
     if (req.user.subscription === "vip") {
       going.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
     }
     events.push({
       ...publicEventFields(e),
-      isExample: false, imGoing, going,
+      isExample: false,
+      imGoing: Boolean(mine),
+      imOpenToMeet: Boolean(mine && mine.openToMeet),
+      meetNote: mine && mine.openToMeet ? (mine.meetNote || "") : "",
+      going,
+      openToMeet: open,
+      goingCount: going.length,
+      openCount: open.length,
     });
   }
   events.sort((a, b) => String(a.startsAt || a.date).localeCompare(String(b.startsAt || b.date)));
@@ -657,20 +744,26 @@ app.get(/^\/api\/events\/(.+)\.ics$/, async (req, res) => {
 });
 
 app.post("/api/events/:id/going", auth, async (req, res) => {
-  const id = String(req.params.id);
-  const ev = await db.prepare(`SELECT id FROM events WHERE id=?`).get(id);
-  if (!ev) return res.status(404).json({ error: "Event not found." });
-  const going = Boolean(req.body.going);
-  if (going) await db.prepare(`INSERT OR IGNORE INTO event_going (user_id, event_id) VALUES (?,?)`).run(req.user.id, id);
-  else {
-    await db.prepare(`DELETE FROM event_going WHERE user_id=? AND event_id=?`).run(req.user.id, id);
-    const live = await db.prepare(`SELECT event_id FROM live WHERE user_id=?`).get(req.user.id);
-    if (live && live.event_id === id) await db.prepare(`DELETE FROM live WHERE user_id=?`).run(req.user.id);
+  if (!isAdult(req.user)) return res.status(403).json({ error: "Kandi is 18+ only." });
+  const ev = await resolveEvent(db, req.params.id);
+  if (!ev || ev.is_example || String(ev.status || "active") === "removed") {
+    return res.status(404).json({ error: "Event not found." });
   }
-  const events = JSON.parse(req.user.events || "[]");
-  const next = going ? Array.from(new Set(events.concat(id))) : events.filter((x) => x !== id);
-  await db.prepare(`UPDATE users SET events=? WHERE id=?`).run(JSON.stringify(next), req.user.id);
-  res.json({ ok: true, going });
+  const going = Boolean(req.body.going);
+  const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false });
+  res.json({ ok: true, ...result });
+});
+
+app.post("/api/events/:id/meet", auth, async (req, res) => {
+  if (!isAdult(req.user)) return res.status(403).json({ error: "Kandi is 18+ only." });
+  const ev = await resolveEvent(db, req.params.id);
+  if (!ev || ev.is_example || String(ev.status || "active") === "removed") {
+    return res.status(404).json({ error: "Event not found." });
+  }
+  const open = Boolean(req.body.open ?? req.body.openToMeet);
+  const note = req.body.note != null ? String(req.body.note).slice(0, 80) : undefined;
+  const result = await setRsvp(db, req.user, ev, { going: true, openToMeet: open, meetNote: note });
+  res.json({ ok: true, ...result });
 });
 
 app.post("/api/live", auth, async (req, res) => {
@@ -681,9 +774,9 @@ app.post("/api/live", auth, async (req, res) => {
     await db.prepare(`DELETE FROM live WHERE user_id=?`).run(req.user.id);
     return res.json({ live: { on: false } });
   }
-  const ev = await db.prepare(`SELECT id FROM events WHERE id=?`).get(eventId);
+  const ev = await resolveEvent(db, eventId);
   if (!ev) return res.status(400).json({ error: "Pick an event first." });
-  await db.prepare(`INSERT OR IGNORE INTO event_going (user_id, event_id) VALUES (?,?)`).run(req.user.id, eventId);
+  await setRsvp(db, req.user, ev, { going: true });
   await db.prepare(`INSERT INTO live (user_id, event_id, meetup_spot, updated_at) VALUES (?,?,?,datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET event_id=excluded.event_id, meetup_spot=excluded.meetup_spot, updated_at=datetime('now')`).run(req.user.id, eventId, meetupSpot);
   res.json({ live: { on: true, eventId, meetupSpot } });
@@ -912,6 +1005,11 @@ async function boot() {
         console.log("Ensured social seed (follows/posts) on boot.");
       } catch (err) {
         console.error("Social seed on boot failed:", err.message || err);
+      }
+      try {
+        await seedDemoMeetups(db);
+      } catch (err) {
+        console.error("Demo meetup seed on boot failed:", err.message || err);
       }
     }
   }

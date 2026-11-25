@@ -378,7 +378,7 @@ const PG_SCHEMA = `
 `;
 
 const REPLACE_CONFLICT = {
-  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example", "category", "ticket_url", "source_url", "source", "sources", "artists", "image_url", "starts_at", "age_limit", "status", "updated_at", "address", "ticket_seller", "time_tba", "ends_at"] },
+  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example", "category", "ticket_url", "source_url", "source", "sources", "artists", "image_url", "starts_at", "age_limit", "status", "updated_at", "address", "ticket_seller", "time_tba", "ends_at", "event_key"] },
   app_meta: { cols: ["key"], update: ["value", "updated_at"] },
   passes: { cols: ["from_id", "to_id"], update: ["created_at"] },
   blocks: { cols: ["user_id", "blocked_id"], update: ["reason"] },
@@ -532,6 +532,7 @@ async function migrate(db) {
     ["ticket_seller", "TEXT DEFAULT ''"],
     ["time_tba", "INTEGER DEFAULT 0"],
     ["ends_at", "TEXT DEFAULT ''"],
+    ["event_key", "TEXT DEFAULT ''"],
   ];
   if (db.driver === "postgres") {
     await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
@@ -542,6 +543,16 @@ async function migrate(db) {
       await db.exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
     }
     await db.exec("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)");
+    await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS show_upcoming INTEGER DEFAULT 1");
+    await db.exec("ALTER TABLE event_going ADD COLUMN IF NOT EXISTS event_key TEXT DEFAULT ''");
+    await db.exec("ALTER TABLE event_going ADD COLUMN IF NOT EXISTS open_to_meet INTEGER DEFAULT 0");
+    await db.exec("ALTER TABLE event_going ADD COLUMN IF NOT EXISTS meet_note TEXT DEFAULT ''");
+    await db.exec("ALTER TABLE matches ADD COLUMN IF NOT EXISTS meet_event_key TEXT DEFAULT ''");
+    await db.exec("ALTER TABLE matches ADD COLUMN IF NOT EXISTS meet_spot TEXT DEFAULT ''");
+    await db.exec("ALTER TABLE matches ADD COLUMN IF NOT EXISTS meet_time TEXT DEFAULT ''");
+    await db.exec("ALTER TABLE events ADD COLUMN IF NOT EXISTS event_key TEXT DEFAULT ''");
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_events_event_key ON events(event_key)"); } catch (err) { console.error("idx_events_event_key:", err.message || err); }
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_event_going_key ON event_going(event_key)"); } catch (err) { console.error("idx_event_going_key:", err.message || err); }
   } else {
     try { await db.exec("ALTER TABLE users ADD COLUMN needs_profile INTEGER DEFAULT 0"); } catch (_) {}
     try { await db.exec("ALTER TABLE reports ADD COLUMN post_id INTEGER"); } catch (_) {}
@@ -550,6 +561,25 @@ async function migrate(db) {
       try { await db.exec(`ALTER TABLE events ADD COLUMN ${col} ${typ}`); } catch (_) {}
     }
     await db.exec("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT)");
+    for (const sql of [
+      "ALTER TABLE users ADD COLUMN show_upcoming INTEGER DEFAULT 1",
+      "ALTER TABLE event_going ADD COLUMN event_key TEXT DEFAULT ''",
+      "ALTER TABLE event_going ADD COLUMN open_to_meet INTEGER DEFAULT 0",
+      "ALTER TABLE event_going ADD COLUMN meet_note TEXT DEFAULT ''",
+      "ALTER TABLE matches ADD COLUMN meet_event_key TEXT DEFAULT ''",
+      "ALTER TABLE matches ADD COLUMN meet_spot TEXT DEFAULT ''",
+      "ALTER TABLE matches ADD COLUMN meet_time TEXT DEFAULT ''",
+    ]) {
+      try { await db.exec(sql); } catch (_) {}
+    }
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_events_event_key ON events(event_key)"); } catch (_) {}
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_event_going_key ON event_going(event_key)"); } catch (_) {}
+  }
+  try {
+    const { backfillEventKeys } = require("./meetup");
+    await backfillEventKeys(db);
+  } catch (err) {
+    console.error("event_key backfill failed:", err.message || err);
   }
 }
 

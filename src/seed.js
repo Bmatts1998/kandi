@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 const { open } = require("./db");
+const { seedDemoMeetups } = require("./meetup");
 
 const DEMO_PASSWORD = "plur-demo";
 
@@ -75,8 +76,6 @@ async function seed(existingDb) {
 
   const userIns = await db.prepare(`INSERT INTO users (username,password_hash,name,age,vibes,looking,prompts,photos,events,is_demo) VALUES (?,?,?,?,?,?,?,?,?,1)`);
   const find = await db.prepare(`SELECT id FROM users WHERE username=?`);
-  const goingIns = await db.prepare(`INSERT OR IGNORE INTO event_going (user_id, event_id) VALUES (?,?)`);
-
   // Incoming likes toward later real signups are created after a real user exists.
   // Demo users like each other in a few cases so the feed feels alive once you sign up
   // and some already like other demo accounts.
@@ -102,18 +101,10 @@ async function seed(existingDb) {
       id = Number(info.lastInsertRowid);
     }
     ids[u.username] = id;
-    const goingIds = [];
-    for (const ev of u.events) {
-      const exists = await db.prepare(`SELECT id FROM events WHERE id=?`).get(ev);
-      if (exists) {
-        await goingIns.run(id, ev);
-        goingIds.push(ev);
-      }
-    }
-    if (JSON.stringify(goingIds) !== JSON.stringify(u.events)) {
-      await db.prepare(`UPDATE users SET events=? WHERE id=?`).run(JSON.stringify(goingIds), id);
-    }
   }
+
+  // Attach demo accounts to upcoming real imported shows (not the retired sample festivals).
+  await seedDemoMeetups(db);
 
   // Some demo-to-demo likes so mutual matches can happen among seeds if needed
   const incoming = [
@@ -285,4 +276,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { seed, seedSocial, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, seedDemoMeetups, DEMO_PASSWORD, EVENTS, USERS };

@@ -1,6 +1,7 @@
 "use strict";
 
 const { normalizePhoto } = require("./photo");
+const { listUpcomingForProfile } = require("./meetup");
 
 function weekAgoIso() {
   return new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
@@ -370,9 +371,12 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
       await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(req.user.id, id)
     );
     const rows = await db().prepare(`${authorJoin} WHERE p.user_id=? ORDER BY p.created_at DESC, p.id DESC LIMIT 60`).all(id);
+    const upcoming = await listUpcomingForProfile(db(), user, req.user);
     res.json({
-      user: publicUser(user, { ...counts, following, isMe: id === Number(req.user.id) }),
+      user: publicUser(user, { ...counts, following, isMe: id === Number(req.user.id), upcomingShows: upcoming.hidden ? [] : upcoming.shows, upcomingHidden: upcoming.hidden }),
       posts: await shapePosts(rows, req.user.id),
+      upcomingShows: upcoming.hidden ? [] : upcoming.shows,
+      upcomingHidden: upcoming.hidden,
     });
   });
 }
