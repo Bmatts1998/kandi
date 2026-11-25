@@ -34,7 +34,9 @@ function detectProvider(env = process.env) {
   if (has.resend) return "resend";
   if (has.postmark) return "postmark";
   if (has.gmail) return "gmail";
-  if (String(env.NODE_ENV || "").toLowerCase() !== "production" && env.EMAIL_DEV_LOG !== "0") return "console";
+  // Dev fallback only on a local machine — never on Render (which sets RENDER=true), even if NODE_ENV is unset.
+  const hosted = Boolean(env.RENDER || env.RENDER_SERVICE_ID || env.RENDER_GIT_COMMIT);
+  if (!hosted && String(env.NODE_ENV || "").toLowerCase() !== "production" && env.EMAIL_DEV_LOG !== "0") return "console";
   return "none";
 }
 

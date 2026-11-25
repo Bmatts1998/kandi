@@ -14,7 +14,7 @@ function startServer(extraEnv) {
   const port = 20000 + Math.floor(Math.random() * 20000);
   const env = { ...process.env, PORT: String(port), HOST: "127.0.0.1", KANDI_SQLITE_PATH: path.join(dir, "k.sqlite"), SEED_ON_BOOT: "1", ...extraEnv };
   delete env.DATABASE_URL;
-  for (const k of ["RESEND_API_KEY", "POSTMARK_SERVER_TOKEN", "GMAIL_REFRESH_TOKEN", "EMAIL_PROVIDER", "EMAIL_VERIFICATION", "KANDI_PUBLIC_URL"]) if (!(k in extraEnv)) delete env[k];
+  for (const k of ["RENDER", "RENDER_SERVICE_ID", "RENDER_GIT_COMMIT", "RESEND_API_KEY", "POSTMARK_SERVER_TOKEN", "GMAIL_REFRESH_TOKEN", "EMAIL_PROVIDER", "EMAIL_VERIFICATION", "KANDI_PUBLIC_URL"]) if (!(k in extraEnv)) delete env[k];
   const child = spawn(process.execPath, [path.join(__dirname, "..", "src", "server.js")], { env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   child.stdout.on("data", (d) => { out += d; });
@@ -56,6 +56,7 @@ describe("email helpers", () => {
     assert.equal(mailer.detectProvider({ NODE_ENV: "production", RESEND_API_KEY: "x" }), "resend");
     assert.equal(mailer.verificationActive({ NODE_ENV: "production", RESEND_API_KEY: "x", EMAIL_VERIFICATION: "off" }), false);
     assert.equal(mailer.detectProvider({}), "console");
+    assert.equal(mailer.detectProvider({ RENDER: "true" }), "none", "never the dev fallback on Render");
   });
   test("grandfathered accounts are never locked", () => {
     const env = { RESEND_API_KEY: "x" };
