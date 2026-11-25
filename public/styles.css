@@ -653,3 +653,4 @@
       opacity: 0; pointer-events: none; transition: opacity .15s; }
     #kandi-ptr.on { opacity: 1 !important; transform: translate(-50%, 40px) !important; }
     .story > .av { width: 62px; height: 62px; margin: 0 auto 6px; font-size: 28px; }
+    .set-row > .grow { flex: 1 1 auto; min-width: 0; }
