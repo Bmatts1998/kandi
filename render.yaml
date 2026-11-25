@@ -1,0 +1,25 @@
+# Kandi on Render's Free web service.
+# Data must live in Neon (or another hosted Postgres) because Free web
+# services have no persistent disk — a local SQLite file would be wiped
+# every time the service sleeps or redeploys.
+services:
+  - type: web
+    name: kandi
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: SEED_ON_BOOT
+        value: "1"
+      - key: KANDI_SECRET
+        generateValue: true
+      # Paste your Neon (or other Postgres) connection string in the dashboard.
+      # Prefer the direct (non-pooler) URI for this long-running server.
+      - key: DATABASE_URL
+        sync: false

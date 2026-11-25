@@ -1,0 +1,23 @@
+{
+  "name": "kandi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kandi — a dating app for ravers. Mobile-first PWA.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "seed": "node src/seed.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.1",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "multer": "1.4.5-lts.1",
+    "pg": "^8.16.3",
+    "ws": "^8.18.0"
+  }
+}
