@@ -88,7 +88,11 @@ const SQLITE_SCHEMA = `
       starts_at TEXT DEFAULT '',
       age_limit TEXT DEFAULT '',
       status TEXT DEFAULT 'active',
-      updated_at TEXT
+      updated_at TEXT,
+      address TEXT DEFAULT '',
+      ticket_seller TEXT DEFAULT '',
+      time_tba INTEGER DEFAULT 0,
+      ends_at TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
@@ -271,7 +275,11 @@ const PG_SCHEMA = `
       starts_at TEXT DEFAULT '',
       age_limit TEXT DEFAULT '',
       status TEXT DEFAULT 'active',
-      updated_at TEXT
+      updated_at TEXT,
+      address TEXT DEFAULT '',
+      ticket_seller TEXT DEFAULT '',
+      time_tba INTEGER DEFAULT 0,
+      ends_at TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
@@ -370,7 +378,7 @@ const PG_SCHEMA = `
 `;
 
 const REPLACE_CONFLICT = {
-  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example", "category", "ticket_url", "source_url", "source", "sources", "artists", "image_url", "starts_at", "age_limit", "status", "updated_at"] },
+  events: { cols: ["id"], update: ["name", "city", "date_label", "venue", "genres", "emoji", "color", "is_example", "category", "ticket_url", "source_url", "source", "sources", "artists", "image_url", "starts_at", "age_limit", "status", "updated_at", "address", "ticket_seller", "time_tba", "ends_at"] },
   app_meta: { cols: ["key"], update: ["value", "updated_at"] },
   passes: { cols: ["from_id", "to_id"], update: ["created_at"] },
   blocks: { cols: ["user_id", "blocked_id"], update: ["reason"] },
@@ -520,6 +528,10 @@ async function migrate(db) {
     ["age_limit", "TEXT DEFAULT ''"],
     ["status", "TEXT DEFAULT 'active'"],
     ["updated_at", "TEXT"],
+    ["address", "TEXT DEFAULT ''"],
+    ["ticket_seller", "TEXT DEFAULT ''"],
+    ["time_tba", "INTEGER DEFAULT 0"],
+    ["ends_at", "TEXT DEFAULT ''"],
   ];
   if (db.driver === "postgres") {
     await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");

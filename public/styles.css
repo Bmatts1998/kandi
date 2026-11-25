@@ -151,9 +151,18 @@
     .event .event-main { display: flex; gap: 12px; text-align: left; width: 100%; color: inherit; background: transparent; padding: 0; }
     .event .thumb { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; font-size: 26px; flex-shrink: 0; overflow: hidden; }
     .event .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .event-tix { align-self: stretch; text-align: center; text-decoration: none; }
+    .event-tix { text-align: center; text-decoration: none; }
     .event-updated { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
     .event-cats { margin-bottom: 12px; }
+    .event-facts { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+    .event-addr { color: var(--orange); text-decoration: underline; text-underline-offset: 2px; font-size: 13px; line-height: 1.35; }
+    .event-addr.tba, .event-tix-line.tba { color: var(--muted); text-decoration: none; }
+    .event-tix-line { font-size: 13px; color: var(--text); }
+    .event-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .event-actions .btn { flex: 1; min-width: 120px; text-align: center; text-decoration: none; }
+    .event-detail-row { margin: 10px 0; }
+    .event-detail-row .label { margin-bottom: 2px; }
+
     .toggle { width: 46px; height: 28px; border-radius: 999px; background: #2a2a2a; position: relative; border: 0; flex-shrink: 0; }
     .toggle.on { background: linear-gradient(90deg, #ff8a1a, #ff5c00); }
     .toggle i { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .18s; }

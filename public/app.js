@@ -80,6 +80,42 @@
     if (e.imageUrl) return `<img src="${esc(e.imageUrl)}" alt="" width="56" height="56">`;
     return esc(e.emoji || "✺");
   }
+  function eventWhen(e) {
+    if (e.timeTba) {
+      const datePart = String(e.date || "").replace(/\s*·\s*Time TBA/i, "").replace(/\s*·\s*\d.*/, "").trim();
+      return (datePart || "Date TBA") + " · Time TBA";
+    }
+    return e.date || "Date TBA";
+  }
+  function eventTicketLabel(e) {
+    if (!e.ticketUrl) return "Tickets TBA";
+    return e.ticketSeller ? "Tickets via " + e.ticketSeller : "Tickets";
+  }
+  function eventAddressLine(e) {
+    const place = e.address || "Address TBA";
+    if (e.address && (e.mapsUrl || e.address)) {
+      const href = e.mapsUrl || ("https://maps.apple.com/?q=" + encodeURIComponent((e.venue ? e.venue + ", " : "") + e.address));
+      return `<a class="event-addr" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(place)}</a>`;
+    }
+    return `<span class="event-addr tba">Address TBA</span>`;
+  }
+  function eventTicketLine(e) {
+    const label = eventTicketLabel(e);
+    if (!e.ticketUrl) return `<span class="event-tix-line tba">${esc(label)}</span>`;
+    return `<span class="event-tix-line">${esc(label)}</span>`;
+  }
+  function eventActions(e) {
+    const tix = e.ticketUrl
+      ? `<a class="btn sm event-tix" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener noreferrer">Get tickets</a>`
+      : "";
+    const ics = e.icsUrl
+      ? `<a class="btn sm ghost event-cal-btn" href="${esc(e.icsUrl)}">Add to Calendar</a>`
+      : "";
+    const gcal = e.googleCalendarUrl
+      ? `<a class="btn sm ghost event-cal-btn" href="${esc(e.googleCalendarUrl)}" target="_blank" rel="noopener noreferrer">Google Calendar</a>`
+      : "";
+    return `<div class="event-actions">${tix}${ics}${gcal}</div>`;
+  }
   function beads(n, size) {
     n = n || 8;
     return '<div class="beads" aria-hidden="true">' + Array.from({ length: n }, (_, i) =>
@@ -785,10 +821,6 @@
       html += `<div class="empty"><p>No upcoming ${cat === "rave" ? "raves" : cat === "concert" ? "concerts" : "shows"} in this list yet. Check back soon — we refresh every hour.</p></div>`;
     }
     list.forEach((e) => {
-      const tix = e.ticketUrl
-        ? `<a class="btn sm event-tix" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener noreferrer">Get tickets</a>`
-        : "";
-      const meta = [e.date, e.venue, e.city].filter(Boolean).join(" · ");
       const bits = [`${(e.going || []).length} ravers going`];
       if (e.ageLimit) bits.push(esc(e.ageLimit));
       if ((e.genres || []).length) bits.push(e.genres.map(esc).join(", "));
@@ -797,10 +829,15 @@
         <button class="event-main" data-act="event" data-id="${esc(e.id)}">
           <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${eventThumb(e)}</div>
           <div class="grow"><div style="font-weight:800">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}</div>
-          <div class="muted">${esc(meta)}</div>
+          <div class="muted">${esc(eventWhen(e))}</div>
+          <div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div>
           <div class="tiny" style="margin-top:4px">${bits.join(" · ")}</div></div>
         </button>
-        ${tix}
+        <div class="event-facts">
+          ${eventAddressLine(e)}
+          ${eventTicketLine(e)}
+        </div>
+        ${eventActions(e)}
       </div>`;
     });
     return html + "</div>";
@@ -1112,11 +1149,14 @@
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
         <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
-        <div class="muted">${esc(e.date)} · ${esc(e.venue)} · ${esc(e.city)}</div>
+        <div class="event-detail-row"><div class="label" style="margin:0">Date &amp; time</div><div class="muted">${esc(eventWhen(e))}</div></div>
+        <div class="event-detail-row"><div class="label" style="margin:0">Venue</div><div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div></div>
+        <div class="event-detail-row"><div class="label" style="margin:0">Address</div><div>${eventAddressLine(e)}</div></div>
+        <div class="event-detail-row"><div class="label" style="margin:0">Tickets</div><div>${eventTicketLine(e)}</div></div>
         ${(e.artists || []).length ? `<div class="tiny" style="margin-top:6px">${e.artists.map(esc).join(" · ")}</div>` : ""}
+        ${eventActions(e)}
         <div class="row" style="margin:14px 0"><div class="grow"><div style="font-weight:700">I'm going</div></div>
           <button class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${e.id}" aria-label="I'm going"><i></i></button></div>
-        ${e.ticketUrl ? `<a class="btn primary" style="margin-bottom:12px" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener noreferrer">Get tickets</a>` : ""}
         ${!isVip() ? `<button class="btn ghost" style="margin-bottom:12px" data-act="paywall" data-reason="priority">Get priority at events with Kandi VIP</button>` : `<div class="notice ok" style="margin-bottom:12px">Kandi VIP priority is on.</div>`}
         <div class="label">Who's going</div>
         ${e.going.map((p) => `<div class="row card" style="margin-bottom:8px">${personAvatar(p, "av sm")}

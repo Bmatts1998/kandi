@@ -173,7 +173,7 @@ function formatDateLabel(startsAt, dateOnly) {
     const year = new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: TZ }).format(d);
     const thisYear = new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: TZ }).format(new Date());
     const yearBit = year === thisYear ? "" : `, ${year}`;
-    if (dateOnly) return `${weekday}, ${month} ${day}${yearBit}`;
+    if (dateOnly) return `${weekday}, ${month} ${day}${yearBit} · Time TBA`;
     const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: TZ }).format(d);
     return `${weekday}, ${month} ${day}${yearBit} · ${time}`;
   } catch {
@@ -206,6 +206,16 @@ function titlesOverlap(a, b) {
   if (a === b) return true;
   if (a.length >= 8 && b.includes(a)) return true;
   if (b.length >= 8 && a.includes(b)) return true;
+  const words = (s) => s.split(" ").filter((w) => w.length >= 5);
+  return words(a).some((w) => words(b).includes(w));
+}
+
+function venuesOverlap(a, b) {
+  const ka = venueKey(a);
+  const kb = venueKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  if (ka.length >= 8 && kb.length >= 8 && (ka.includes(kb) || kb.includes(ka))) return true;
   return false;
 }
 
@@ -281,6 +291,111 @@ function skipReason(ev) {
   return null;
 }
 
+function ticketSellerFromUrl(url) {
+  if (!url) return "";
+  let host = "";
+  try { host = new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+  const map = [
+    ["ticketmaster.com", "Ticketmaster"],
+    ["livenation.com", "Live Nation"],
+    ["axs.com", "AXS"],
+    ["tixr.com", "Tixr"],
+    ["eventbrite.com", "Eventbrite"],
+    ["ticketsauce.com", "Ticket Sauce"],
+    ["24tix.com", "24tix"],
+    ["dice.fm", "Dice"],
+    ["seatgeek.com", "SeatGeek"],
+    ["eventliveus.com", "EventLive"],
+    ["skyslc.com", "Sky SLC"],
+    ["soundwellslc.com", "Soundwell"],
+    ["thecomplexslc.com", "The Complex"],
+    ["deltacenter.com", "Delta Center"],
+    ["ra.co", "Resident Advisor"],
+    ["v2presents.com", "V2 Presents"],
+    ["instagram.com", "Instagram"],
+    ["tickettailor.com", "Ticket Tailor"],
+    ["seetickets.com", "See Tickets"],
+    ["seetickets.us", "See Tickets"],
+  ];
+  for (const [h, name] of map) {
+    if (host === h || host.endsWith("." + h)) return name;
+  }
+  return host;
+}
+
+function formatStreetAddress(addr) {
+  if (!addr) return "";
+  if (typeof addr === "string") {
+    const s = decodeEntities(addr).replace(/\s+/g, " ").trim();
+    return /\d/.test(s) && !/^[^\d]+,\s*(Utah|UT)\s*$/i.test(s) ? s : "";
+  }
+  const street = addr.streetAddress || addr.address_line || addr.street || addr.address || "";
+  const city = addr.addressLocality || addr.city || "";
+  const region = addr.addressRegion || addr.state || "";
+  const postal = addr.postalCode || "";
+  const regionPostal = [region, postal].filter(Boolean).join(" ");
+  const line = [stripHtml(street), stripHtml(city), regionPostal].filter(Boolean).join(", ");
+  return /\d/.test(line) && street ? line : "";
+}
+
+function addressFromVenue(venue, fallback) {
+  if (!venue) return fallback || "";
+  const map = globalThis.__venueAddresses;
+  if (!map) return fallback || "";
+  const key = normalizeKeyPart(venue);
+  if (map.has(key)) return map.get(key);
+  for (const [k, addr] of map) {
+    if (k.length >= 8 && key.length >= 8 && (key.includes(k) || k.includes(key))) return addr;
+  }
+  return fallback || "";
+}
+
+function rememberAddress(venue, address) {
+  const addr = formatStreetAddress(address);
+  if (!venue || !addr) return addr;
+  globalThis.__venueAddresses = globalThis.__venueAddresses || new Map();
+  const key = normalizeKeyPart(venue);
+  if (key && !globalThis.__venueAddresses.has(key)) globalThis.__venueAddresses.set(key, addr);
+  return addr;
+}
+
+function looksLikeStreetAddress(line) {
+  return /^\d{1,5}\s+.+,\s*.*\b(UT|Utah)\b/i.test(String(line || "").trim());
+}
+
+async function fetchElectronicSlcVenues() {
+  const { status, text } = await fetchText("https://electronicslc.com/");
+  if (status !== 200) throw new Error("HTTP " + status);
+  const paths = Array.from(new Set((text.match(/href="(\/venues\/[^"]+\/)"/g) || []).map((h) => h.slice(6, -1))));
+  let loaded = 0;
+  for (const path of paths) {
+    try {
+      const page = await fetchText("https://electronicslc.com" + path);
+      if (page.status !== 200) continue;
+      const stripped = page.text.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, "\n");
+      const lines = stripped.split(/\n+/).map((l) => decodeEntities(l).replace(/\s+/g, " ").trim()).filter(Boolean);
+      for (let i = 0; i < lines.length; i++) {
+        if (!looksLikeStreetAddress(lines[i])) continue;
+        let name = "";
+        for (let j = i - 1; j >= 0; j--) {
+          if (!/^(Newsletter|Submit|Artists|Venues|Events|Electronic|SLC|Skip to main content)$/i.test(lines[j]) && !/Electronic SLC/i.test(lines[j])) {
+            name = lines[j];
+            break;
+          }
+        }
+        if (name) {
+          rememberAddress(name, lines[i]);
+          loaded += 1;
+        }
+        break;
+      }
+    } catch {
+      /* skip one venue page */
+    }
+  }
+  return loaded;
+}
+
 function finalize(partial) {
   const category = partial.category || classify(partial);
   const style = styleFor(category);
@@ -297,12 +412,16 @@ function finalize(partial) {
     genres: (partial.genres || []).map(stripHtml).filter(Boolean),
     ageLimit: stripHtml(partial.ageLimit || ""),
     ticketUrl: partial.ticketUrl || "",
+    ticketSeller: partial.ticketSeller || ticketSellerFromUrl(partial.ticketUrl || ""),
     sourceUrl: partial.sourceUrl || "",
     imageUrl: partial.imageUrl || "",
     source: partial.source,
     emoji: partial.emoji || style.emoji,
     color: partial.color || style.color,
     dateOnly: !!partial.dateOnly,
+    timeTba: !!dateOnly,
+    address: rememberAddress(partial.venue, partial.address) || addressFromVenue(partial.venue, ""),
+    endsAt: partial.endsAt || "",
   };
   const reason = skipReason(ev);
   if (reason) return null;
@@ -377,6 +496,7 @@ function eventFromJsonLd(node, source, fallbackVenue) {
     artists,
     venue,
     city: (loc && loc.address && (loc.address.addressLocality || loc.address.city)) || cityFor(venue),
+    address: formatStreetAddress(loc && loc.address),
     startsAt,
     dateOnly,
     ticketUrl: ticketUrl || node.url || "",
@@ -506,7 +626,7 @@ async function fetchResidentAdvisor() {
 }
 
 function looksDateOnly(ev) {
-  return !!(ev.dateOnly || /T23:59:00/.test(ev.startsAt || "") || (ev.dateLabel && !String(ev.dateLabel).includes("·")));
+  return !!(ev.timeTba || ev.dateOnly);
 }
 
 async function enrichDeltaTimes(ev, url) {
@@ -588,6 +708,7 @@ async function fetchComplexAeg() {
     const tour = stripHtml(title.tour || "");
     const display = tour && !name.toLowerCase().includes(tour.toLowerCase()) ? `${name}: ${tour}` : name;
     const venue = (e.venue && (e.venue.title || e.venue.name)) || "The Complex";
+    const venueAddress = formatStreetAddress((e.venue && (e.venue.address_line || e.venue.address)) ? (e.venue.address_line || [e.venue.address, e.venue.city, [e.venue.state, e.venue.postalCode].filter(Boolean).join(" ")].filter(Boolean).join(", ")) : "");
     const iso = e.eventDateTimeISO || "";
     const day = String(e.eventDateTime || iso || "").slice(0, 10);
     const timeHint = iso && /T\d{2}:\d{2}/.test(iso) ? iso.slice(11, 16) : (e.eventDateTime || "").slice(11, 16);
@@ -610,6 +731,7 @@ async function fetchComplexAeg() {
       name: display,
       artists: artists.filter(Boolean),
       venue,
+      address: venueAddress,
       city: (e.venue && e.venue.city) || "Salt Lake City",
       startsAt: built.startsAt,
       dateOnly: built.dateOnly,
@@ -659,6 +781,12 @@ async function fetchTicketmaster() {
       name: e.name,
       artists,
       venue: venue.name || "",
+      address: formatStreetAddress({
+        streetAddress: venue.address && (venue.address.line1 || venue.address.line2),
+        addressLocality: venue.city && venue.city.name,
+        addressRegion: venue.state && venue.state.stateCode,
+        postalCode: venue.postalCode,
+      }),
       city: venue.city && venue.city.name || cityFor(venue.name),
       startsAt: built.startsAt,
       dateOnly: built.dateOnly || !startLocal.localTime,
@@ -690,12 +818,15 @@ function loadCurated() {
         venue: raw.venue,
         city: raw.city,
         startsAt,
-        dateOnly: !/T\d{2}:\d{2}:\d{2}/.test(startsAt) || /T23:59:00/.test(startsAt) && !raw.dateLabel?.includes("·") && !raw.date_label?.includes("·"),
+        dateOnly: raw.timeTba === true || raw.time_tba === 1 || raw.time_tba === "1" || /Time TBA/i.test(raw.dateLabel || raw.date_label || ""),
         dateLabel: raw.dateLabel || raw.date_label,
         category: raw.category,
         genres: raw.genres || [],
         ageLimit: raw.ageLimit || raw.age_limit,
         ticketUrl: raw.ticketUrl || raw.ticket_url,
+        ticketSeller: raw.ticketSeller || raw.ticket_seller,
+        address: raw.address,
+        endsAt: raw.endsAt || raw.ends_at,
         sourceUrl: raw.sourceUrl || raw.source_url,
         imageUrl: raw.imageUrl || raw.image_url,
         emoji: raw.emoji,
@@ -720,7 +851,7 @@ function mergeEvents(groups) {
         const name = normalizeKeyPart(ev.name);
         for (const [k, existing] of byKey) {
           if (eventDateKey(existing.startsAt) !== dateKey) continue;
-          if (venueKey(existing.venue) !== venue && normalizeKeyPart(existing.venue) !== normalizeKeyPart(ev.venue)) continue;
+          if (!venuesOverlap(existing.venue, ev.venue)) continue;
           if (titlesOverlap(name, normalizeKeyPart(existing.name))) {
             key = k;
             prev = existing;
@@ -738,12 +869,21 @@ function mergeEvents(groups) {
       const other = prefer === ev ? prev : ev;
       const merged = { ...other, ...prefer };
       if (!prefer.ticketUrl && other.ticketUrl) merged.ticketUrl = other.ticketUrl;
+      if (!prefer.ticketSeller && other.ticketSeller) merged.ticketSeller = other.ticketSeller;
+      if (!prefer.address && other.address) merged.address = other.address;
+      if (!prefer.endsAt && other.endsAt) merged.endsAt = other.endsAt;
       if (!prefer.imageUrl && other.imageUrl) merged.imageUrl = other.imageUrl;
       if (!prefer.ageLimit && other.ageLimit) merged.ageLimit = other.ageLimit;
       if ((prefer.artists || []).length < (other.artists || []).length) merged.artists = other.artists;
-      if (prefer.dateLabel && !prefer.dateLabel.includes("·") && other.dateLabel && other.dateLabel.includes("·")) {
+      if (prefer.timeTba && !other.timeTba) {
+        merged.startsAt = other.startsAt;
+        merged.timeTba = false;
+        merged.dateOnly = false;
+        merged.dateLabel = other.dateLabel;
+      } else if (prefer.dateLabel && !prefer.dateLabel.includes("·") && other.dateLabel && other.dateLabel.includes("·")) {
         merged.dateLabel = other.dateLabel;
         merged.startsAt = other.startsAt;
+        merged.timeTba = other.timeTba;
       }
       // Prefer a nicer stable ESLC id when present
       if (/^\d{4}-\d{2}-\d{2}-/.test(prefer.id) === false && ev.source === "electronicslc") merged.id = ev.id;
@@ -761,7 +901,10 @@ function mergeEvents(groups) {
     const style = styleFor(ev.category);
     ev.emoji = style.emoji;
     ev.color = style.color;
-    ev.dateLabel = formatDateLabel(ev.startsAt, /T23:59:00/.test(ev.startsAt || ""));
+    ev.timeTba = !!(ev.timeTba || ev.dateOnly);
+    ev.address = ev.address || addressFromVenue(ev.venue, "");
+    ev.ticketSeller = ev.ticketSeller || ticketSellerFromUrl(ev.ticketUrl);
+    ev.dateLabel = formatDateLabel(ev.startsAt, ev.timeTba);
     delete ev.dateOnly;
   }
   return merged;
@@ -789,6 +932,10 @@ function toRow(ev) {
     age_limit: ev.ageLimit || "",
     status: "active",
     updated_at: new Date().toISOString(),
+    address: ev.address || "",
+    ticket_seller: ev.ticketSeller || ticketSellerFromUrl(ev.ticketUrl),
+    time_tba: ev.timeTba ? 1 : 0,
+    ends_at: ev.endsAt || "",
   };
 }
 
@@ -800,15 +947,15 @@ async function upsertDatabase(events, sourceResults) {
   const upsertSql = `INSERT OR REPLACE INTO events (
       id, name, city, date_label, venue, genres, emoji, color, is_example,
       category, ticket_url, source_url, source, sources, artists, image_url,
-      starts_at, age_limit, status, updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      starts_at, age_limit, status, updated_at, address, ticket_seller, time_tba, ends_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
   const stmt = await db.prepare(upsertSql);
   for (const ev of events) {
     const r = toRow(ev);
     await stmt.run(
       r.id, r.name, r.city, r.date_label, r.venue, r.genres, r.emoji, r.color, r.is_example,
       r.category, r.ticket_url, r.source_url, r.source, r.sources, r.artists, r.image_url,
-      r.starts_at, r.age_limit, r.status, r.updated_at
+      r.starts_at, r.age_limit, r.status, r.updated_at, r.address, r.ticket_seller, r.time_tba, r.ends_at
     );
   }
 
@@ -867,6 +1014,10 @@ function writeSnapshot(events, sourceResults) {
       genres: ev.genres,
       ageLimit: ev.ageLimit,
       ticketUrl: ev.ticketUrl,
+      ticketSeller: ev.ticketSeller,
+      address: ev.address,
+      timeTba: ev.timeTba,
+      endsAt: ev.endsAt,
       sourceUrl: ev.sourceUrl,
       imageUrl: ev.imageUrl,
       source: ev.source,
@@ -899,6 +1050,12 @@ async function main() {
 
   const sourceResults = [];
   if (!noLive) {
+    try {
+      const n = await fetchElectronicSlcVenues();
+      console.log("source electronicslc-venues: ok (" + n + " published addresses)");
+    } catch (err) {
+      console.log("source electronicslc-venues: FAIL — " + (err.message || err));
+    }
     sourceResults.push(await runSource("electronicslc", fetchElectronicSlc));
     sourceResults.push(await runSource("residentadvisor", fetchResidentAdvisor));
     sourceResults.push(await runSource("deltacenter", fetchDeltaCenter));
@@ -914,6 +1071,8 @@ async function main() {
     const flag = s.skipped ? "skipped" : (s.ok ? "ok" : "FAIL");
     console.log(`source ${s.id}: ${flag} (${s.count} events)${s.error ? " — " + s.error : ""}`);
   }
+  console.log("eventbrite: skipped (no EVENTBRITE_API_KEY)");
+  console.log("dice: skipped (no public API key)");
   const raves = events.filter((e) => e.category === "rave").length;
   const concerts = events.filter((e) => e.category === "concert").length;
   console.log(`merged ${events.length} upcoming events (${raves} raves, ${concerts} concerts)`);

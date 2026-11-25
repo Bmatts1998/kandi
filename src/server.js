@@ -13,6 +13,7 @@ const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
 const { sniffImageMime, normalizePhoto, MAX_UPLOAD_BYTES } = require("./photo");
+const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -518,6 +519,42 @@ app.post("/api/chats/:userId", auth, async (req, res) => {
   res.json({ message: msg });
 });
 
+
+function parseJsonList(value) {
+  try { const v = JSON.parse(value || "[]"); return Array.isArray(v) ? v : []; } catch (_) { return []; }
+}
+
+function publicEventFields(e) {
+  const timeTba = Boolean(Number(e.time_tba));
+  const ev = {
+    id: e.id,
+    name: e.name,
+    city: e.city,
+    date: e.date_label,
+    venue: e.venue,
+    address: e.address || "",
+    genres: parseJsonList(e.genres),
+    artists: parseJsonList(e.artists),
+    emoji: e.emoji,
+    color: e.color,
+    category: e.category || "concert",
+    ticketUrl: e.ticket_url || "",
+    ticketSeller: e.ticket_seller || "",
+    sourceUrl: e.source_url || "",
+    imageUrl: e.image_url || "",
+    startsAt: e.starts_at || "",
+    endsAt: e.ends_at || "",
+    timeTba,
+    ageLimit: e.age_limit || "",
+    icsUrl: "/api/events/" + encodeURIComponent(e.id) + ".ics",
+  };
+  ev.googleCalendarUrl = googleCalendarUrl(ev);
+  ev.mapsUrl = ev.address
+    ? "https://maps.apple.com/?q=" + encodeURIComponent((ev.venue ? ev.venue + ", " : "") + ev.address)
+    : "";
+  return ev;
+}
+
 // ---- events / live ----
 app.get("/api/events", auth, async (req, res) => {
   const blocked = await blockedSet(req.user.id);
@@ -537,22 +574,28 @@ app.get("/api/events", auth, async (req, res) => {
     if (req.user.subscription === "vip") {
       going.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
     }
-    let artists = [];
-    try { artists = JSON.parse(e.artists || "[]"); } catch (_) { artists = []; }
     events.push({
-      id: e.id, name: e.name, city: e.city, date: e.date_label, venue: e.venue,
-      genres: JSON.parse(e.genres || "[]"), artists, emoji: e.emoji, color: e.color,
+      ...publicEventFields(e),
       isExample: false, imGoing, going,
-      category: e.category || "concert",
-      ticketUrl: e.ticket_url || "",
-      sourceUrl: e.source_url || "",
-      imageUrl: e.image_url || "",
-      startsAt: e.starts_at || "",
-      ageLimit: e.age_limit || "",
     });
   }
   events.sort((a, b) => String(a.startsAt || a.date).localeCompare(String(b.startsAt || b.date)));
   res.json({ events, updatedAt: meta ? meta.value : null });
+});
+
+
+app.get(/^\/api\/events\/(.+)\.ics$/, async (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
+  const e = await db.prepare(`SELECT * FROM events WHERE id=?`).get(id);
+  if (!e || e.is_example || String(e.status || "active") === "removed") {
+    return res.status(404).type("text/plain").send("Event not found.");
+  }
+  const ev = publicEventFields(e);
+  const body = buildIcs(ev);
+  res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${icsFilename(ev)}"`);
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(body);
 });
 
 app.post("/api/events/:id/going", auth, async (req, res) => {
