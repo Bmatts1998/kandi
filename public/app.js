@@ -26,7 +26,14 @@
     view: "boot",
     me: null,
     likesLeft: DAILY,
-    tab: "discover",
+    tab: "home",
+    feedTab: "following",
+    homePosts: [],
+    topRavers: [],
+    profile: null,
+    comments: [],
+    commentPostId: null,
+    heartBurst: null,
     overlay: null,
     feed: [],
     inbound: { locked: true, count: 0, people: [] },
@@ -38,7 +45,7 @@
     chatWith: null,
     blocked: [],
     locationShare: null,
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "" },
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "" },
     onboardStep: 0,
     filters: { event: "all", genre: "all" },
     billing: "monthly",
@@ -157,8 +164,40 @@
       <div class="row"><button class="btn sm primary" data-act="dismiss-ios-tip">Got it</button></div></div>`;
   }
 
+  function timeAgo(iso) {
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return "";
+    const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m";
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + "h";
+    const days = Math.round(hrs / 24);
+    if (days < 7) return days + "d";
+    return days + "d";
+  }
+  function avatarEl(av, cls, emojiFallback) {
+    cls = cls || "av";
+    if (av && av.type === "file" && av.url) return `<span class="${cls}" style="background-image:url('${esc(av.url)}')"></span>`;
+    const g = (av && av.gradient) || "linear-gradient(160deg,#111,#ff5c00)";
+    const e = (av && av.emoji) || emojiFallback || "●";
+    return `<span class="${cls}" style="background:${g}">${e}</span>`;
+  }
   async function refreshAll() {
-    await Promise.all([loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
+    await Promise.all([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
+  }
+  async function loadHome() {
+    const tab = state.feedTab === "popular" ? "popular" : "following";
+    const [feed, top] = await Promise.all([
+      api("/api/feed/" + tab),
+      tab === "popular" ? api("/api/feed/top-ravers") : Promise.resolve({ people: state.topRavers || [] }),
+    ]);
+    state.homePosts = feed.posts || [];
+    if (tab === "popular") state.topRavers = top.people || [];
+  }
+  async function loadProfile(userId) {
+    const data = await api("/api/users/" + userId);
+    state.profile = data;
   }
   async function loadFeed() {
     const q = new URLSearchParams();
@@ -191,8 +230,9 @@
   }
   function tabbar() {
     const items = [
+      ["home", "⌂", "Home"],
       ["discover", "✦", "Discover"],
-      ["likes", "♡", "Likes You"],
+      ["likes", "♡", "Likes"],
       ["events", "✺", "Events"],
       ["matches", "✉", "Matches"],
       ["you", "●", "You"],
@@ -407,6 +447,73 @@
     return html + "</div>";
   }
 
+
+  function viewHome() {
+    const following = state.feedTab !== "popular";
+    let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post">＋</button>`);
+    html += `<div class="feed-tabs">
+      <button class="${following ? "on" : ""}" data-act="feed-tab" data-id="following">Following</button>
+      <button class="${!following ? "on" : ""}" data-act="feed-tab" data-id="popular">Popular</button>
+    </div>`;
+    html += `<div class="scroll">`;
+    if (!following && (state.topRavers || []).length) {
+      html += `<div class="label" style="padding:0 14px 8px">Top ravers</div><div class="stories">`;
+      html += state.topRavers.map((p) =>
+        `<button class="story" data-act="open-profile" data-id="${p.id}">${avatarEl(p.avatar, "av", (p.name||"?")[0])}<div class="nm">${esc(p.name)}</div></button>`
+      ).join("");
+      html += `</div>`;
+    }
+    const posts = state.homePosts || [];
+    if (!posts.length) {
+      if (following) {
+        html += `<div class="empty"><div style="font-size:40px;margin-bottom:8px">⌁</div><h2 class="h2" style="font-size:22px">Your floor is quiet</h2><p class="sub">Follow ravers and their posts show up here. Check Popular, or find people in Discover.</p>
+          <button class="btn primary" style="margin-top:16px" data-act="feed-tab" data-id="popular">See what's popular</button></div>`;
+      } else {
+        html += `<div class="empty"><div style="font-size:40px;margin-bottom:8px">✦</div><h2 class="h2" style="font-size:22px">No posts yet</h2><p class="sub">Be the first to share a moment from the floor.</p>
+          <button class="btn primary" style="margin-top:16px" data-act="open-composer">New post</button></div>`;
+      }
+    } else {
+      html += posts.map(postCard).join("");
+    }
+    html += `<div style="height:72px"></div></div><button class="fab-post" data-act="open-composer" aria-label="New post">＋</button>`;
+    return html;
+  }
+
+  function postCard(p) {
+    const burst = state.heartBurst === p.id ? `<div class="burst">♥</div>` : "";
+    const cap = p.caption ? `<div class="cap"><strong>${esc(p.author.name)}</strong>${esc(p.caption)}</div>` : "";
+    const ev = p.event ? `<span class="chip soft event-tag">${esc(p.event.emoji || "")} ${esc(p.event.name)}</span>` : "";
+    const followBtn = p.author.id !== (state.me && state.me.id) && !p.author.following
+      ? `<button class="btn sm ghost" data-act="follow" data-id="${p.author.id}">Follow</button>`
+      : (p.author.id !== (state.me && state.me.id)
+        ? `<button class="btn sm ghost" data-act="unfollow" data-id="${p.author.id}">Following</button>`
+        : "");
+    const more = p.author.id === (state.me && state.me.id)
+      ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete">✕</button>`
+      : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report">⋯</button>`;
+    const photo = p.photoUrl
+      ? `<div class="post-photo" style="background-image:url('${esc(p.photoUrl)}')" data-act="post-like-tap" data-id="${p.id}">${burst}</div>`
+      : (p.caption ? `<div class="post-photo" style="display:grid;place-items:center;padding:24px;aspect-ratio:auto;min-height:160px" data-act="post-like-tap" data-id="${p.id}"><div style="font-size:20px;font-weight:700;line-height:1.4;padding:12px">${esc(p.caption)}</div>${burst}</div>` : "");
+    return `<article class="post">
+      <div class="post-hd">
+        <button data-act="open-profile" data-id="${p.author.id}">${avatarEl(p.author.avatar, "av", (p.author.name||"?")[0])}</button>
+        <button class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
+        ${followBtn}${more}
+      </div>
+      ${photo}
+      <div class="post-actions">
+        <button class="${p.liked ? "loved" : ""}" data-act="toggle-post-like" data-id="${p.id}" aria-label="Like">♥</button>
+        <button data-act="open-comments" data-id="${p.id}" aria-label="Comments">💬</button>
+        <span class="spacer"></span>
+      </div>
+      <div class="post-body">
+        <div class="likes">${p.likeCount} like${p.likeCount === 1 ? "" : "s"} · ${p.commentCount} comment${p.commentCount === 1 ? "" : "s"}</div>
+        ${p.photoUrl ? cap : ""}
+        ${ev}
+      </div>
+    </article>`;
+  }
+
   function viewYou() {
     const p = state.me;
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
@@ -419,6 +526,21 @@
     });
     html += `<div class="card photo-upload" style="margin-top:16px;text-align:center"><div>📷 Add another photo</div>
       <input type="file" accept="image/jpeg,image/png,image/webp" data-act-file="upload-photo" /></div>`;
+    const soc = state.profile && state.profile.user && state.profile.user.id === p.id ? state.profile : null;
+    if (soc) {
+      html += `<div class="counts">
+        <span><strong>${soc.user.followerCount || 0}</strong><span class="tiny">followers</span></span>
+        <span><strong>${soc.user.followingCount || 0}</strong><span class="tiny">following</span></span>
+        <span><strong>${(soc.posts || []).length}</strong><span class="tiny">posts</span></span>
+      </div>`;
+      if ((soc.posts || []).length) {
+        html += `<div class="label">Your posts</div><div class="post-grid">` + soc.posts.map((post) =>
+          post.photoUrl
+            ? `<button style="background-image:url('${esc(post.photoUrl)}')" data-act="feed-tab" data-id="following"></button>`
+            : `<button data-act="feed-tab" data-id="following"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
+        ).join("") + `</div>`;
+      }
+    }
     html += `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
       <div class="tiny">${p.subscription ? "Stub subscription — no real payment on file. TODO: Stripe / IAP." : "Free to use. Upgrade for unlimited likes and more."}</div></div>
       ${p.subscription ? `<button class="btn sm ghost" data-act="cancel-sub">Cancel stub</button>` : `<button class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
@@ -446,6 +568,68 @@
   function overlays() {
     const o = state.overlay;
     if (!o) return "";
+    if (o.type === "composer") {
+      const evs = state.events || [];
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">New post</h2>
+        <p class="muted" style="margin-top:6px">Share a photo, a caption, or both. Optional festival tag.</p>
+        ${state.drafts.postPreview ? `<div class="composer-preview" style="background-image:url('${esc(state.drafts.postPreview)}')"></div>` : `<div class="card photo-upload" style="margin-top:12px;text-align:center;padding:28px">📷 Add a photo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-act-file="post-photo" /></div>`}
+        <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:10px">${esc(state.drafts.caption || "")}</textarea>
+        <div class="label" style="margin-top:12px">Tag an event (optional)</div>
+        <div class="chips"><button class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
+          ${evs.map((e) => `<button class="chip${state.drafts.postEvent === e.id ? " on" : ""}" data-act="post-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <button class="btn primary" style="margin-top:16px" data-act="submit-post">Post</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+    }
+    if (o.type === "comments") {
+      const comments = state.comments || [];
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">Comments</h2>
+        <div style="margin-top:12px">${comments.length ? comments.map((c) => `<div class="row" style="margin-bottom:12px;align-items:flex-start">
+          ${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}
+          <div class="grow"><div><strong>${esc(c.author.name)}</strong> <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
+          <div>${esc(c.text)}</div></div>
+          ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
+        </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
+        <div class="row" style="margin-top:12px"><input data-field="commentText" placeholder="Add a comment..." value="${esc(state.drafts.commentText || "")}" />
+          <button class="btn sm primary" data-act="send-comment">Send</button></div></div></div>`;
+    }
+    if (o.type === "reportPost") {
+      const reasons = ["Spam", "Harassment", "Inappropriate", "Impersonation", "Something else"];
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">Report post</h2>
+        <p class="muted" style="margin-top:8px">This also blocks the person who posted it. You won't see their posts anymore.</p>
+        <div class="chips" style="margin-top:14px">${reasons.map((r) => `<button class="chip${state.drafts.reportReason === r ? " on" : ""}" data-act="report-reason" data-id="${esc(r)}">${esc(r)}</button>`).join("")}</div>
+        <button class="btn danger" style="margin-top:16px;width:100%" data-act="submit-report-post">Report and block</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+    }
+    if (o.type === "profile") {
+      const data = state.profile;
+      if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
+      const u = data.user;
+      const followBtn = u.isMe ? "" : (u.following
+        ? `<button class="btn sm ghost" data-act="unfollow" data-id="${u.id}">Following</button>`
+        : `<button class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
+        <div class="scroll pad">
+          <div class="muted">@${esc(u.username)}${u.age ? " · " + u.age : ""}</div>
+          <div class="counts">
+            <span><strong>${u.followerCount || 0}</strong><span class="tiny">followers</span></span>
+            <span><strong>${u.followingCount || 0}</strong><span class="tiny">following</span></span>
+            <span><strong>${(data.posts || []).length}</strong><span class="tiny">posts</span></span>
+          </div>
+          <div class="chips">${(u.vibes || []).map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>
+          ${(data.posts || []).length
+            ? `<div class="post-grid" style="margin-top:16px">` + data.posts.map((post) =>
+                post.photoUrl
+                  ? `<button style="background-image:url('${esc(post.photoUrl)}')" data-act="open-comments" data-id="${post.id}"></button>`
+                  : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
+              ).join("") + `</div>`
+            : `<div class="empty">No posts yet.</div>`}
+          ${!u.isMe ? `<button class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>` : ""}
+        </div></div>`;
+    }
     if (o.type === "deleteAccount") {
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">Delete your account?</h2>
@@ -607,7 +791,8 @@
     else if (state.view === "onboard") html = viewOnboard();
     else {
       let body = "";
-      if (state.tab === "discover") body = viewDiscover();
+      if (state.tab === "home") body = viewHome();
+      else if (state.tab === "discover") body = viewDiscover();
       else if (state.tab === "likes") body = viewLikes();
       else if (state.tab === "events") body = viewEvents();
       else if (state.tab === "matches") body = viewMatches();
@@ -694,8 +879,140 @@
         state.view = "app"; await refreshAll(); render(); return;
       }
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
-      if (act === "tab") { state.tab = id; state.overlay = null; if (id === "likes") await loadInbound(); if (id === "matches") await loadMatches(); if (id === "events") await loadEvents(); render(); return; }
+      if (act === "tab") {
+        state.tab = id; state.overlay = null;
+        if (id === "home") await loadHome();
+        if (id === "likes") await loadInbound();
+        if (id === "matches") await loadMatches();
+        if (id === "events") await loadEvents();
+        if (id === "you" && state.me) await loadProfile(state.me.id);
+        render(); return;
+      }
       if (act === "close") { state.overlay = null; render(); return; }
+
+      if (act === "feed-tab") {
+        state.feedTab = id || "following";
+        state.tab = "home";
+        state.overlay = null;
+        await loadHome();
+        render(); return;
+      }
+      if (act === "open-composer") {
+        if (!state.events.length) await loadEvents();
+        state.drafts.caption = "";
+        state.drafts.postEvent = "";
+        state.drafts.postPreview = "";
+        state.drafts.postFile = null;
+        state.overlay = { type: "composer" };
+        render(); return;
+      }
+      if (act === "post-event") { state.drafts.postEvent = id || ""; render(); return; }
+      if (act === "submit-post") {
+        const fd = new FormData();
+        fd.append("caption", state.drafts.caption || "");
+        if (state.drafts.postEvent) fd.append("eventId", state.drafts.postEvent);
+        if (state.drafts.postFile) fd.append("photo", state.drafts.postFile);
+        const res = await fetch("/api/posts", { method: "POST", body: fd, credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not post.");
+        state.overlay = null;
+        state.feedTab = "following";
+        state.tab = "home";
+        await loadHome();
+        if (state.me) await loadProfile(state.me.id);
+        render(); return;
+      }
+      if (act === "open-profile") {
+        await loadProfile(id);
+        state.overlay = { type: "profile" };
+        render(); return;
+      }
+      if (act === "follow" || act === "unfollow") {
+        const method = act === "follow" ? "POST" : "DELETE";
+        const data = await api("/api/users/" + id + "/follow", { method, body: {} });
+        (state.homePosts || []).forEach((p) => { if (String(p.author.id) === String(id)) p.author.following = data.following; });
+        (state.topRavers || []).forEach((p) => { if (String(p.id) === String(id)) p.following = data.following; });
+        if (state.profile && state.profile.user && String(state.profile.user.id) === String(id)) {
+          state.profile.user.following = data.following;
+          state.profile.user.followerCount = data.followerCount;
+        }
+        render(); return;
+      }
+      if (act === "toggle-post-like") {
+        const post = (state.homePosts || []).find((x) => String(x.id) === String(id))
+          || ((state.profile && state.profile.posts) || []).find((x) => String(x.id) === String(id));
+        const liked = post && post.liked;
+        const data = await api("/api/posts/" + id + "/like", { method: liked ? "DELETE" : "POST", body: {} });
+        const apply = (p) => { if (String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
+        (state.homePosts || []).forEach(apply);
+        if (state.profile && state.profile.posts) state.profile.posts.forEach(apply);
+        render(); return;
+      }
+      if (act === "post-like-tap") {
+        const now = Date.now();
+        const prev = state._lastTap || {};
+        if (prev.id === String(id) && now - prev.at < 350) {
+          const post = (state.homePosts || []).find((x) => String(x.id) === String(id));
+          if (!post || !post.liked) {
+            const data = await api("/api/posts/" + id + "/like", { method: "POST", body: {} });
+            const apply = (p) => { if (String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
+            (state.homePosts || []).forEach(apply);
+            if (state.profile && state.profile.posts) state.profile.posts.forEach(apply);
+          }
+          state.heartBurst = Number(id);
+          render();
+          setTimeout(() => { if (state.heartBurst === Number(id)) { state.heartBurst = null; render(); } }, 700);
+        }
+        state._lastTap = { id: String(id), at: now };
+        return;
+      }
+      if (act === "open-comments") {
+        const data = await api("/api/posts/" + id + "/comments");
+        state.comments = data.comments || [];
+        state.commentPostId = Number(id);
+        state.drafts.commentText = "";
+        state.overlay = { type: "comments" };
+        render(); return;
+      }
+      if (act === "send-comment") {
+        const text = (state.drafts.commentText || "").trim();
+        if (!text || !state.commentPostId) return;
+        const data = await api("/api/posts/" + state.commentPostId + "/comments", { method: "POST", body: { text } });
+        state.comments = (state.comments || []).concat(data.comment);
+        state.drafts.commentText = "";
+        const apply = (p) => { if (p.id === state.commentPostId) p.commentCount = data.commentCount; };
+        (state.homePosts || []).forEach(apply);
+        if (state.profile && state.profile.posts) state.profile.posts.forEach(apply);
+        render(); return;
+      }
+      if (act === "delete-comment") {
+        const data = await api("/api/comments/" + id, { method: "DELETE", body: {} });
+        state.comments = (state.comments || []).filter((c) => String(c.id) !== String(id));
+        const apply = (p) => { if (p.id === data.postId) p.commentCount = data.commentCount; };
+        (state.homePosts || []).forEach(apply);
+        render(); return;
+      }
+      if (act === "delete-post") {
+        if (!confirm("Delete this post?")) return;
+        await api("/api/posts/" + id, { method: "DELETE", body: {} });
+        state.homePosts = (state.homePosts || []).filter((p) => String(p.id) !== String(id));
+        if (state.profile && state.profile.posts) state.profile.posts = state.profile.posts.filter((p) => String(p.id) !== String(id));
+        render(); return;
+      }
+      if (act === "report-post") {
+        state.drafts.reportReason = "Something else";
+        state.overlay = { type: "reportPost", postId: Number(id) };
+        render(); return;
+      }
+      if (act === "report-reason") { state.drafts.reportReason = id; render(); return; }
+      if (act === "submit-report-post") {
+        const postId = state.overlay && state.overlay.postId;
+        await api("/api/posts/" + postId + "/report", { method: "POST", body: { reason: state.drafts.reportReason || "Something else" } });
+        state.overlay = null;
+        await loadHome();
+        render(); return;
+      }
+
       if (act === "filters") {
         if (!isPlus()) { state.overlay = { type: "paywall", reason: "filters" }; render(); return; }
         state.overlay = { type: "filters" }; render(); return;
@@ -838,19 +1155,18 @@
   root.addEventListener("input", (e) => {
     const field = e.target.getAttribute("data-field");
     if (!field) return;
-    if (field === "user" || field === "pass" || field === "name" || field === "age" || field === "comment" || field === "chat" || field === "promptA") {
-      let v = e.target.value;
-      if (field === "user") {
-        v = v.toLowerCase();
-        if (e.target.value !== v) e.target.value = v;
-      }
-      state.drafts[field === "comment" ? "comment" : field] = v;
+    let v = e.target.value;
+    if (field === "user") {
+      v = v.toLowerCase();
+      if (e.target.value !== v) e.target.value = v;
     }
-    if (field === "claimPass" || field === "claimAge") {
-      state.drafts[field] = e.target.value;
-    }
+    state.drafts[field] = v;
   });
   root.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "commentText") {
+      e.preventDefault();
+      handle("send-comment", e.target);
+    }
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "chat") {
       e.preventDefault();
       const send = document.querySelector("[data-act=send-chat]");
@@ -862,7 +1178,19 @@
     }
   });
   root.addEventListener("change", async (e) => {
-    if (e.target.getAttribute("data-act-file") !== "upload-photo") return;
+    const kind = e.target.getAttribute("data-act-file");
+    if (kind === "post-photo") {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      state.drafts.postFile = file;
+      if (state.drafts.postPreview && String(state.drafts.postPreview).startsWith("blob:")) {
+        try { URL.revokeObjectURL(state.drafts.postPreview); } catch (_) {}
+      }
+      state.drafts.postPreview = URL.createObjectURL(file);
+      render();
+      return;
+    }
+    if (kind !== "upload-photo") return;
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const fd = new FormData();

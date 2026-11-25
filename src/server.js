@@ -11,6 +11,7 @@ const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const { open } = require("./db");
+const { installFeed } = require("./feed-routes");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -212,6 +213,10 @@ app.delete("/api/account", auth, async (req, res) => {
   await db.prepare(`DELETE FROM like_days WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM rewind_days WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM location_shares WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM comments WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM post_likes WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM posts WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM follows WHERE follower_id=? OR following_id=?`).run(id, id);
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM users WHERE id=?`).run(id);
@@ -612,6 +617,15 @@ app.post("/api/claim", async (req, res) => {
   });
 });
 
+installFeed({
+  app,
+  getDb: () => db,
+  auth,
+  upload,
+  publicUser,
+  blockedSet,
+});
+
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
 
 app.get(["/privacy", "/privacy.html"], (_req, res) => {
@@ -676,10 +690,17 @@ async function boot() {
   db = await open();
   if (process.env.SEED_ON_BOOT !== "0") {
     const row = await db.prepare(`SELECT COUNT(*) AS c FROM users`).get();
+    const { seed, seedSocial } = require("./seed");
     if (!row || Number(row.c) === 0) {
-      const { seed } = require("./seed");
       await seed(db);
       console.log("Seeded demo data on boot (empty database).");
+    } else {
+      try {
+        await seedSocial(db);
+        console.log("Ensured social seed (follows/posts) on boot.");
+      } catch (err) {
+        console.error("Social seed on boot failed:", err.message || err);
+      }
     }
   }
   server.listen(PORT, HOST, () => {

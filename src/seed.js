@@ -117,12 +117,155 @@ async function seed(existingDb) {
     if (ids[from] && ids[to]) await likeIns.run(ids[from], ids[to], typ, tid, note);
   }
 
+  await seedSocial(db, ids);
+
   if (owned) await db.close();
   const flag = path.join(__dirname, "..", "data", ".seeded");
   fs.writeFileSync(flag, new Date().toISOString());
   console.log("Seeded example events and 10 demo ravers.");
   console.log("Demo login password for all of them: " + DEMO_PASSWORD);
   console.log("Usernames: " + USERS.map((u) => u.username).join(", "));
+}
+
+async function readSeedImage(name) {
+  const file = path.join(__dirname, "..", "seed-media", name + ".png");
+  if (!fs.existsSync(file)) return null;
+  const buf = fs.readFileSync(file);
+  return { mime: "image/png", data: buf.toString("base64") };
+}
+
+async function storeSeedPhoto(db, userId, name) {
+  const img = await readSeedImage(name);
+  if (!img) return null;
+  const fileId = "seed-" + name + "-" + userId + ".png";
+  const existing = await db.prepare(`SELECT id FROM photo_files WHERE id=?`).get(fileId);
+  if (!existing) {
+    await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(fileId, userId, img.mime, img.data);
+  }
+  return fileId;
+}
+
+function isoHoursAgo(hours) {
+  return new Date(Date.now() - hours * 3600 * 1000).toISOString();
+}
+
+async function seedSocial(db, ids) {
+  ids = ids || {};
+  const find = await db.prepare(`SELECT id, username FROM users WHERE lower(username)=?`);
+  for (const u of USERS) {
+    if (!ids[u.username]) {
+      const row = await find.get(u.username);
+      if (row) ids[u.username] = row.id;
+    }
+  }
+  const boston = await db.prepare(`SELECT id FROM users WHERE lower(username)='boston'`).get();
+  if (boston) ids.boston = boston.id;
+
+  const followIns = await db.prepare(`INSERT OR IGNORE INTO follows (follower_id, following_id, created_at) VALUES (?,?,?)`);
+  const followGraph = [
+    ["nova", "vesper"], ["nova", "ember"], ["nova", "orion"], ["nova", "luna"],
+    ["hex", "riot"], ["hex", "nova"], ["hex", "jade"],
+    ["luna", "nova"], ["luna", "sol"], ["luna", "jade"], ["luna", "pixel"],
+    ["riot", "hex"], ["riot", "jade"], ["riot", "sol"],
+    ["vesper", "nova"], ["vesper", "luna"], ["vesper", "pixel"], ["vesper", "jade"],
+    ["sol", "vesper"], ["sol", "jade"], ["sol", "luna"],
+    ["ember", "nova"], ["ember", "orion"], ["ember", "vesper"],
+    ["pixel", "luna"], ["pixel", "jade"], ["pixel", "hex"],
+    ["jade", "luna"], ["jade", "nova"], ["jade", "vesper"], ["jade", "sol"], ["jade", "pixel"],
+    ["orion", "nova"], ["orion", "ember"], ["orion", "luna"],
+    // Boston auto-follows a few so Following is not empty
+    ["boston", "nova"], ["boston", "vesper"], ["boston", "luna"], ["boston", "jade"], ["boston", "orion"],
+  ];
+  for (const [a, b] of followGraph) {
+    if (ids[a] && ids[b] && ids[a] !== ids[b]) {
+      await followIns.run(ids[a], ids[b], isoHoursAgo(20 + Math.abs(hashCode(a + b)) % 80));
+    }
+  }
+
+  const existing = await db.prepare(`SELECT COUNT(*) AS c FROM posts`).get();
+  if (existing && Number(existing.c) > 0) {
+    console.log("Social seed: follows upserted; posts already present, leaving them.");
+    return;
+  }
+
+  const posts = [
+    { user: "nova", image: "movement-rail", event: "movement", hours: 4, caption: "Left rail, eyes closed, Movement already has me in my feelings." },
+    { user: "nova", image: "warehouse-strobe", event: "warehouse", hours: 30, caption: "Warehouse afters. No photos of the DJ, only the strobes." },
+    { user: "hex", image: "lost-lands-pit", event: "lostlands", hours: 8, caption: "Pit report: the lasers looked like a spaceship landing. I'm fine." },
+    { user: "hex", image: "totem-night", event: "basscanyon", hours: 52, caption: "Totem duty. If you're lost, look for the lightning bolt." },
+    { user: "luna", image: "forest-canopy", event: "forest", hours: 6, caption: "Strangers became a little family under the canopy tonight." },
+    { user: "luna", image: "forest-path", event: "forest", hours: 40, caption: "Getting lost on purpose. The path always finds you." },
+    { user: "luna", image: "kandi-trade", hours: 70, caption: "The kandi I traded today just says stay soft." },
+    { user: "riot", image: "gorge-gold", event: "basscanyon", hours: 11, caption: "The Gorge at golden hour. The duck totem is still standing." },
+    { user: "riot", image: "bass-canyon", event: "basscanyon", hours: 26, caption: "That set melted my shoes and somehow improved my personality." },
+    { user: "vesper", image: "crssd-sunset", event: "crssd", hours: 3, caption: "Sunset house, dusty boots, one last song that turned into five." },
+    { user: "vesper", image: "waterfront", event: "crssd", hours: 22, caption: "CRSSD waterfront. Traded kandi with someone I already trusted." },
+    { user: "vesper", image: "kandi-trade", hours: 58, caption: "Still on my wrist. That's the whole post." },
+    { user: "sol", image: "edc-kinetic", event: "edc", hours: 9, caption: "Kinetic Field, sequin jacket, cannot be missed. Hydrate like it's a sport." },
+    { user: "sol", image: "sequin-rail", event: "edc", hours: 33, caption: "EDC night two. Rail reserved by vibes only." },
+    { user: "ember", image: "warehouse-strobe", event: "warehouse", hours: 7, caption: "Cement. A kick drum that rearranges your bones. Don't ask the time." },
+    { user: "ember", image: "afters", event: "movement", hours: 44, caption: "Afters in Detroit. Hold a stare and a rhythm at the same time." },
+    { user: "pixel", image: "forest-path", event: "forest", hours: 13, caption: "LED jacket test shot. BE KIND, REWIND (the drop)." },
+    { user: "pixel", image: "forest-canopy", event: "forest", hours: 61, caption: "Found the better stage by getting lost on purpose." },
+    { user: "jade", image: "edc-kinetic", event: "edc", hours: 5, caption: "Wherever the wub meets the weird. We look out for each other." },
+    { user: "jade", image: "kandi-trade", event: "forest", hours: 28, caption: "Crew photo, faces not included. PLUR is the whole thing." },
+    { user: "jade", image: "waterfront", hours: 49, caption: "Day party glows different when the crew shows up early." },
+    { user: "orion", image: "closing-hours", event: "movement", hours: 15, caption: "Closing hours, hands up, no talking. Just the ride home in our heads." },
+    { user: "orion", image: "movement-rail", event: "movement", hours: 38, caption: "Late-night walk between stages. Breakfast after, not just a song rec." },
+  ];
+
+  const postIds = [];
+  for (const p of posts) {
+    const uid = ids[p.user];
+    if (!uid) continue;
+    const photoId = p.image ? await storeSeedPhoto(db, uid, p.image) : null;
+    const info = await db.prepare(
+      `INSERT INTO posts (user_id, caption, photo_id, event_id, created_at) VALUES (?,?,?,?,?)`
+    ).run(uid, p.caption, photoId, p.event || null, isoHoursAgo(p.hours));
+    postIds.push({ id: Number(info.lastInsertRowid), user: p.user });
+  }
+
+  const likeIns = await db.prepare(`INSERT OR IGNORE INTO post_likes (user_id, post_id, created_at) VALUES (?,?,?)`);
+  const commentIns = await db.prepare(`INSERT INTO comments (post_id, user_id, text, created_at) VALUES (?,?,?,?)`);
+  const likers = ["nova", "hex", "luna", "riot", "vesper", "sol", "ember", "pixel", "jade", "orion"];
+  const commentsPool = [
+    ["nova", "This is exactly my night."],
+    ["hex", "The pit is calling."],
+    ["luna", "Need more of this on the floor."],
+    ["riot", "Honk if you see the duck."],
+    ["vesper", "Saving this for the afters playlist."],
+    ["sol", "Hydration check, then I'll be there."],
+    ["ember", "Warehouse lighting is elite."],
+    ["pixel", "BE KIND, REWIND forever."],
+    ["jade", "PLUR. That's the post."],
+    ["orion", "See you at close."],
+  ];
+
+  for (let i = 0; i < postIds.length; i++) {
+    const post = postIds[i];
+    // more likes on earlier (newer / popular) posts, varied
+    const nLikes = 3 + ((i * 3) % 7);
+    for (let k = 0; k < nLikes; k++) {
+      const who = likers[(i + k * 3) % likers.length];
+      if (ids[who] && who !== post.user) {
+        await likeIns.run(ids[who], post.id, isoHoursAgo(1 + (i + k) % 20));
+      }
+    }
+    const nComments = 1 + (i % 3);
+    for (let k = 0; k < nComments; k++) {
+      const [who, text] = commentsPool[(i + k * 2) % commentsPool.length];
+      if (ids[who] && who !== post.user) {
+        await commentIns.run(post.id, ids[who], text, isoHoursAgo(1 + (i + k) % 18));
+      }
+    }
+  }
+  console.log("Social seed: " + postIds.length + " posts, follows, likes, and comments.");
+}
+
+function hashCode(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h;
 }
 
 if (require.main === module) {
@@ -132,4 +275,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { seed, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, DEMO_PASSWORD, EVENTS, USERS };
