@@ -799,3 +799,15 @@
 @media (min-width: 431px) {
   #app { max-height: none; height: 100vh; height: 100dvh; }
 }
+/* Phones fill the whole screen edge to edge in every orientation: no centered box, no letterboxing.
+   (max-width: 430px) covers portrait iPhones; landscape iPhones are wide but short and touch-driven. */
+@media (max-width: 430px), (pointer: coarse) and (max-height: 500px) {
+  #app { position: fixed; inset: 0; width: 100%; max-width: none; height: auto; max-height: none; box-shadow: none; }
+  .screen.has-tabs .tabbar { max-width: none; }
+  /* Landscape notch sits on the left/right edge. */
+  .header { padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+  .tabbar { padding-left: max(6px, env(safe-area-inset-left, 0px)); padding-right: max(6px, env(safe-area-inset-right, 0px)); }
+  .pad { padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); }
+  .chat-bar { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+}
+html { height: 100%; height: -webkit-fill-available; }
