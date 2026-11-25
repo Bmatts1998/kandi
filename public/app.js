@@ -7,7 +7,7 @@
   const GENRES = [
     { id: "dubstep", name: "Dubstep", short: "Dubstep", color: "#b44aff", icon: "diamond" },
     { id: "riddim", name: "Riddim", short: "Riddim", color: "#ff3d9a", icon: "bars" },
-    { id: "bass-music", name: "Bass Music", short: "Bass", color: "#ff5c00", icon: "bars" },
+    { id: "bass-music", name: "Bass Music", short: "Bass Music", color: "#ff5c00", icon: "bars" },
     { id: "house", name: "House", short: "House", color: "#2ef0ff", icon: "ring" },
     { id: "tech-house", name: "Tech House", short: "Tech Hse", color: "#1ad4c8", icon: "ring" },
     { id: "deep-house", name: "Deep House", short: "Deep", color: "#4d7cff", icon: "ring" },
@@ -1125,6 +1125,7 @@
     clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
     applyMe(me);
     state.view = needsOnboard(state.me) ? "onboard" : "app";
+    if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
     connectWs();
     render();
     await refreshAll();
@@ -1161,6 +1162,13 @@
     if (data.genreCatalog) state.genreCatalog = data.genreCatalog;
     else if (data.genres) state.genreCatalog = data.genres;
   }
+  // After a refresh or re-login mid-onboarding, pick up where they left off instead of step 1.
+  function onboardResumeStep(u) {
+    if (!u || !(u.vibes || []).length) return 0;
+    if (!(u.looking || []).length) return 1;
+    if (!(u.prompts || []).length) return 2;
+    return 4;
+  }
   function needsOnboard(u) {
     return !u || !u.age || u.needsProfile || !u.vibes.length || !u.looking.length || !u.prompts.length;
   }
@@ -1185,12 +1193,13 @@
     const ua = navigator.userAgent || "";
     const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const standalone = window.matchMedia("(display-mode: standalone)").matches || Boolean(navigator.standalone);
+    if (isNativeIos()) return false; // already the App Store app: never suggest Safari's Add to Home Screen
     return iOS && !standalone && !localStorage.getItem("kandi-hide-ios-tip");
   }
   function iosTip() {
     if (!isIosSafari()) return "";
     return `<div class="ios-tip"><strong>Add Kandi to your Home Screen</strong>
-      <p>In Safari, tap the Share button (the square with the arrow), then <strong>Add to Home Screen</strong>. Kandi opens like a real app, with its own icon and a black splash.</p>
+      <p>In Safari, tap the Share button (the square with the arrow), then <b>Add to Home Screen</b>. Kandi opens like a real app, with its own icon and a black splash.</p>
       <div class="row"><button class="btn sm primary" data-act="dismiss-ios-tip">Got it</button></div></div>`;
   }
 
@@ -1666,6 +1675,7 @@
     const data = await api("/api/events");
     state.events = data.events || [];
     state.eventsUpdatedAt = data.updatedAt || null;
+    state.eventsLoaded = true;
   }
   async function loadNotifs() {
     const data = await api("/api/notifications");
@@ -1685,7 +1695,7 @@
   }
   function notifText(n) {
     const who = n.user ? `<strong>${esc(n.user.name)}</strong>` : "<strong>Someone</strong>";
-    if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : "photo"}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">See who with Kandi+</span>`;
+    if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : "photo"}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">${!isNativeIos() && paymentsEnabled() ? "See who with Kandi+" : "Keep exploring Discover. If you like them back, it's a match."}</span>`;
     if (n.kind === "match") return `You matched with ${who}. Say hi!`;
     if (n.kind === "post_like") return `${who} liked your post`;
     if (n.kind === "comment") return `${who} commented: “${esc(n.text)}”`;
@@ -1856,7 +1866,7 @@
       ${beads(8, "lg")}
       <h1 class="wordmark grad">Kandi</h1>
       <p>Find your people on the floor. Trade kandi, meet ravers, stay PLUR.</p>
-      <div class="demo-tag">18+ only · installable web app</div>
+      <div class="demo-tag">${isNativeIos() ? "18+ only" : "18+ only · installable web app"}</div>
       ${mode === "signup" ? `
         <input id="f-name" data-field="name" aria-label="Name" autocomplete="given-name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
         <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
@@ -1877,8 +1887,8 @@
         ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
-        <p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>
-        <p class="tiny" style="margin-top:10px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
+        ${isNativeIos() ? "" : `<p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>`}
+        <p class="tiny" style="margin-top:${isNativeIos() ? 16 : 10}px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
         ${iosTip()}
       `}
     </div></div>`;
@@ -1900,7 +1910,7 @@
     } else if (s === 2) {
       body = `<div class="label">Upcoming events</div><p class="sub" style="margin-bottom:8px">Real SLC raves and concerts. Mark the ones you might hit.</p><div class="chips">${(state.events.length ? state.events.slice(0, 24) : []).map((e) =>
         `<button class="chip${me.events.includes(e.id) ? " on" : ""}" data-act="toggle-event" data-id="${e.id}">${e.emoji} ${esc(e.name)}</button>`
-      ).join("") || "Loading events…"}</div>`;
+      ).join("") || (state.eventsLoaded ? `<p class="muted">No upcoming shows are listed right now. Tap Continue — you can mark shows later from the Events tab.</p>` : "Loading events…")}</div>`;
     } else if (s === 3) {
       body = `<p class="sub" style="margin-bottom:12px">People can like a specific prompt, Hinge-style.</p>`;
       (me.prompts || []).forEach((pr, i) => {
@@ -1912,7 +1922,7 @@
           `<button class="chip${state.drafts.promptQ === q.id ? " on" : ""}" data-act="pick-prompt" data-id="${q.id}">${esc(q.q)}</button>`
         ).join("")}</div>`;
         if (state.drafts.promptQ) {
-          body += `<textarea data-field="promptA" placeholder="Your answer..." style="margin-top:12px">${esc(state.drafts.promptA)}</textarea>
+          body += `<textarea data-field="promptA" maxlength="300" placeholder="Your answer..." style="margin-top:12px">${esc(state.drafts.promptA)}</textarea>
             <button class="btn sm primary" style="margin-top:10px" data-act="add-prompt">Add this prompt</button>`;
         }
       }
@@ -1991,12 +2001,15 @@
     const head = header("Likes You", `<span class="pill">${state.inbound.count || 0}</span>`);
     if (state.inbound.locked) {
       const preview = state.inbound.people || [];
-      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() || !paymentsEnabled() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are."}</p>
+      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() ? "" : (!paymentsEnabled() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are.")}</p>
         <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#111111">
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">${isNativeIos() || !paymentsEnabled() ? "Kandi+ coming soon" : "See who likes you"}</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">${isNativeIos() ? "Kandi+ is not for sale in this version. It will use Apple In-App Purchase when it launches." : (paymentsEnabled() ? "Kandi+ unlocks who likes you, unlimited likes, and filters." : "Kandi+ isn't available to purchase yet.")}</p></div>`;
+        ${isNativeIos()
+          ? `<button class="btn primary" style="margin-top:18px" data-act="tab" data-id="discover">Find them in Discover</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">Keep liking people in Discover. If one of them liked you too, it's an instant match.</p></div>`
+          : `<button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">${!paymentsEnabled() ? "Kandi+ coming soon" : "See who likes you"}</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">${paymentsEnabled() ? "Kandi+ unlocks who likes you, unlimited likes, and filters." : "Kandi+ isn't available to purchase yet."}</p></div>`}`;
     }
     if (!state.inbound.people.length) {
       return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes a photo or prompt, they'll land here.</p></div></div>`;
@@ -2437,7 +2450,7 @@
     if (isNativeIos()) {
       plusRow = p.subscription
         ? `<div class="set-row static"><div class="grow"><div>${esc(plan)} is on</div><div class="tiny">Managing membership on iPhone will use Apple In-App Purchase when it launches.</div></div></div>`
-        : row("paywall", "Kandi+ coming soon", "Paid plans are not sold in this iOS version. They will use Apple In-App Purchase when they launch.", 'data-reason="upgrade"');
+        : ""; // Nothing to buy in the iOS app yet: no placeholder subscription row for App Review.
     } else if (p.subscription && billingFlags.managed) {
       plusRow = row("manage-billing", plan + " is on", "Manage or cancel your membership");
     } else if (p.subscription) {
@@ -2453,22 +2466,18 @@
         ${row("share-profile", "Share my profile", "", `data-id="${p.id}"`)}
         <div class="set-row static"><div class="grow"><div>Username</div><div class="tiny">@${esc(p.username || "")}</div></div></div>
       </div>
-      <div class="label">Subscription</div><div class="set-group">
+      ${plusRow ? `<div class="label">Subscription</div><div class="set-group">
         ${plusRow}
-      </div>
+      </div>` : ""}
       <div class="label">Community</div><div class="set-group">
         ${row("open-groups", "Rave Groups", "Form a crew or join one")}
       </div>
       <div class="label">Notifications</div><div class="set-group">
         ${row("open-notifs", "Activity", "Likes, matches, comments and follows")}
-        <div class="set-row static"><div class="grow"><div>Push notifications</div><div class="tiny">Coming with the next App Store update. In-app alerts are on.</div></div></div>
       </div>
       <div class="label">Safety &amp; privacy</div><div class="set-group">
         <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
           <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
-        ${state.locationShare
-          ? `<div class="set-row static"><div class="grow"><div>Meetup note shared with ${esc(state.locationShare.with)}</div><div class="tiny">In-app only — no real location was sent.</div></div></div>`
-          : row("share-loc", "Share a meetup note", "Tell a trusted friend where you'll be at a show")}
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
         <a class="set-row" href="/privacy" target="_blank" rel="noopener"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
         <a class="set-row" href="/terms" target="_blank" rel="noopener"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
@@ -3013,8 +3022,8 @@
         <div style="margin-top:12px">${comments.length ? comments.map((c) => `<div class="row" style="margin-bottom:12px;align-items:flex-start">
           <button class="av-btn" data-act="open-profile" data-id="${c.author && c.author.id}" aria-label="View ${esc(c.author && c.author.name)}'s profile">${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}</button>
           <div class="grow"><div><button class="name-btn" data-act="open-profile" data-id="${c.author && c.author.id}"><strong>${esc(c.author.name)}</strong></button>${personGenres(c.author, { compact: true, max: 1 })} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
-          <div>${esc(c.text)}</div></div>
-          ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
+          <div class="wrap-text">${esc(c.text)}</div></div>
+          ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : (c.author && c.author.id && state.me && Number(c.author.id) !== Number(state.me.id) ? `<button class="tiny" data-act="report" data-id="${c.author.id}" aria-label="Report ${esc(c.author.name || "this comment")}">Report</button>` : "")}
         </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
         <div class="row" style="margin-top:12px"><input data-field="commentText" aria-label="Add a comment" enterkeyhint="send" autocomplete="off" placeholder="Add a comment..." value="${esc(state.drafts.commentText || "")}" />
           <button class="btn sm primary" data-act="send-comment">Send</button></div></div></div>`;
@@ -3250,7 +3259,7 @@
           <div class="label" style="margin-top:16px">Meet-up spot</div><div class="chips">${SPOTS.map((s) =>
             `<button class="chip${state.live.meetupSpot === s ? " on" : ""}" data-act="spot" data-id="${esc(s)}">${esc(s)}</button>`).join("")}</div>
           ${state.live.meetupSpot ? `<div class="notice" style="margin-top:12px">You're meeting at <strong>${esc(state.live.meetupSpot)}</strong>.</div>` : ""}
-          <div class="notice warn" style="margin-top:12px">Tell a friend where you are. <button data-act="share-loc" style="color:var(--gold);font-weight:700">Share a meetup note</button></div>
+          <div class="notice warn" style="margin-top:12px">Stay safe: text a friend where you'll be, agree on a meet-up spot, and keep your phone charged.</div>
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
             ${personAvatar(p, "av sm")}
@@ -3426,7 +3435,7 @@
       body += discover.length
         ? discover.map((c) => `<div class="card" style="margin-bottom:10px"><div class="row">
             <button type="button" class="crew-chip bare" data-act="open-group" data-id="${c.id}">${c.photoUrl ? `<span class="crew-av" ${lazyBg(c.photoUrl, 320)}></span>` : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`}</button>
-            <button type="button" class="grow left-btn" data-act="open-group" data-id="${c.id}"><div style="font-weight:800">${esc(c.name)}</div>
+            <button type="button" class="grow left-btn stack" data-act="open-group" data-id="${c.id}"><div style="font-weight:800">${esc(c.name)}</div>
               <div class="tiny">${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""} · ${c.joinMode === "public" ? "Open to join" : "Request to join"}</div>
               ${c.bio ? `<div class="muted" style="margin-top:4px">${esc(c.bio)}</div>` : ""}</button>
             <button class="btn sm ${c.joinMode === "public" ? "primary" : "ghost"}" data-act="join-group" data-id="${c.id}">${c.joinMode === "public" ? "Join group" : "Request"}</button>
@@ -3538,7 +3547,7 @@
         const msgs = state.groupMessages || [];
         body += `<div class="label" style="margin-top:8px">Crew chat</div>
           <div class="crew-chat">${msgs.length ? msgs.map((m) => `<div class="crew-msg${Number(m.fromId) === Number(state.me.id) ? " me" : ""}">
-            <div class="tiny">${esc((m.from && m.from.name) || (Number(m.fromId) === Number(state.me.id) ? "You" : "Member"))} · ${esc(timeAgo(m.at))}</div>
+            <div class="tiny">${esc((m.from && m.from.name) || (Number(m.fromId) === Number(state.me.id) ? "You" : "Member"))} · ${esc(timeAgo(m.at))}${Number(m.fromId) !== Number(state.me.id) && m.fromId ? ` · <button type="button" class="tiny crew-report" data-act="report" data-id="${Number(m.fromId)}" aria-label="Report this message">Report</button>` : ""}</div>
             <div>${esc(m.text)}</div>
           </div>`).join("") : `<div class="muted">Say hi to the crew.</div>`}</div>
           <div class="row" style="margin-top:10px"><input data-field="crewChat" aria-label="Message the crew" enterkeyhint="send" autocomplete="off" placeholder="Message the crew..." value="${esc(state.drafts.crewChat || "")}" />
@@ -3763,6 +3772,7 @@
           state.drafts.claimPreview = "";
         }
         state.view = needsOnboard(state.me) ? "onboard" : "app";
+        if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
         state.overlay = null;
         if (state.view === "app") await refreshAll();
         render(); return;
@@ -3935,6 +3945,7 @@
         applyMe(data);
         state.drafts.pass = "";
         state.view = needsOnboard(state.me) ? "onboard" : "app";
+        if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
         state.overlay = null; state.tab = "home";
         connectWs();
         render();
@@ -4268,7 +4279,12 @@
         state.overlay = { type: "reportPost", postId: Number(id) };
         render(); return;
       }
-      if (act === "report-reason") { state.drafts.reportReason = id; render(); return; }
+      if (act === "report-reason") {
+        // Shared by the post report sheet and the person report/block sheet.
+        state.drafts.reportReason = id;
+        if (state.overlay && state.overlay.type === "report") state.overlay.reason = id;
+        render(); return;
+      }
       if (act === "submit-report-post") {
         const postId = state.overlay && state.overlay.postId;
         await api("/api/posts/" + postId + "/report", { method: "POST", body: { reason: state.drafts.reportReason || "Something else" } });
@@ -5123,6 +5139,7 @@
       const files = Array.from((e.target.files || [])).filter(Boolean);
       e.target.value = "";
       if (!files.length) return;
+      if (state.overlay && state.overlay.type === "composer") state.err = "";
       if (state.composerMedia && state.composerMedia.video) clearComposerMedia();
       const next = (state.composerMedia && state.composerMedia.photos) ? state.composerMedia : { photos: [], video: null, poster: null, previews: [] };
       const room = MAX_POST_PHOTOS - (next.photos || []).length;
@@ -5143,6 +5160,7 @@
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
       if (!file) return;
+      if (state.overlay && state.overlay.type === "composer") state.err = "";
       let meta = { duration: 0, poster: null };
       try {
         if (window.KandiVideo) meta = await window.KandiVideo.probe(file);

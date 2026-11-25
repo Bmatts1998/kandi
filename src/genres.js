@@ -5,7 +5,7 @@ const MAX_GENRES = 5;
 const GENRES = Object.freeze([
   { id: "dubstep", name: "Dubstep", short: "Dubstep", color: "#b44aff", icon: "diamond" },
   { id: "riddim", name: "Riddim", short: "Riddim", color: "#ff3d9a", icon: "bars" },
-  { id: "bass-music", name: "Bass Music", short: "Bass", color: "#ff5c00", icon: "bars" },
+  { id: "bass-music", name: "Bass Music", short: "Bass Music", color: "#ff5c00", icon: "bars" },
   { id: "house", name: "House", short: "House", color: "#2ef0ff", icon: "ring" },
   { id: "tech-house", name: "Tech House", short: "Tech Hse", color: "#1ad4c8", icon: "ring" },
   { id: "deep-house", name: "Deep House", short: "Deep", color: "#4d7cff", icon: "ring" },

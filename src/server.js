@@ -360,11 +360,12 @@ async function blockedSet(userId) {
 app.post("/api/signup", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "");
-  const name = String(req.body.name || "").trim();
+  const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
   const age = Number(req.body.age);
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return res.status(400).json({ error: "Username must be 3–20 letters, numbers, or underscores." });
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (name.length < 2) return res.status(400).json({ error: "Please enter your name." });
+  if (name.length > 40) return res.status(400).json({ error: "Keep your name to 40 characters or fewer." });
   if (!Number.isInteger(age) || age < 18 || age > 99) return res.status(400).json({ error: "Kandi is 18+. Enter an age between 18 and 99." });
   if (!acceptedTerms(req.body)) return res.status(400).json({ error: "Please agree to the Terms of Use and Privacy Policy to create an account." });
   const nameBad = contentRejected(name);
@@ -480,12 +481,25 @@ function clipText(val, max, fallback) {
   return String(val).trim().slice(0, max);
 }
 
+// Keep profile lists small and well-formed so one bad client can't store huge blobs.
+function cleanLooking(list) {
+  return (Array.isArray(list) ? list : []).map((v) => String(v || "").trim().slice(0, 40)).filter(Boolean).slice(0, 10);
+}
+function cleanPrompts(list) {
+  return (Array.isArray(list) ? list : []).filter((p) => p && typeof p === "object").slice(0, 3).map((p) => ({
+    id: String(p.id || "").slice(0, 40),
+    q: String(p.q || "").trim().slice(0, 120),
+    a: String(p.a || "").trim().slice(0, 300),
+  })).filter((p) => p.q && p.a);
+}
+
 app.put("/api/me", auth, async (req, res) => {
   const body = req.body || {};
-  const name = body.name != null ? String(body.name).trim() : req.user.name;
+  const name = body.name != null ? String(body.name).trim().replace(/\s+/g, " ").slice(0, 40) : req.user.name;
   const bio = body.bio != null ? String(body.bio).slice(0, 500) : req.user.bio;
   const vibes = body.vibes != null ? JSON.stringify(normalizeGenreIds(body.vibes)) : req.user.vibes;
-  const looking = body.looking != null ? JSON.stringify(body.looking) : req.user.looking;
+  const looking = body.looking != null ? JSON.stringify(cleanLooking(body.looking)) : req.user.looking;
+  if (body.prompts != null) body.prompts = cleanPrompts(body.prompts);
   const prompts = body.prompts != null ? JSON.stringify(body.prompts) : req.user.prompts;
   if (!name || name.length < 2) return res.status(400).json({ error: "Name is required." });
   const profileBad = rejectedFromAll([name, bio, body.prompts, body.favoriteArtists, body.favoriteFestival, body.favoriteVenue, body.favoriteHangout, body.raveTotem, body.hobbies]);

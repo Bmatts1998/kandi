@@ -785,3 +785,17 @@
 .video-prep { margin-top: 8px; font-size: 13px; color: #ff8a1a; font-weight: 600; }
 .chat-video-status { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 90; background: rgba(20,20,20,.95); border: 1px solid #ff5c00; border-radius: 14px; padding: 10px 14px; margin: 0; max-width: 90vw; }
 .video-prep.err { color: #ff5c5c; }
+
+/* ---- QA pass (Nov 2026) ---- */
+/* Chat/crew logs are flex columns inside a scroller: never let a photo or video bubble get squashed. */
+.chat-log > *, .crew-chat > * { flex-shrink: 0; }
+/* Long words, links, and emoji runs wrap instead of running off the screen. */
+.bubble, .bubble-cap, .prompt .a, .prof-bio, .caption, .cap, .post-text-inner, .crew-msg, .wrap-text,
+.card .muted, .overlay .sub, .notif .grow, .story-text { overflow-wrap: anywhere; word-break: normal; }
+.left-btn.stack { flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; }
+.crew-report { color: var(--muted); text-decoration: underline; padding: 0; }
+.ios-tip p b { font-weight: 700; color: var(--text, #fff); }
+/* iPad / desktop: the app column runs full height so the tab bar stays attached to it. */
+@media (min-width: 431px) {
+  #app { max-height: none; height: 100vh; height: 100dvh; }
+}
