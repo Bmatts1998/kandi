@@ -1083,8 +1083,8 @@
       if ((soc.posts || []).length) {
         html += `<div class="label">Your posts</div><div class="post-grid">` + soc.posts.map((post) =>
           post.photoUrl
-            ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="feed-tab" data-id="following"></button>`
-            : `<button data-act="feed-tab" data-id="following"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
+            ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}" aria-label="Your post${post.caption ? ": " + esc(post.caption.slice(0, 60)) : ""}"></button>`
+            : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
         ).join("") + `</div>`;
       }
     }
