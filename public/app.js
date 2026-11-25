@@ -3935,8 +3935,13 @@
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
     // Tapping the dimmed backdrop of a bottom sheet closes it; taps inside the sheet never do.
     if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.err = ""; handle("close", t); return; }
-    const actEl = t.closest("[data-act]");
+    let actEl = t.closest("[data-act]");
     if (!actEl || !root.contains(actEl)) return;
+    // A badge shown inside a tappable row (chat, name, post header) should open that row, not the badge explainer.
+    if (actEl.getAttribute("data-act") === "badge-info" && actEl.parentElement) {
+      const outer = actEl.parentElement.closest("[data-act]");
+      if (outer && root.contains(outer) && !outer.classList.contains("sheet-bg")) actEl = outer;
+    }
     if (actEl.classList.contains("sheet-bg")) return; // a tap on a field, label or text inside the sheet
     if (actEl.disabled || actEl.getAttribute("aria-disabled") === "true") return;
     e.preventDefault();
