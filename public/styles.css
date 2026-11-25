@@ -294,3 +294,43 @@
     .chat-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .chat-head .nm { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .profile-top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+
+    /* ---- usability + accessibility pass ---- */
+    html { -webkit-text-size-adjust: 100%; }
+    button, a, label, [data-act] { touch-action: manipulation; cursor: pointer; }
+    input, textarea, select { font-size: 16px; } /* prevents iOS zoom-on-focus */
+    :focus-visible { outline: 2px solid var(--orange2); outline-offset: 2px; }
+    .icon-btn { width: 44px; height: 44px; font-size: 18px; }
+    .chip { min-height: 38px; display: inline-flex; align-items: center; }
+    .chip.soft { min-height: 0; }
+    .btn.sm { min-height: 44px; }
+    .tab { min-height: 48px; }
+    .round.like { width: 64px; height: 64px; font-size: 28px; color: #000; border-color: transparent;
+      background: linear-gradient(90deg, #ff8a1a, #ff5c00); box-shadow: 0 8px 28px rgba(255,92,0,.45); }
+    .tiny { color: #a39a91; } /* was #8a8178: too low contrast on black */
+    a { color: var(--orange2); }
+    [data-act].busy { opacity: .65; pointer-events: none; position: relative; }
+    .btn[data-act].busy::after { content: ""; width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid currentColor; border-right-color: transparent; animation: kspin .7s linear infinite; }
+    .spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px;
+      border: 2px solid var(--orange2); border-right-color: transparent; animation: kspin .7s linear infinite; }
+    @keyframes kspin { to { transform: rotate(360deg); } }
+    body.net-busy::before { content: ""; position: fixed; z-index: 200; top: 0; left: 0; right: 0; height: 3px;
+      top: env(safe-area-inset-top, 0px);
+      background: linear-gradient(90deg, transparent, #ff5c00, #ffc14d, transparent); background-size: 200% 100%;
+      animation: kbar 1s linear infinite; }
+    @keyframes kbar { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+    .toast { position: fixed; z-index: 300; left: 50%; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+      bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-width: min(92vw, 360px); width: max-content;
+      background: #1c1c1c; color: var(--text); border: 1px solid rgba(255,92,0,.5); border-radius: 14px;
+      padding: 12px 16px; font-size: 14px; line-height: 1.35; box-shadow: 0 10px 30px rgba(0,0,0,.6);
+      transition: opacity .2s, transform .2s; text-align: center; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.err { border-color: var(--danger); }
+    .toast.warn { border-color: var(--gold); }
+    .sheet { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .chat-bar input { min-width: 0; }
+    .overlay { background: var(--bg); }
+    .overlay .match-wrap { background: radial-gradient(circle at 50% 30%, rgba(255,92,0,.18), transparent 60%); }
+    a.btn { text-decoration: none; color: inherit; }
+    a.btn.primary { color: #fff; }

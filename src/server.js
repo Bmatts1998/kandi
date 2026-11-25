@@ -37,6 +37,22 @@ const upload = multer({
 });
 
 const app = express();
+// Express 4 doesn't catch errors thrown by async handlers: a DB hiccup would leave the request hanging
+// forever and the app looking frozen. Wrap every handler so failures become a JSON error instead.
+for (const method of ["get", "post", "put", "delete", "patch"]) {
+  const orig = app[method].bind(app);
+  app[method] = (...args) => {
+    if (method === "get" && args.length === 1) return orig(...args); // app.get(setting)
+    return orig(...args.map((fn) => (typeof fn === "function" && fn.length < 4
+      ? function wrapped(req, res, next) {
+          try {
+            const out = fn(req, res, next);
+            if (out && typeof out.catch === "function") out.catch(next);
+          } catch (err) { next(err); }
+        }
+      : fn)));
+  };
+}
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -52,7 +68,37 @@ app.get("/uploads/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 app.use("/uploads", express.static(uploadDir, { maxAge: "7d" }));
-app.use(express.static(path.join(root, "public"), { maxAge: "1h", index: false }));
+const BUILD = String(process.env.RENDER_GIT_COMMIT || Date.now().toString(36)).slice(0, 12);
+function noStore(res) {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
+let indexHtmlCache = null;
+function sendIndex(res) {
+  if (!indexHtmlCache) {
+    indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
+      .replace(/(href|src)="\/(styles\.css|app\.js)"/g, `$1="/$2?v=${BUILD}"`);
+  }
+  noStore(res);
+  res.type("html").send(indexHtmlCache);
+}
+app.get(["/", "/index.html"], (_req, res) => sendIndex(res));
+app.get("/api/version", (_req, res) => { noStore(res); res.json({ build: BUILD }); });
+app.use(express.static(path.join(root, "public"), {
+  index: false,
+  setHeaders(res, filePath) {
+    const base = path.basename(filePath);
+    if (/\.(js|css|html|webmanifest)$/.test(base)) {
+      // JS/CSS are requested with ?v=<build>; still revalidate so an old WebView cache can't pin a broken build.
+      res.setHeader("Cache-Control", "no-cache");
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+    }
+    if (base === "sw.js") { noStore(res); res.setHeader("Service-Worker-Allowed", "/"); }
+  },
+}));
+app.use("/api", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 
 function parseCookies(req) {
   const out = {};
@@ -562,15 +608,24 @@ app.get("/api/events", auth, async (req, res) => {
   const meta = await db.prepare(`SELECT value FROM app_meta WHERE key=?`).get("events_updated_at");
   const now = Date.now();
   const events = [];
+  // One query for everyone going to anything (was 2 queries per event: slow on Neon with 100+ shows).
+  const goingByEvent = new Map();
+  const goingRows = await db.prepare(`SELECT g.event_id AS going_event_id, u.* FROM event_going g JOIN users u ON u.id=g.user_id`).all();
+  for (const row of goingRows) {
+    const k = String(row.going_event_id);
+    if (!goingByEvent.has(k)) goingByEvent.set(k, []);
+    goingByEvent.get(k).push(row);
+  }
   for (const e of raw) {
     if (String(e.status || "active") === "removed") continue;
     const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
     if (!Number.isNaN(starts) && starts < now) continue;
     if (e.is_example) continue;
-    const going = (await db.prepare(`SELECT u.* FROM event_going g JOIN users u ON u.id=g.user_id WHERE g.event_id=?`).all(e.id))
+    const goers = goingByEvent.get(String(e.id)) || [];
+    const going = goers
       .filter((u) => !blocked.has(Number(u.id)))
       .map((u) => publicUser(u));
-    const imGoing = Boolean(await db.prepare(`SELECT 1 FROM event_going WHERE user_id=? AND event_id=?`).get(req.user.id, e.id));
+    const imGoing = goers.some((u) => Number(u.id) === Number(req.user.id));
     if (req.user.subscription === "vip") {
       going.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
     }
@@ -788,13 +843,16 @@ app.get(["/terms", "/terms.html"], (_req, res) => {
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/ws")) return next();
-  res.sendFile(path.join(root, "public", "index.html"));
+  sendIndex(res);
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: err.message || "Server error" });
+app.use((err, req, res, _next) => {
+  console.error(req.method, req.path, err);
+  if (res.headersSent) return;
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: status >= 500 ? "Something went wrong on our side. Try again." : (err.message || "Request failed") });
 });
+process.on("unhandledRejection", (err) => console.error("unhandledRejection", err));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });

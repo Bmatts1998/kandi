@@ -122,44 +122,145 @@
       `<span class="bead ${size || ""}" style="color:${BEADS[i % BEADS.length]};background:${BEADS[i % BEADS.length]}"></span>`
     ).join("") + "</div>";
   }
+  // ---- network: timeouts, cold-start retries, global loading bar ----
+  let inflight = 0;
+  let busyTimer = null;
+  function netStart() {
+    inflight += 1;
+    if (!busyTimer) busyTimer = setTimeout(() => { document.body.classList.add("net-busy"); }, 350);
+  }
+  function netEnd() {
+    inflight = Math.max(0, inflight - 1);
+    if (!inflight) { clearTimeout(busyTimer); busyTimer = null; document.body.classList.remove("net-busy"); }
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function friendlyNetError() {
+    const e = new Error(navigator.onLine === false
+      ? "You're offline. Reconnect and try again."
+      : "Kandi is taking too long to answer. The server may be waking up — try again in a few seconds.");
+    e.network = true;
+    return e;
+  }
   async function api(path, opts) {
-    const res = await fetch(path, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...(opts && opts.headers) },
-      ...opts,
-      body: opts && opts.body && typeof opts.body !== "string" && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : (opts && opts.body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(data.error || res.statusText);
-      err.status = res.status;
-      err.data = data;
-      throw err;
+    opts = opts || {};
+    const method = String(opts.method || "GET").toUpperCase();
+    const isForm = typeof FormData !== "undefined" && opts.body instanceof FormData;
+    const body = opts.body && typeof opts.body !== "string" && !isForm ? JSON.stringify(opts.body) : opts.body;
+    const headers = Object.assign({}, isForm ? {} : { "Content-Type": "application/json" }, opts.headers || {});
+    const attempts = method === "GET" ? 3 : 2;
+    netStart();
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeout || 45000) : null;
+        let res;
+        try {
+          res = await fetch(path, { method, credentials: "include", cache: "no-store", headers, body, signal: ctrl ? ctrl.signal : undefined });
+        } catch (err) {
+          clearTimeout(timer);
+          // Only retry writes when the request never reached the server (offline / DNS / cold start reset).
+          if (i < attempts - 1 && (method === "GET" || !(err && err.name === "AbortError"))) { await sleep(1200 * (i + 1)); continue; }
+          throw friendlyNetError();
+        }
+        clearTimeout(timer);
+        if ((res.status === 502 || res.status === 503 || res.status === 504) && i < attempts - 1) { await sleep(1500 * (i + 1)); continue; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const err = new Error(data.error || (res.status >= 500 ? "Something went wrong on our side. Try again." : res.statusText || "Request failed"));
+          err.status = res.status;
+          err.data = data;
+          if (res.status === 401 && state.view === "app" && !/^\/api\/(login|signup|claim)/.test(path)) {
+            state.me = null; state.view = "auth"; state.overlay = null;
+            state.err = "Your session ended. Log in again.";
+            render();
+          }
+          throw err;
+        }
+        return data;
+      }
+    } finally {
+      netEnd();
     }
-    return data;
+  }
+  let toastTimer = null;
+  function toast(msg, kind) {
+    if (!msg) return;
+    let el = document.getElementById("kandi-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "kandi-toast";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      document.body.appendChild(el);
+    }
+    el.className = "toast show" + (kind ? " " + kind : "");
+    el.textContent = msg;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = "toast"; }, 4200);
   }
 
   let ws;
+  let wsRetry = 0;
+  let wsTimer = null;
+  function quiet(promise) {
+    return Promise.resolve(promise).then(() => render()).catch(() => {});
+  }
   function connectWs() {
+    if (!state.me) return;
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    clearTimeout(wsTimer);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(proto + "//" + location.host + "/ws");
+    try {
+      ws = new WebSocket(proto + "//" + location.host + "/ws");
+    } catch (_) {
+      ws = null;
+      return;
+    }
+    ws.onopen = () => { wsRetry = 0; };
+    ws.onclose = (ev) => {
+      ws = null;
+      if (!state.me || ev.code === 4001) return;
+      wsRetry = Math.min(wsRetry + 1, 6);
+      wsTimer = setTimeout(connectWs, 1000 * Math.pow(2, wsRetry - 1));
+    };
+    ws.onerror = () => { /* onclose handles reconnects */ };
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && msg.from.id === state.chatWith.id) {
-        state.chat.push(msg.message);
+      if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && Number(msg.from.id) === Number(state.chatWith.id)) {
+        if (!state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
         render();
+        scrollChatToEnd();
       } else if (msg.type === "message") {
-        loadMatches();
+        quiet(loadMatches());
+        toast("New message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
       } else if (msg.type === "match") {
-        loadMatches();
-        loadFeed();
+        quiet(Promise.all([loadMatches(), loadFeed()]));
+        toast("It's a match" + (msg.user && msg.user.name ? " with " + msg.user.name : "") + "! Check Matches.");
       } else if (msg.type === "like") {
-        loadInbound();
+        quiet(loadInbound());
       }
     };
   }
+  function scrollChatToEnd() {
+    const log = document.querySelector(".chat-log");
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+  // Chat fallback: if the socket is down (Render sleeping, network change), poll the open chat.
+  setInterval(() => {
+    if (document.hidden || !state.me || !state.overlay || state.overlay.type !== "chat" || !state.chatWith) return;
+    if (ws && ws.readyState === 1) return;
+    const id = state.chatWith.id;
+    api("/api/chats/" + id).then((data) => {
+      if (!state.overlay || state.overlay.type !== "chat" || !state.chatWith || state.chatWith.id !== id) return;
+      if ((data.messages || []).length !== state.chat.length) { state.chat = data.messages || []; render(); scrollChatToEnd(); }
+    }).catch(() => {});
+  }, 5000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !state.me || state.view !== "app") return;
+    connectWs();
+    quiet(Promise.all([loadInbound(), loadMatches()]));
+  });
 
   async function boot() {
     const claimToken = (function () {
@@ -187,17 +288,21 @@
       render();
       return;
     }
+    let me;
     try {
-      const me = await api("/api/me");
-      applyMe(me);
-      if (needsOnboard(state.me)) state.view = "onboard";
-      else state.view = "app";
-      connectWs();
-      await refreshAll();
-    } catch {
-      state.view = "auth";
+      me = await api("/api/me");
+    } catch (e) {
+      state.view = e && e.status === 401 ? "auth" : "offline";
+      state.err = state.view === "offline" ? (e.message || "Can't reach Kandi right now.") : "";
+      render();
+      return;
     }
+    applyMe(me);
+    state.view = needsOnboard(state.me) ? "onboard" : "app";
+    connectWs();
     render();
+    await refreshAll();
+    if (state.me) render();
   }
   function applyMe(data) {
     state.me = data.user;
@@ -564,7 +669,9 @@
     }
   }
   async function refreshAll() {
-    await Promise.all([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
+    const failed = results.find((r) => r.status === "rejected");
+    if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
   }
   async function loadHome() {
     const tab = state.feedTab === "popular" ? "popular" : "following";
@@ -618,12 +725,12 @@
       ["matches", "✉", "Matches"],
       ["you", "●", "You"],
     ];
-    return `<nav class="tabbar">${items.map((t) => {
+    return `<nav class="tabbar" aria-label="Main">${items.map((t) => {
       const on = state.tab === t[0];
       let badge = "";
       if (t[0] === "likes" && state.inbound.count) badge = `<span class="badge">${state.inbound.count}</span>`;
       if (t[0] === "matches" && state.matches.length) badge = `<span class="badge">${state.matches.length}</span>`;
-      return `<button class="tab${on ? " on" : ""}" data-act="tab" data-id="${t[0]}"><span class="ic">${t[1]}</span>${t[2]}${badge}</button>`;
+      return `<button class="tab${on ? " on" : ""}" data-act="tab" data-id="${t[0]}" aria-label="${t[2]}"${on ? ' aria-current="page"' : ""}><span class="ic" aria-hidden="true">${t[1]}</span>${t[2]}${badge}</button>`;
     }).join("")}</nav>`;
   }
 
@@ -656,8 +763,8 @@
       <h2 class="h2" style="margin-top:18px">Set up your profile</h2>
       <p class="sub">${c.name ? "Welcome, " + esc(c.name) + ". " : ""}Choose a password and enter your age. Kandi is 18+ only — we didn't guess your age.</p>
       ${c.username ? `<p class="muted" style="margin-top:8px">Username: @${esc(c.username)}</p>` : ""}
-      <input data-field="claimPass" type="password" placeholder="Password (8+ characters)" value="${esc(state.drafts.claimPass || "")}" style="margin-top:16px" autocomplete="new-password" />
-      <input data-field="claimAge" inputmode="numeric" maxlength="2" placeholder="Your age (18+)" value="${esc(state.drafts.claimAge || "")}" style="margin-top:8px" />
+      <input data-field="claimPass" type="password" aria-label="New password" placeholder="Password (8+ characters)" value="${esc(state.drafts.claimPass || "")}" style="margin-top:16px" autocomplete="new-password" />
+      <input data-field="claimAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Your age" placeholder="Your age (18+)" value="${esc(state.drafts.claimAge || "")}" style="margin-top:8px" />
       <label class="card photo-upload" style="display:block;margin-top:12px;text-align:center;padding:18px">
         ${state.drafts.claimPreview
           ? `<div class="photo-slot main" style="margin:0 auto 8px;width:96px;background-image:url('${esc(state.drafts.claimPreview)}')"></div><div class="tiny">Photo ready — we'll add it after you save</div>`
@@ -677,18 +784,19 @@
       <p>Find your people on the floor. Trade kandi, meet ravers, stay PLUR.</p>
       <div class="demo-tag">18+ only · installable web app</div>
       ${mode === "signup" ? `
-        <input id="f-name" data-field="name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
-        <input id="f-age" data-field="age" inputmode="numeric" maxlength="2" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
-        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
-        <input id="f-pass" data-field="pass" type="password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
+        <input id="f-name" data-field="name" aria-label="Name" autocomplete="given-name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
+        <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
+        <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
+        <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="new-password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <button class="btn primary" data-act="signup" style="margin-top:16px">Create account</button>
         <button class="btn ghost" data-act="show-login" style="margin-top:8px">I already have an account</button>
         <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
       ` : `
-        <input id="f-user" data-field="user" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
-        <input id="f-pass" data-field="pass" type="password" placeholder="Password" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
+        <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:24px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
+        <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="current-password" placeholder="Password" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
         <p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>
@@ -751,7 +859,7 @@
 
   function viewDiscover() {
     const right = `<span class="pill">${isPlus() ? "Unlimited likes" : (state.likesLeft + " likes left")}</span>
-      <button class="icon-btn" data-act="filters" title="Filters">✺</button>`;
+      <button class="icon-btn" data-act="filters" title="Filters" aria-label="Filters">✺</button>`;
     const p = state.feed[0];
     if (!p) {
       return header("Kandi", right) + `<div class="scroll pad"><div class="empty"><p>You're caught up for now. Check back when more ravers join, or rewind a pass.</p>
@@ -768,10 +876,11 @@
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div></div>`);
     return header("Kandi", right) + `<div class="scroll"><div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
-        <button class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass">✕</button>
-        <button class="round rewind" data-act="rewind" aria-label="Rewind">↺</button>
+        <button class="round rewind" data-act="rewind" aria-label="Rewind last pass">↺</button>
+        <button class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass on ${esc(p.name)}">✕</button>
+        <button class="round like" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♥</button>
       </div>
-      <p class="tiny" style="text-align:center;padding-bottom:8px">Like a photo or a prompt — or add a comment.</p></div>`;
+      <p class="tiny" style="text-align:center;padding-bottom:8px">Tap ♥ to like, ✕ to pass, or like a specific photo or prompt and add a comment.</p></div>`;
   }
 
   function viewLikes() {
@@ -783,7 +892,7 @@
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
         <button class="btn primary" style="margin-top:18px" data-act="paywall" data-reason="likesYou">See who likes you</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">Example pricing · payment is stubbed, no real charges</p></div>`;
+        <p class="tiny" style="text-align:center;margin-top:10px">Kandi+ is free during the beta.</p></div>`;
     }
     if (!state.inbound.people.length) {
       return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes a photo or prompt, they'll land here.</p></div></div>`;
@@ -860,7 +969,7 @@
 
   function viewHome() {
     const following = state.feedTab !== "popular";
-    let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post">＋</button>`);
+    let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post" aria-label="New post">＋</button>`);
     html += `<div class="feed-tabs">
       <button class="${following ? "on" : ""}" data-act="feed-tab" data-id="following">Following</button>
       <button class="${!following ? "on" : ""}" data-act="feed-tab" data-id="popular">Popular</button>
@@ -904,8 +1013,8 @@
         ? `<button class="btn sm ghost" data-act="unfollow" data-id="${p.author.id}">Following</button>`
         : "");
     const more = p.author.id === (state.me && state.me.id)
-      ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete">✕</button>`
-      : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report">⋯</button>`;
+      ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete" aria-label="Delete">✕</button>`
+      : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report" aria-label="Report">⋯</button>`;
     const photo = p.photoUrl
       ? `<div class="post-photo" style="background-image:url('${esc(p.photoUrl)}')" data-act="post-like-tap" data-id="${p.id}">${burst}</div>`
       : (p.caption ? `<div class="post-photo" style="display:grid;place-items:center;padding:24px;aspect-ratio:auto;min-height:160px" data-act="post-like-tap" data-id="${p.id}"><div style="font-size:20px;font-weight:700;line-height:1.4;padding:12px">${esc(p.caption)}</div>${burst}</div>` : "");
@@ -958,8 +1067,8 @@
       }
     }
     html += `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
-      <div class="tiny">${p.subscription ? "Stub subscription — no real payment on file. TODO: Stripe / IAP." : "Free to use. Upgrade for unlimited likes and more."}</div></div>
-      ${p.subscription ? `<button class="btn sm ghost" data-act="cancel-sub">Cancel stub</button>` : `<button class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
+      <div class="tiny">${p.subscription ? "Free during the beta — no payment on file." : "Free to use. Kandi+ (free during the beta) adds unlimited likes and more."}</div></div>
+      ${p.subscription ? `<button class="btn sm ghost" data-act="cancel-sub">Turn off</button>` : `<button class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
     </div>`;
     html += `<h3 style="margin:22px 0 10px;font-size:16px">Safety</h3>
       <div class="notice warn" style="margin-bottom:10px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
@@ -977,7 +1086,7 @@
     html += `<button class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
       <button class="btn danger" style="margin-top:8px;width:100%" data-act="delete-account">Delete account</button>
       <p class="tiny" style="text-align:center;margin-top:12px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a></p>
-      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1 · Add to Home Screen in Safari for the full app</p></div>`;
+      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1.1</p></div>`;
     return html;
   }
 
@@ -1008,7 +1117,7 @@
           <div>${esc(c.text)}</div></div>
           ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
         </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
-        <div class="row" style="margin-top:12px"><input data-field="commentText" placeholder="Add a comment..." value="${esc(state.drafts.commentText || "")}" />
+        <div class="row" style="margin-top:12px"><input data-field="commentText" aria-label="Add a comment" enterkeyhint="send" autocomplete="off" placeholder="Add a comment..." value="${esc(state.drafts.commentText || "")}" />
           <button class="btn sm primary" data-act="send-comment">Send</button></div></div></div>`;
     }
     if (o.type === "reportPost") {
@@ -1022,7 +1131,7 @@
     }
     if (o.type === "editProfile") {
       const me = state.me || { photos: [], name: "", bio: "" };
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">Edit profile</span></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Edit profile</span></div>
         <div class="right"><button class="btn sm primary" data-act="save-profile">Save</button></div></div>
         <div class="scroll pad">
           <div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
@@ -1036,12 +1145,12 @@
     }
     if (o.type === "profile") {
       const data = state.profile;
-      if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
+      if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
       const u = data.user;
       const followBtn = u.isMe ? "" : (u.following
         ? `<button class="btn sm ghost" data-act="unfollow" data-id="${u.id}">Following</button>`
         : `<button class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
           <div class="profile-top">${personAvatar(u, "av lg")}<div class="grow">
             <div style="font-weight:800;font-size:20px">${esc(u.name)}${u.age ? ", " + u.age : ""}</div>
@@ -1083,10 +1192,10 @@
         ["Rewinds", "5 / day", "Unlimited"],
         ["Priority at events and live mode", "—", "✓"],
       ];
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">Kandi+</span></div></div>
         <div class="scroll pad">${beads(8)}
         <h2 class="h2" style="text-align:center;margin:12px 0 6px">Stay on the floor longer.</h2>
-        <p class="example" style="text-align:center;margin:12px 0">Example pricing · payment stub · no real charges<br>TODO: Stripe or Apple / Google in-app purchase</p>
+        <div class="notice ok" style="text-align:center;margin:12px 0"><strong>Free during the beta.</strong> Kandi+ and VIP unlock right away with no payment. Prices below are what they'll cost after launch.</div>
         <div class="seg" style="margin:10px 0 14px">
           <button class="${state.billing === "weekly" ? "on" : ""}" data-act="billing" data-id="weekly">Weekly</button>
           <button class="${state.billing === "monthly" ? "on" : ""}" data-act="billing" data-id="monthly">Monthly</button>
@@ -1097,12 +1206,12 @@
           <button class="plan${pending === "vip" ? " on" : ""}" data-act="pick-plan" data-id="vip"><div class="tiny">KANDI VIP</div><div class="price">${prices.vip}</div><div class="tiny">${prices.n}</div></button>
         </div>
         <div class="card">${rows.map((r) => `<div class="feat"><span>${r[0]}</span><span class="tiny">${pending === "vip" ? r[2] : r[1]}</span></div>`).join("")}</div>
-        <button class="btn primary" style="margin-top:18px" data-act="buy">Activate ${pending === "vip" ? "Kandi VIP" : "Kandi+"} (demo)</button>
-        <p class="tiny" style="text-align:center;margin-top:10px">Nothing will be charged.</p></div></div>`;
+        <button class="btn primary" style="margin-top:18px" data-act="buy">Unlock ${pending === "vip" ? "Kandi VIP" : "Kandi+"} free</button>
+        <p class="tiny" style="text-align:center;margin-top:10px">No card needed. Nothing will be charged. You can turn it off anytime on the You tab.</p></div></div>`;
     }
     if (o.type === "purchased") {
       return `<div class="overlay"><div class="match-wrap">${beads(8, "lg")}<h2>You're in.</h2>
-        <p class="sub">Demo only — no payment was taken. TODO: hook up Stripe or in-app purchases before launch.</p>
+        <p class="sub">Unlimited likes, see who likes you, filters and rewinds are on. It's free during the beta — no payment was taken.</p>
         <button class="btn primary" style="margin-top:24px;max-width:280px" data-act="close">Start using it</button></div></div>`;
     }
     if (o.type === "match") {
@@ -1146,7 +1255,7 @@
     if (o.type === "event") {
       const e = state.events.find((x) => x.id === o.id);
       if (!e) return "";
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
         <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
         <div class="event-detail-row"><div class="label" style="margin:0">Date &amp; time</div><div class="muted">${esc(eventWhen(e))}</div></div>
@@ -1167,7 +1276,7 @@
     if (o.type === "live") {
       const options = state.events.filter((e) => e.imGoing).length ? state.events.filter((e) => e.imGoing) : state.events;
       const eid = state.live.eventId || (options[0] && options[0].id);
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close">✕</button><span class="wordmark grad" style="font-size:15px">At the show</span></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">At the show</span></div>
         <div class="right"><button class="toggle${state.live.on ? " on" : ""}" data-act="toggle-live" data-id="${eid || ""}" aria-label="Live mode"><i></i></button></div></div>
         <div class="scroll pad"><p class="sub">Turn live mode on to see people at the same event and pick a meet-up spot. No GPS is used unless you later add it.</p>
         <div class="label" style="margin-top:16px">You're at</div><div class="chips">${options.map((e) =>
@@ -1188,12 +1297,12 @@
       const p = state.chatWith;
       if (!p) return "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
-        <div class="header"><div class="left"><button class="icon-btn" data-act="close">‹</button>
+        <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
         <div class="chat-head">${personAvatar(p, "av chat")}<span class="nm">${esc(p.name)}</span></div></div>
-        <div class="right"><button class="icon-btn" data-act="report" data-id="${p.id}" title="Report or block">⚑</button></div></div>
+        <div class="right"><button class="icon-btn" data-act="report" data-id="${p.id}" title="Report or block" aria-label="Report or block">⚑</button></div></div>
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
         <div class="scroll chat-log">${state.chat.map((m) => `<div class="bubble ${m.fromId === state.me.id ? "me" : "them"}">${esc(m.text)}</div>`).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
-        <div class="chat-bar"><input data-field="chat" placeholder="Say something..." value="${esc(state.drafts.chat)}" />
+        <div class="chat-bar"><input data-field="chat" aria-label="Message" enterkeyhint="send" autocomplete="off" placeholder="Say something..." value="${esc(state.drafts.chat)}" />
         <button class="btn sm primary" data-act="send-chat">Send</button></div></div>`;
     }
     if (o.type === "share") {
@@ -1223,7 +1332,10 @@
   function render() {
     const root = document.getElementById("app");
     let html = "";
-    if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1></div></div>`;
+    if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1><p class="sub" style="margin-top:12px"><span class="spin"></span> Loading…</p></div></div>`;
+    else if (state.view === "offline") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1>
+      <p style="margin-top:12px">${esc(state.err || "Can't reach Kandi right now.")}</p>
+      <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="retry-boot">Try again</button></div></div>`;
     else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
     else if (state.view === "onboard") html = viewOnboard();
@@ -1237,13 +1349,39 @@
       else body = viewYou();
       html = `<div class="screen">${body}${tabbar()}${overlays()}</div>`;
     }
+    // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
+    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "");
+    const scrollers = Array.from(root.querySelectorAll(".scroll, .overlay, .sheet"));
+    const saved = lastRenderKey === key ? scrollers.map((n) => n.scrollTop) : null;
+    const active = document.activeElement;
+    const focusField = active && root.contains(active) && active.getAttribute ? active.getAttribute("data-field") : null;
+    let selStart = null, selEnd = null;
+    if (focusField) { try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (_) {} }
     root.innerHTML = html;
+    if (saved) {
+      Array.from(root.querySelectorAll(".scroll, .overlay, .sheet")).forEach((n, i) => { if (saved[i]) n.scrollTop = saved[i]; });
+    }
+    lastRenderKey = key;
+    if (focusField) {
+      const again = root.querySelector('[data-field="' + focusField + '"]');
+      if (again) {
+        try { again.focus({ preventScroll: true }); } catch (_) { again.focus(); }
+        if (selStart != null) { try { again.setSelectionRange(selStart, selEnd); } catch (_) {} }
+      }
+    }
+    root.querySelectorAll("[data-act]").forEach((n) => {
+      const k = n.getAttribute("data-act") + ":" + (n.getAttribute("data-id") || "");
+      if (busyActs.has(k)) { n.classList.add("busy"); n.setAttribute("aria-busy", "true"); }
+    });
   }
+  let lastRenderKey = "";
+  const busyActs = new Set();
 
   async function handle(act, el) {
     const id = el && el.getAttribute("data-id");
     try {
       state.err = "";
+      if (act === "retry-boot") { state.view = "boot"; state.err = ""; render(); await boot(); return; }
       if (act === "dismiss-ios-tip") { localStorage.setItem("kandi-hide-ios-tip", "1"); render(); return; }
       if (act === "claim-finish") {
         const password = (state.drafts.claimPass || "").trim();
@@ -1302,8 +1440,8 @@
         state.me = data.user;
         render(); return;
       }
-      if (act === "show-signup") { state.overlay = { type: "signup" }; render(); return; }
-      if (act === "show-login") { state.overlay = null; render(); return; }
+      if (act === "show-signup") { state.overlay = { type: "signup" }; state.info = ""; render(); return; }
+      if (act === "show-login") { state.overlay = null; state.info = ""; render(); return; }
       if (act === "signup") {
         const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age) } });
         applyMe({ user: data.user, likesLeft: DAILY });
@@ -1315,13 +1453,20 @@
       if (act === "login") {
         const data = await api("/api/login", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass } });
         applyMe(data);
-        connectWs();
-        await refreshAll();
+        state.drafts.pass = "";
         state.view = needsOnboard(state.me) ? "onboard" : "app";
-        state.overlay = null;
+        state.overlay = null; state.tab = "home";
+        connectWs();
+        render();
+        if (state.view === "onboard") await loadEvents(); else await refreshAll();
         render(); return;
       }
-      if (act === "logout") { await api("/api/logout", { method: "POST", body: {} }); state.me = null; state.view = "auth"; render(); return; }
+      if (act === "logout") {
+        try { await api("/api/logout", { method: "POST", body: {} }); } catch (_) { /* still sign out locally */ }
+        state.me = null; state.view = "auth"; state.overlay = null; state.tab = "home"; state.drafts.pass = "";
+        if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+        render(); return;
+      }
       if (act === "delete-account") { state.err = ""; state.drafts.deleteUser = ""; state.drafts.deleteConfirm = ""; state.overlay = { type: "deleteAccount" }; render(); return; }
       if (act === "delete-account-confirm") {
         await api("/api/account", { method: "DELETE", body: { username: state.drafts.deleteUser, confirm: state.drafts.deleteConfirm } });
@@ -1359,17 +1504,22 @@
       }
       if (act === "onboard-next") {
         if (state.onboardStep < 5) { state.onboardStep += 1; if (state.onboardStep === 2 && !state.events.length) await loadEvents(); render(); return; }
-        state.view = "app"; await refreshAll(); render(); return;
+        state.view = "app"; state.tab = "home"; render(); await refreshAll(); render(); return;
       }
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
         state.tab = id; state.overlay = null;
+        render();
+        const scroller = document.querySelector(".screen > .scroll");
+        if (scroller) scroller.scrollTop = 0;
         if (id === "home") await loadHome();
+        if (id === "discover") await loadFeed();
         if (id === "likes") await loadInbound();
         if (id === "matches") await loadMatches();
         if (id === "events") await loadEvents();
         if (id === "you" && state.me) await loadProfile(state.me.id);
-        render(); return;
+        if (state.tab === id) render();
+        return;
       }
       if (act === "close") { state.overlay = null; render(); return; }
 
@@ -1598,15 +1748,15 @@
         state.chat = data.messages;
         state.drafts.chat = "";
         state.overlay = { type: "chat", id: Number(id) };
-        render(); return;
+        render(); scrollChatToEnd(); return;
       }
       if (act === "send-chat") {
         const text = state.drafts.chat.trim();
         if (!text || !state.chatWith) return;
         const data = await api("/api/chats/" + state.chatWith.id, { method: "POST", body: { text } });
-        state.chat.push(data.message);
+        if (!state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
         state.drafts.chat = "";
-        render(); return;
+        render(); scrollChatToEnd(); return;
       }
       if (act === "share-loc") { state.overlay = { type: "share", with: "Riley (trusted friend)" }; render(); return; }
       if (act === "share-with") { state.overlay = Object.assign({}, state.overlay, { with: id }); render(); return; }
@@ -1629,19 +1779,48 @@
         render();
         return;
       }
-      state.err = e.message || "Something went wrong";
+      state.err = e.message || "Something went wrong. Try again.";
       render();
-      if (state.view === "app") alert(state.err);
+      if (state.view === "app" || state.view === "onboard") toast(state.err, "err");
     }
   }
 
   const root = document.getElementById("app");
+  // Actions that only change local UI never need a busy guard.
+  const INSTANT = new Set(["close", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+    "set-genre", "set-event-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
+    "edit-profile", "event", "paywall", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters"]);
   root.addEventListener("click", (e) => {
-    if (e.target.classList && e.target.classList.contains("sheet-bg")) { state.overlay = null; render(); return; }
-    const actEl = e.target.closest("[data-act]");
-    if (!actEl) return;
+    const t = e.target;
+    // Tapping the dimmed backdrop of a bottom sheet closes it; taps inside the sheet never do.
+    if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.overlay = null; state.err = ""; render(); return; }
+    const actEl = t.closest("[data-act]");
+    if (!actEl || !root.contains(actEl)) return;
+    if (actEl.classList.contains("sheet-bg")) return; // a tap on a field, label or text inside the sheet
+    if (actEl.disabled || actEl.getAttribute("aria-disabled") === "true") return;
     e.preventDefault();
-    handle(actEl.getAttribute("data-act"), actEl);
+    const act = actEl.getAttribute("data-act");
+    if (INSTANT.has(act)) { handle(act, actEl); return; }
+    const key = act + ":" + (actEl.getAttribute("data-id") || "");
+    if (busyActs.has(key)) return; // ignore double taps while the first one is still working
+    busyActs.add(key);
+    actEl.classList.add("busy");
+    actEl.setAttribute("aria-busy", "true");
+    Promise.resolve(handle(act, actEl)).finally(() => {
+      busyActs.delete(key);
+      document.querySelectorAll("[data-act].busy").forEach((n) => {
+        const k = n.getAttribute("data-act") + ":" + (n.getAttribute("data-id") || "");
+        if (!busyActs.has(k)) { n.classList.remove("busy"); n.removeAttribute("aria-busy"); }
+      });
+    });
+  });
+  // Keyboard users: Enter/Space on non-button elements that carry an action.
+  root.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target;
+    if (!t || !t.getAttribute || !t.getAttribute("data-act") || /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    e.preventDefault();
+    t.click();
   });
   root.addEventListener("input", (e) => {
     const field = e.target.getAttribute("data-field");
@@ -1730,13 +1909,32 @@
       state.me = data.user;
       render();
     } catch (err) {
-      alert(err.message);
+      toast(err.message || "Couldn't reorder photos.", "err");
     }
   });
 
+  // Never fail silently: surface unexpected script errors as a visible toast.
+  window.addEventListener("error", (ev) => {
+    if (ev && ev.target && ev.target !== window) return; // broken image etc.
+    toast("Something glitched: " + ((ev && ev.message) || "unknown error") + ". Try again.", "err");
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev && ev.reason;
+    toast((r && r.message) || "Something didn't finish. Try again.", "err");
+  });
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+      .then((reg) => { try { reg.update(); } catch (_) {} })
+      .catch(() => { /* not supported inside some iOS app WebViews; the app works without it */ });
   }
+  // If a newer build is deployed while the app sits open in the background, reload into it on return.
+  const BOOT_BUILD = (document.querySelector('script[src*="app.js"]') || {}).src || "";
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || state.overlay || !BOOT_BUILD.includes("?v=")) return;
+    fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).then((v) => {
+      if (v && v.build && !BOOT_BUILD.includes("v=" + v.build)) location.reload();
+    }).catch(() => {});
+  });
   if (window.matchMedia("(display-mode: standalone)").matches) document.body.classList.add("standalone");
   boot();
 })();
