@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
+const { sniffImageMime, normalizePhoto, MAX_UPLOAD_BYTES } = require("./photo");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -26,10 +27,11 @@ let db;
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 3 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) return cb(new Error("Images only (jpeg, png, webp, gif)"));
-    cb(null, true);
+    const typ = String(file.mimetype || "").toLowerCase();
+    if (!typ || typ === "application/octet-stream" || typ.startsWith("image/")) return cb(null, true);
+    cb(new Error("Please choose a photo."));
   },
 });
 
@@ -104,15 +106,6 @@ function fileIdFromPhoto(ph) {
   if (!ph || ph.type !== "file" || !ph.url) return null;
   const m = String(ph.url).match(/^\/uploads\/([^/?#]+)$/);
   return m ? decodeURIComponent(m[1]) : null;
-}
-
-function sniffImageMime(buf) {
-  if (!buf || buf.length < 12) return null;
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return "image/gif";
-  if (buf.slice(0, 4).toString("ascii") === "RIFF" && buf.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
-  return null;
 }
 
 async function saveUserPhotos(userId, photos) {
@@ -294,26 +287,28 @@ app.post("/api/me/photo", auth, async (req, res) => {
   upload.single("photo")(req, res, async (err) => {
     if (err) {
       const msg = err.code === "LIMIT_FILE_SIZE"
-        ? "That photo is over 3 MB. Pick a smaller one — Kandi also shrinks photos to 1080px on your phone before upload."
+        ? "That file is over 30 MB, which is too big to send. This is rare for a phone photo — try another one from your camera roll."
         : (err.message || "Upload failed");
       return res.status(400).json({ error: msg });
     }
     if (!req.file) return res.status(400).json({ error: "Choose a photo to upload." });
-    const sniffed = sniffImageMime(req.file.buffer);
-    if (!sniffed) return res.status(400).json({ error: "That file doesn't look like a photo. Use a JPEG, PNG, WebP, or GIF." });
     const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
     const photos = parsePhotos(fresh && fresh.photos);
     if (photos.length >= MAX_PROFILE_PHOTOS) {
       return res.status(400).json({ error: "You can add up to 6 photos. Remove one to add another." });
     }
-    const ext = path.extname(req.file.originalname || "").toLowerCase() || ".jpg";
-    const safe = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? ext : (sniffed === "image/png" ? ".png" : sniffed === "image/webp" ? ".webp" : sniffed === "image/gif" ? ".gif" : ".jpg");
-    const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${safe}`;
-    const mime = sniffed;
+    let normalized;
+    try {
+      normalized = await normalizePhoto(req.file.buffer);
+    } catch (normErr) {
+      return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process that photo." });
+    }
+    const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${normalized.ext}`;
+    const mime = normalized.mime;
     await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-      fileId, req.user.id, mime, req.file.buffer.toString("base64")
+      fileId, req.user.id, mime, normalized.buffer.toString("base64")
     );
-    try { fs.writeFileSync(path.join(uploadDir, fileId), req.file.buffer); } catch (_) { /* ephemeral disk is ok */ }
+    try { fs.writeFileSync(path.join(uploadDir, fileId), normalized.buffer); } catch (_) { /* ephemeral disk is ok */ }
     const entry = { type: "file", url: "/uploads/" + fileId, caption: String((req.body && req.body.caption) || "") };
     const asMain = req.body && (req.body.main === "1" || req.body.main === "true" || req.body.asMain === "1");
     if (asMain || photos.length === 0) photos.unshift(entry);

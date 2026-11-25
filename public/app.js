@@ -266,48 +266,219 @@
     }
     return `<div class="photo-editor">
       <div class="photo-grid">${slots}</div>
-      <p class="photo-hint">${list.length}/6 photos. Tap + or the camera to add one. On iPhone this offers Take Photo or Photo Library. We'll shrink it to 1080px. Max 3 MB.</p>
+      <p class="photo-hint">${list.length}/6 photos. Tap + or the camera to add one. On iPhone this offers Take Photo or Photo Library. Any size or format is fine — we'll shrink it automatically.</p>
       ${uploadBusy()}
     </div>`;
   }
-  async function compressImage(file, maxDim, quality) {
-    maxDim = maxDim || 1080;
-    quality = quality == null ? 0.86 : quality;
-    const maxBytes = 3 * 1024 * 1024;
-    if (!file) throw new Error("Choose a photo to upload.");
-    let bitmap = null;
-    if (typeof createImageBitmap === "function") {
-      try { bitmap = await createImageBitmap(file); } catch (_) { bitmap = null; }
+  function u16(buf, i, le) {
+    return le ? (buf[i] | (buf[i + 1] << 8)) : ((buf[i] << 8) | buf[i + 1]);
+  }
+  function u32(buf, i, le) {
+    return le ? (buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16) | (buf[i + 3] << 24)) >>> 0
+      : ((buf[i] << 24) | (buf[i + 1] << 16) | (buf[i + 2] << 8) | buf[i + 3]) >>> 0;
+  }
+  function ascii(buf, i, n) {
+    return String.fromCharCode.apply(null, buf.subarray(i, i + n));
+  }
+  function readExifOrientation(buf, offset, length) {
+    if (offset + 8 > buf.length) return 1;
+    if (ascii(buf, offset, 4) !== "Exif") return 1;
+    const tiff = offset + 6;
+    const le = ascii(buf, tiff, 2) === "II";
+    if (!le && ascii(buf, tiff, 2) !== "MM") return 1;
+    let dir = tiff + u32(buf, tiff + 4, le);
+    if (dir + 2 > buf.length) return 1;
+    const entries = u16(buf, dir, le);
+    dir += 2;
+    for (let i = 0; i < entries; i++) {
+      const pos = dir + i * 12;
+      if (pos + 12 > buf.length) break;
+      if (u16(buf, pos, le) === 0x0112) return u16(buf, pos + 8, le) || 1;
     }
-    if (!bitmap) {
-      const url = URL.createObjectURL(file);
-      try {
-        bitmap = await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error("Couldn't read that photo. Try a JPEG or PNG, or take a new photo."));
-          img.src = url;
-        });
-      } finally {
-        URL.revokeObjectURL(url);
+    return 1;
+  }
+  function probeImage(buf) {
+    if (!buf || buf.length < 16) return null;
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = 2;
+      let orientation = 1;
+      while (i + 8 < buf.length) {
+        if (buf[i] !== 0xff) break;
+        const marker = buf[i + 1];
+        if (marker === 0xda) break;
+        const len = (buf[i + 2] << 8) | buf[i + 3];
+        if (marker === 0xe1 && i + 4 + 6 < buf.length) {
+          try { orientation = readExifOrientation(buf, i + 4, len - 2) || 1; } catch (_) {}
+        }
+        if ((marker >= 0xc0 && marker <= 0xc3) || marker === 0xc5 || marker === 0xc6 || marker === 0xc7 || marker === 0xc9 || marker === 0xca || marker === 0xcb) {
+          const height = (buf[i + 5] << 8) | buf[i + 6];
+          const width = (buf[i + 7] << 8) | buf[i + 8];
+          return { width, height, orientation };
+        }
+        if (len < 2) break;
+        i += 2 + len;
+      }
+      return null;
+    }
+    if (buf[0] === 0x89 && ascii(buf, 1, 3) === "PNG" && buf.length >= 24) {
+      return { width: u32(buf, 16, false), height: u32(buf, 20, false), orientation: 1 };
+    }
+    if (ascii(buf, 0, 3) === "GIF" && buf.length >= 10) {
+      return { width: u16(buf, 6, true), height: u16(buf, 8, true), orientation: 1 };
+    }
+    if (ascii(buf, 0, 4) === "RIFF" && ascii(buf, 8, 4) === "WEBP" && buf.length >= 30) {
+      if (ascii(buf, 12, 4) === "VP8X") return { width: (buf[24] | (buf[25] << 8) | (buf[26] << 16)) + 1, height: (buf[27] | (buf[28] << 8) | (buf[29] << 16)) + 1, orientation: 1 };
+      if (ascii(buf, 12, 4) === "VP8L") {
+        const n = buf[21] | (buf[22] << 8) | (buf[23] << 16) | (buf[24] << 24);
+        return { width: (n & 0x3fff) + 1, height: ((n >> 14) & 0x3fff) + 1, orientation: 1 };
+      }
+      if (ascii(buf, 12, 4) === "VP8 " && buf.length >= 30) return { width: u16(buf, 26, true) & 0x3fff, height: u16(buf, 28, true) & 0x3fff, orientation: 1 };
+    }
+    if (ascii(buf, 4, 4) === "ftyp") {
+      const end = Math.min(buf.length, 262144);
+      for (let i = 8; i + 16 < end; i++) {
+        if (ascii(buf, i, 4) !== "ispe") continue;
+        const width = u32(buf, i + 8, false);
+        const height = u32(buf, i + 12, false);
+        if (width > 0 && width < 200000 && height > 0 && height < 200000) return { width, height, orientation: 1 };
       }
     }
-    const w = bitmap.width || bitmap.naturalWidth;
-    const h = bitmap.height || bitmap.naturalHeight;
-    if (!w || !h) throw new Error("Couldn't read that photo. Try a JPEG or PNG, or take a new photo.");
-    const scale = Math.min(1, maxDim / Math.max(w, h));
-    const cw = Math.max(1, Math.round(w * scale));
-    const ch = Math.max(1, Math.round(h * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(bitmap, 0, 0, cw, ch);
-    if (bitmap.close) try { bitmap.close(); } catch (_) {}
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (!blob) throw new Error("Couldn't prepare that photo. Try another one.");
-    if (blob.size > maxBytes) throw new Error("That photo is still over 3 MB after shrinking. Try a smaller image.");
-    return new File([blob], "photo.jpg", { type: "image/jpeg" });
+    return null;
+  }
+  function sizeCanvas(orient, srcW, srcH, maxDim) {
+    const swap = orient >= 5 && orient <= 8;
+    const dispW = swap ? srcH : srcW;
+    const dispH = swap ? srcW : srcH;
+    const scale = Math.min(1, maxDim / Math.max(dispW, dispH));
+    return { width: Math.max(1, Math.round(dispW * scale)), height: Math.max(1, Math.round(dispH * scale)), scale, swap };
+  }
+  function drawOriented(ctx, img, orient, dw, dh) {
+    switch (orient) {
+      case 2: ctx.translate(dw, 0); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, dw, dh); break;
+      case 3: ctx.translate(dw, dh); ctx.rotate(Math.PI); ctx.drawImage(img, 0, 0, dw, dh); break;
+      case 4: ctx.translate(0, dh); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, dw, dh); break;
+      case 5: ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, dh, dw); break;
+      case 6: ctx.translate(dw, 0); ctx.rotate(0.5 * Math.PI); ctx.drawImage(img, 0, 0, dh, dw); break;
+      case 7: ctx.translate(dw, dh); ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, dh, dw); break;
+      case 8: ctx.translate(0, dh); ctx.rotate(-0.5 * Math.PI); ctx.drawImage(img, 0, 0, dh, dw); break;
+      default: ctx.drawImage(img, 0, 0, dw, dh);
+    }
+  }
+  async function blobFromCanvas(canvas, quality) {
+    if (canvas.toBlob) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob) return blob;
+    }
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const bin = atob(dataUrl.split(",")[1] || "");
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: "image/jpeg" });
+  }
+  async function encodeJpegLoop(canvas) {
+    const maxBytes = Math.round(1.5 * 1024 * 1024);
+    const qualities = [0.86, 0.8, 0.74, 0.68, 0.6, 0.52];
+    let last = null;
+    for (const q of qualities) {
+      last = await blobFromCanvas(canvas, q);
+      if (last && last.size <= maxBytes) return last;
+    }
+    return last;
+  }
+  function scaleCanvas(src, maxDim) {
+    const scale = Math.min(1, maxDim / Math.max(src.width, src.height));
+    if (scale >= 1) return src;
+    const next = document.createElement("canvas");
+    next.width = Math.max(1, Math.round(src.width * scale));
+    next.height = Math.max(1, Math.round(src.height * scale));
+    next.getContext("2d").drawImage(src, 0, 0, next.width, next.height);
+    return next;
+  }
+  async function decodeToCanvas(file, maxDim) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const probed = probeImage(buf);
+    const pixels = probed ? probed.width * probed.height : 0;
+    const huge = pixels > 16 * 1000 * 1000 || file.size > 8 * 1024 * 1024;
+    if (typeof createImageBitmap === "function") {
+      const opts = { imageOrientation: "from-image", resizeQuality: "medium" };
+      if (probed && probed.width && probed.height) {
+        if (probed.width >= probed.height) opts.resizeWidth = Math.max(1, Math.min(probed.width, maxDim));
+        else opts.resizeHeight = Math.max(1, Math.min(probed.height, maxDim));
+      } else {
+        opts.resizeWidth = maxDim;
+      }
+      try {
+        const bmp = await createImageBitmap(file, opts);
+        let canvas = document.createElement("canvas");
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        canvas.getContext("2d").drawImage(bmp, 0, 0);
+        if (bmp.close) try { bmp.close(); } catch (_) {}
+        if (Math.max(canvas.width, canvas.height) > maxDim) canvas = scaleCanvas(canvas, maxDim);
+        return canvas;
+      } catch (_) { /* fall through */ }
+      if (!huge) {
+        try {
+          const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+          let canvas = document.createElement("canvas");
+          const sized = sizeCanvas(1, bmp.width, bmp.height, maxDim);
+          canvas.width = sized.width;
+          canvas.height = sized.height;
+          canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+          if (bmp.close) try { bmp.close(); } catch (_) {}
+          return canvas;
+        } catch (_) { /* fall through */ }
+      }
+    }
+    if (huge) return null;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("decode"));
+        el.src = url;
+      });
+      const nw = img.naturalWidth || img.width;
+      const nh = img.naturalHeight || img.height;
+      let orient = 1;
+      if (probed && probed.orientation >= 5 && probed.orientation <= 8 && nw === probed.width && nh === probed.height) {
+        orient = probed.orientation;
+      }
+      const canvas = document.createElement("canvas");
+      if (orient >= 5 && orient <= 8) {
+        const scale = Math.min(1, maxDim / Math.max(nh, nw));
+        canvas.width = Math.max(1, Math.round(nh * scale));
+        canvas.height = Math.max(1, Math.round(nw * scale));
+      } else {
+        const scale = Math.min(1, maxDim / Math.max(nw, nh));
+        canvas.width = Math.max(1, Math.round(nw * scale));
+        canvas.height = Math.max(1, Math.round(nh * scale));
+      }
+      const ctx = canvas.getContext("2d");
+      if (orient > 1) drawOriented(ctx, img, orient, canvas.width, canvas.height);
+      else ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } catch (_) {
+      return null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  async function compressImage(file) {
+    if (!file) throw new Error("Choose a photo to upload.");
+    const edges = [1600, 1080, 960];
+    let canvas = await decodeToCanvas(file, edges[0]);
+    if (!canvas) return null;
+    for (let i = 0; i < edges.length; i++) {
+      if (Math.max(canvas.width, canvas.height) > edges[i]) canvas = scaleCanvas(canvas, edges[i]);
+      const blob = await encodeJpegLoop(canvas);
+      if (blob && blob.size <= Math.round(1.5 * 1024 * 1024)) {
+        return new File([blob], "photo.jpg", { type: "image/jpeg" });
+      }
+      if (i === edges.length - 1 && blob) return new File([blob], "photo.jpg", { type: "image/jpeg" });
+    }
+    return null;
   }
   function postPhoto(file, asMain) {
     return new Promise((resolve, reject) => {
@@ -343,8 +514,9 @@
     state.uploadError = "";
     render();
     try {
-      const ready = await compressImage(file);
-      const data = await postPhoto(ready, asMain);
+      let ready = null;
+      try { ready = await compressImage(file); } catch (_) { ready = null; }
+      const data = await postPhoto(ready || file, asMain);
       if (!data.user) throw new Error("Upload failed");
       state.me = data.user;
     } catch (err) {
@@ -780,7 +952,7 @@
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">New post</h2>
         <p class="muted" style="margin-top:6px">Share a photo, a caption, or both. Optional festival tag.</p>
-        ${state.drafts.postPreview ? `<div class="composer-preview" style="background-image:url('${esc(state.drafts.postPreview)}')"></div>` : `<div class="card photo-upload" style="margin-top:12px;text-align:center;padding:28px">📷 Add a photo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-act-file="post-photo" /></div>`}
+        ${state.drafts.postPreview ? `<div class="composer-preview" style="background-image:url('${esc(state.drafts.postPreview)}')"></div>` : `<div class="card photo-upload" style="margin-top:12px;text-align:center;padding:28px">📷 Add a photo<input type="file" accept="image/*" data-act-file="post-photo" /></div>`}
         <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:10px">${esc(state.drafts.caption || "")}</textarea>
         <div class="label" style="margin-top:12px">Tag an event (optional)</div>
         <div class="chips"><button class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
@@ -1182,7 +1354,14 @@
         const fd = new FormData();
         fd.append("caption", state.drafts.caption || "");
         if (state.drafts.postEvent) fd.append("eventId", state.drafts.postEvent);
-        if (state.drafts.postFile) fd.append("photo", state.drafts.postFile);
+        if (state.drafts.postFile) {
+          let photo = state.drafts.postFile;
+          try {
+            const compressed = await compressImage(photo);
+            if (compressed) photo = compressed;
+          } catch (_) { /* send the original; the server will normalize it */ }
+          fd.append("photo", photo);
+        }
         const res = await fetch("/api/posts", { method: "POST", body: fd, credentials: "include" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not post.");

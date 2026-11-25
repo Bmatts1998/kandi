@@ -1,5 +1,7 @@
 "use strict";
 
+const { normalizePhoto } = require("./photo");
+
 function weekAgoIso() {
   return new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 }
@@ -160,7 +162,12 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
   app.post("/api/posts", auth, (req, res) => {
     upload.single("photo")(req, res, async (err) => {
       try {
-        if (err) return res.status(400).json({ error: err.message || "Upload failed" });
+        if (err) {
+          const msg = err.code === "LIMIT_FILE_SIZE"
+            ? "That file is over 30 MB, which is too big to send. Try another photo from your camera roll."
+            : (err.message || "Upload failed");
+          return res.status(400).json({ error: msg });
+        }
         const caption = String((req.body && req.body.caption) || "").trim().slice(0, 2000);
         const eventId = String((req.body && req.body.eventId) || "").trim() || null;
         if (!caption && !req.file) return res.status(400).json({ error: "Add a photo or a caption." });
@@ -170,12 +177,10 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
         }
         let photoId = null;
         if (req.file) {
-          const ext = require("path").extname(req.file.originalname || "").toLowerCase() || ".jpg";
-          const safe = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? ext : ".jpg";
-          photoId = `${Date.now()}-${require("crypto").randomBytes(6).toString("hex")}${safe}`;
-          const mime = req.file.mimetype || "image/jpeg";
+          const normalized = await normalizePhoto(req.file.buffer);
+          photoId = `${Date.now()}-${require("crypto").randomBytes(6).toString("hex")}${normalized.ext}`;
           await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-            photoId, req.user.id, mime, req.file.buffer.toString("base64")
+            photoId, req.user.id, normalized.mime, normalized.buffer.toString("base64")
           );
         }
         const createdAt = new Date().toISOString();
