@@ -19,6 +19,7 @@ const {
   listUpcomingForProfile, sharedShows, upcomingByUser, seedDemoMeetups, compactShow, truthy,
 } = require("./meetup");
 const { parseTunes, MAX_TUNES } = require("./tunes");
+const { installStories } = require("./stories");
 
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
@@ -236,6 +237,10 @@ async function deletePhotoFileIfOwned(fileId, userId) {
     `SELECT id FROM posts WHERE photo_id=? OR video_id=? OR poster_id=? OR (photo_ids IS NOT NULL AND photo_ids LIKE ?) LIMIT 1`
   ).get(fileId, fileId, fileId, "%" + fileId + "%");
   if (used) return;
+  try {
+    const usedStory = await db.prepare(`SELECT id FROM stories WHERE media_id=? OR poster_id=? LIMIT 1`).get(fileId, fileId);
+    if (usedStory) return;
+  } catch (_) { /* stories table may not exist during a partial migrate */ }
   const row = await db.prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
   if (!row || Number(row.user_id) !== Number(userId)) return;
   await db.prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
@@ -1070,6 +1075,26 @@ installFeed({
   maxVideoBytes: MAX_VIDEO_BYTES,
 });
 
+const sockets = new Map(); // userId -> Set of ws
+function broadcastToUser(userId, payload) {
+  const set = sockets.get(Number(userId));
+  if (!set) return;
+  const raw = JSON.stringify(payload);
+  for (const ws of set) {
+    if (ws.readyState === 1) ws.send(raw);
+  }
+}
+
+installStories({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  broadcastToUser,
+  uploadDir,
+});
+
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
 
 app.get(["/privacy", "/privacy.html"], (_req, res) => {
@@ -1094,16 +1119,6 @@ process.on("unhandledRejection", (err) => console.error("unhandledRejection", er
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
-const sockets = new Map(); // userId -> Set of ws
-
-function broadcastToUser(userId, payload) {
-  const set = sockets.get(Number(userId));
-  if (!set) return;
-  const raw = JSON.stringify(payload);
-  for (const ws of set) {
-    if (ws.readyState === 1) ws.send(raw);
-  }
-}
 
 wss.on("connection", (ws, req) => {
   Promise.resolve().then(async () => {
@@ -1137,7 +1152,7 @@ async function boot() {
   db = await open();
   if (process.env.SEED_ON_BOOT !== "0") {
     const row = await db.prepare(`SELECT COUNT(*) AS c FROM users`).get();
-    const { seed, seedSocial } = require("./seed");
+    const { seed, seedSocial, seedStories } = require("./seed");
     if (!row || Number(row.c) === 0) {
       await seed(db);
       console.log("Seeded demo data on boot (empty database).");
@@ -1152,6 +1167,12 @@ async function boot() {
         await seedDemoMeetups(db);
       } catch (err) {
         console.error("Demo meetup seed on boot failed:", err.message || err);
+      }
+      try {
+        await seedStories(db);
+        console.log("Ensured demo stories on boot.");
+      } catch (err) {
+        console.error("Story seed on boot failed:", err.message || err);
       }
     }
   }

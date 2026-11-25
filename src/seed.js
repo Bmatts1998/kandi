@@ -280,6 +280,7 @@ async function seedSocial(db, ids) {
   const existing = await db.prepare(`SELECT COUNT(*) AS c FROM posts`).get();
   if (existing && Number(existing.c) > 0) {
     console.log("Social seed: follows upserted; posts already present, leaving them.");
+    await seedStories(db, ids);
     return;
   }
 
@@ -355,6 +356,62 @@ async function seedSocial(db, ids) {
     }
   }
   console.log("Social seed: " + postIds.length + " posts, follows, likes, and comments.");
+  await seedStories(db, ids);
+}
+
+
+async function seedStories(db, ids) {
+  ids = ids || {};
+  const find = await db.prepare(`SELECT id, username FROM users WHERE lower(username)=?`);
+  for (const username of ["nova", "luna"]) {
+    if (!ids[username]) {
+      const row = await find.get(username);
+      if (row) ids[username] = row.id;
+    }
+  }
+  if (!ids.nova && !ids.luna) return 0;
+
+  async function pickEvent(preferred) {
+    if (!preferred) return null;
+    const ev = await db.prepare(`SELECT id FROM events WHERE id=?`).get(preferred);
+    return ev ? preferred : null;
+  }
+
+  const specs = [
+    { user: "nova", image: "movement-rail", hours: 2.2, text: "Left rail. No photos of the DJ — only strobes.", event: "movement" },
+    { user: "nova", image: "warehouse-strobe", hours: 7.5, text: "Warehouse afters. Don't ask the time.", event: "warehouse" },
+    { user: "luna", image: "forest-canopy", hours: 1.4, text: "Under the canopy tonight. Stay soft.", event: "forest" },
+    { user: "luna", image: "kandi-trade", hours: 5.1, text: "The kandi I traded just says stay soft.", event: null },
+  ];
+
+  const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  let made = 0;
+  for (const s of specs) {
+    const uid = ids[s.user];
+    if (!uid) continue;
+    const photoId = await storeSeedPhoto(db, uid, s.image);
+    if (!photoId) continue;
+    const mediaId = "seed-story-" + s.user + "-" + s.image + ".png";
+    const existingFile = await db.prepare(`SELECT id FROM photo_files WHERE id=?`).get(mediaId);
+    if (!existingFile) {
+      const src = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(photoId);
+      if (!src) continue;
+      await db.prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(mediaId, uid, src.mime, src.data);
+    }
+    const existing = await db.prepare(`SELECT id, created_at FROM stories WHERE media_id=?`).get(mediaId);
+    if (existing && String(existing.created_at || "") >= cutoff) continue;
+    if (existing) {
+      await db.prepare(`DELETE FROM story_views WHERE story_id=?`).run(existing.id);
+      await db.prepare(`DELETE FROM stories WHERE id=?`).run(existing.id);
+    }
+    const eventId = await pickEvent(s.event);
+    await db.prepare(
+      `INSERT INTO stories (user_id, media_id, kind, poster_id, text_overlay, event_id, created_at) VALUES (?,?,?,?,?,?,?)`
+    ).run(uid, mediaId, "photo", null, s.text, eventId, isoHoursAgo(s.hours));
+    made += 1;
+  }
+  if (made) console.log("Story seed: refreshed " + made + " demo stories for nova and luna.");
+  return made;
 }
 
 function hashCode(s) {
@@ -370,4 +427,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { seed, seedSocial, seedDemoMeetups, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, DEMO_PASSWORD, EVENTS, USERS };

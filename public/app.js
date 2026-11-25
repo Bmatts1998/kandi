@@ -1,6 +1,8 @@
 /* Kandi v1 client */
 (function () {
   const DAILY = 8;
+  const MAX_STORY_VIDEO_BYTES = 8 * 1024 * 1024;
+  const MAX_STORY_VIDEO_SECONDS = 15;
   const VIBES = ["house", "techno", "dubstep", "bass", "trance", "drum & bass", "hardstyle", "EDM", "hip-hop", "disco", "garage", "trap"];
   const VIBE_LABEL = { "drum & bass": "DnB", "hip-hop": "Hip-hop" };
   const LOOKING = [
@@ -414,10 +416,14 @@
   }
 
   function storyRingWrap(inner, user, size) {
-    // Reserved for the stories worker (story ring on avatar). Space only — do not draw a ring here.
     const id = user && user.id != null ? String(user.id) : "";
     const sz = size || "lg";
-    return `<div class="avatar-ring avatar-ring-${sz}" data-story-ring data-user-id="${esc(id)}">${inner}</div>`;
+    if (!user || !userHasStory(user.id)) {
+      return `<div class="avatar-ring avatar-ring-${sz}" data-story-ring data-user-id="${esc(id)}">${inner}</div>`;
+    }
+    const ring = storyRingFor(user.id);
+    const unseen = ring ? (ring.unseen !== false && !(ring.user && ring.user.isMe)) : true;
+    return `<button type="button" class="avatar-ring avatar-ring-${sz} av-story-ring${unseen ? "" : " seen"}" data-story-ring data-user-id="${esc(id)}" data-act="open-story" data-id="${esc(id)}" aria-label="View story">${inner}</button>`;
   }
 
   function postsToolbar(posts) {
@@ -508,6 +514,8 @@
     feedTab: "following",
     homePosts: [],
     topRavers: [],
+    storyRings: [],
+    storyViewer: null,
     profile: null,
     profileTab: "posts",
     editDraft: null,
@@ -532,7 +540,7 @@
     chatWith: null,
     blocked: [],
     locationShare: null,
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "" },
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "" },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -1252,11 +1260,20 @@
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
   }
+  async function loadStories() {
+    try {
+      const data = await api("/api/stories");
+      state.storyRings = data.rings || [];
+    } catch (_) {
+      if (!state.storyRings) state.storyRings = [];
+    }
+  }
   async function loadHome() {
     const tab = state.feedTab === "popular" ? "popular" : "following";
     const [feed, top] = await Promise.all([
       api("/api/feed/" + tab),
       tab === "popular" ? api("/api/feed/top-ravers") : Promise.resolve({ people: state.topRavers || [] }),
+      loadStories(),
     ]);
     state.homePosts = feed.posts || [];
     if (tab === "popular") state.topRavers = top.people || [];
@@ -1264,6 +1281,16 @@
   async function loadProfile(userId) {
     const data = await api("/api/users/" + userId);
     state.profile = data;
+    try {
+      const st = await api("/api/stories/user/" + userId);
+      if (data.user) data.user.hasActiveStory = Boolean(st.hasActiveStory);
+      const existing = (state.storyRings || []).find((r) => Number(r.user && r.user.id) === Number(userId));
+      if (st.stories && st.stories.length) {
+        const ring = { user: st.user, stories: st.stories, unseen: (st.stories || []).some((s) => !s.viewed && !(st.user && st.user.isMe)), storyCount: st.stories.length };
+        if (existing) Object.assign(existing, ring);
+        else state.storyRings = (state.storyRings || []).concat([ring]);
+      }
+    } catch (_) {}
   }
   async function loadFeed() {
     const q = new URLSearchParams();
@@ -1581,6 +1608,241 @@
   }
 
 
+
+  function userHasStory(userId) {
+    const id = Number(userId);
+    return (state.storyRings || []).some((r) => Number(r.user && r.user.id) === id && (r.storyCount || (r.stories || []).length));
+  }
+  function storyRingFor(userId) {
+    return (state.storyRings || []).find((r) => Number(r.user && r.user.id) === Number(userId));
+  }
+  function storyAvatar(p, cls, userId) {
+    const inner = personAvatar(p, cls);
+    if (!userHasStory(userId)) return inner;
+    const ring = storyRingFor(userId);
+    const unseen = ring ? ring.unseen !== false && !ring.user.isMe : true;
+    return `<button type="button" class="av-story-ring${unseen ? "" : " seen"}" data-act="open-story" data-id="${userId}" aria-label="View story">${inner}</button>`;
+  }
+  function clearStoryDraft() {
+    if (state.storyDraft && state.storyDraft.preview && String(state.storyDraft.preview).startsWith("blob:")) {
+      try { URL.revokeObjectURL(state.storyDraft.preview); } catch (_) {}
+    }
+    state.storyDraft = null;
+    state.drafts.storyText = "";
+    state.drafts.storyEvent = "";
+  }
+  function storyBarHtml() {
+    const rings = state.storyRings || [];
+    const me = state.me || {};
+    const mine = rings.find((r) => r.user && r.user.isMe) || {
+      user: { id: me.id, name: "You", username: me.username, avatar: (me.photos && me.photos[0]) || me.avatar, isMe: true, isDemo: me.isDemo },
+      stories: [], unseen: false, storyCount: 0,
+    };
+    const others = rings.filter((r) => r.user && !r.user.isMe && (r.stories || []).length);
+    function ringBtn(r, isMe) {
+      const u = r.user;
+      const count = r.storyCount || (r.stories || []).length;
+      const unseen = !isMe && r.unseen;
+      const name = isMe ? "Your story" : (u.name || u.username || "Raver");
+      const label = isMe
+        ? (count ? "View your story" : "Add to your story")
+        : ("View " + name + "'s story");
+      const act = isMe && !count ? "open-story-composer" : "open-story";
+      const plus = isMe ? `<button type="button" class="plus" data-act="open-story-composer" aria-label="Add to your story">＋</button>` : "";
+      const demo = u.isDemo && !isMe ? `<div class="demo-tag">Demo</div>` : "";
+      return `<div class="story-ring-wrap">
+        <button type="button" class="story-ring${unseen || (isMe && count) ? " unseen" : ""}" data-act="${act}" data-id="${u.id}" aria-label="${esc(label)}">
+          <div class="ring">${avatarEl(u.avatar, "av", (u.name || "?")[0])}</div>
+          <div class="nm">${esc(name)}</div>${demo}
+        </button>
+        ${plus}
+      </div>`;
+    }
+    return `<div class="story-bar" aria-label="Stories">${ringBtn(mine, true)}${others.map((r) => ringBtn(r, false)).join("")}</div>`;
+  }
+  function currentStory() {
+    const v = state.storyViewer;
+    if (!v || !v.rings) return null;
+    const ring = v.rings[v.ringIndex];
+    if (!ring) return null;
+    const stories = ring.stories || [];
+    const story = stories[v.storyIndex];
+    return story ? { ring, story, stories } : null;
+  }
+  function storyDurationMs(story, videoEl) {
+    if (story && story.kind === "video") {
+      const d = videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0 ? videoEl.duration * 1000 : 8000;
+      return Math.min(MAX_STORY_VIDEO_SECONDS * 1000, Math.max(1500, d));
+    }
+    return 5000;
+  }
+  let storyAnimTimer = null;
+  function stopStoryPlayback() {
+    if (storyAnimTimer) { clearTimeout(storyAnimTimer); storyAnimTimer = null; }
+    const vid = document.querySelector(".story-viewer video");
+    if (vid) { try { vid.pause(); } catch (_) {} }
+  }
+  function goStory(delta) {
+    const v = state.storyViewer;
+    if (!v) return;
+    const ring = v.rings[v.ringIndex];
+    if (!ring) { closeStoryViewer(); return; }
+    const next = v.storyIndex + delta;
+    if (next >= 0 && next < (ring.stories || []).length) {
+      v.storyIndex = next;
+      v.showViewers = false;
+      v.viewers = null;
+      render();
+      return;
+    }
+    const nextRing = v.ringIndex + (delta > 0 ? 1 : -1);
+    if (nextRing >= 0 && nextRing < v.rings.length) {
+      v.ringIndex = nextRing;
+      const stories = v.rings[nextRing].stories || [];
+      v.storyIndex = delta > 0 ? 0 : Math.max(0, stories.length - 1);
+      v.showViewers = false;
+      v.viewers = null;
+      render();
+      return;
+    }
+    if (delta > 0) closeStoryViewer();
+  }
+  function closeStoryViewer() {
+    stopStoryPlayback();
+    state.storyViewer = null;
+    if (state.overlay && (state.overlay.type === "story" || state.overlay.type === "storyComposer")) {
+      if (state.overlay.type === "storyComposer") clearStoryDraft();
+      state.overlay = null;
+    }
+    render();
+  }
+  async function markStoryViewed(story) {
+    if (!story || !story.id) return;
+    try {
+      await api("/api/stories/" + story.id + "/view", { method: "POST", body: {} });
+      (state.storyRings || []).forEach((r) => {
+        (r.stories || []).forEach((s) => { if (Number(s.id) === Number(story.id)) s.viewed = true; });
+        if (r.stories && r.stories.length && r.stories.every((s) => s.viewed)) r.unseen = false;
+      });
+    } catch (_) {}
+  }
+  function startStoryPlayback() {
+    const viewer = document.querySelector(".story-viewer");
+    if (!viewer) { stopStoryPlayback(); return; }
+    const cur = currentStory();
+    if (!cur) return;
+    markStoryViewed(cur.story);
+    const video = viewer.querySelector("video");
+    const bar = viewer.querySelector(".story-prog.now i");
+    const run = (ms) => {
+      if (storyAnimTimer) clearTimeout(storyAnimTimer);
+      if (bar) bar.style.animationDuration = (ms / 1000) + "s";
+      storyAnimTimer = setTimeout(() => {
+        if (state.storyViewer && !viewer.classList.contains("paused")) goStory(1);
+      }, ms);
+    };
+    if (video) {
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "true");
+      const kick = () => {
+        const ms = storyDurationMs(cur.story, video);
+        if (bar) bar.style.animationDuration = (ms / 1000) + "s";
+        video.play().catch(() => {});
+        run(ms);
+      };
+      if (video.readyState >= 1) kick();
+      else video.addEventListener("loadedmetadata", kick, { once: true });
+      video.addEventListener("ended", () => goStory(1), { once: true });
+    } else {
+      run(storyDurationMs(cur.story));
+    }
+  }
+  function setStoryPaused(on) {
+    const viewer = document.querySelector(".story-viewer");
+    if (!viewer) return;
+    viewer.classList.toggle("paused", on);
+    const video = viewer.querySelector("video");
+    if (video) {
+      try { if (on) video.pause(); else video.play().catch(() => {}); } catch (_) {}
+    }
+  }
+  function storyViewerHtml() {
+    const cur = currentStory();
+    if (!cur) return "";
+    const { ring, story, stories } = cur;
+    const u = ring.user;
+    const idx = state.storyViewer.storyIndex;
+    const mine = u && u.isMe;
+    const media = story.kind === "video"
+      ? `<video src="${esc(mediaUrl(story.mediaUrl))}"${story.posterUrl ? ` poster="${esc(mediaUrl(story.posterUrl))}"` : ""} autoplay muted playsinline webkit-playsinline loop="false"></video>`
+      : `<img src="${esc(mediaUrl(story.mediaUrl))}" alt="">`;
+    const progs = stories.map((_, i) => `<div class="story-prog${i < idx ? " done" : ""}${i === idx ? " now" : ""}"><i></i></div>`).join("");
+    const demo = u.isDemo && !mine ? `<span class="meta"> · Demo</span>` : "";
+    const viewersSheet = (state.storyViewer.showViewers)
+      ? `<div class="story-viewers" data-stop="1"><div class="grab"></div>
+          <div class="row"><h2 class="h2" style="flex:1">Viewers</h2><button type="button" class="icon-btn" data-act="story-hide-viewers" aria-label="Close viewers">✕</button></div>
+          ${(state.storyViewer.viewers || []).length
+            ? state.storyViewer.viewers.map((p) => `<div class="row" style="margin:10px 0">${personAvatar(p, "av")}<div class="grow"><div style="font-weight:700">${esc(p.name)}</div><div class="tiny">${esc(timeAgo(p.viewedAt))}</div></div></div>`).join("")
+            : `<p class="muted" style="margin-top:12px">No views yet.</p>`}
+        </div>`
+      : "";
+    const foot = mine
+      ? `<div class="story-foot">
+          <button type="button" class="btn sm ghost" data-act="story-viewers">${story.viewCount == null ? "Viewers" : (story.viewCount + " view" + (story.viewCount === 1 ? "" : "s"))}</button>
+          <button type="button" class="btn sm danger" data-act="delete-story" data-id="${story.id}">Delete</button>
+        </div>`
+      : `<div class="story-foot">
+          <input data-field="storyReply" aria-label="Reply to story" enterkeyhint="send" autocomplete="off" placeholder="Reply..." value="${esc(state.drafts.storyReply || "")}" />
+          <button type="button" class="btn sm primary" data-act="story-reply">Send</button>
+        </div>`;
+    return `<div class="story-viewer" data-story-nav="1">
+      <div class="story-progs">${progs}</div>
+      <div class="story-chrome">
+        <button type="button" class="who" data-act="open-profile" data-id="${u.id}">${avatarEl(u.avatar, "av", (u.name || "?")[0])}
+          <span><div class="nm">${esc(u.name)}</div><div class="meta">${esc(timeAgo(story.createdAt))}${demo}</div></span>
+        </button>
+        <button type="button" class="icon-btn" data-act="story-close" aria-label="Close">✕</button>
+      </div>
+      <div class="story-stage">
+        ${media}
+        ${story.event ? `<div class="story-event">${esc((story.event.emoji || "") + " " + story.event.name)}</div>` : ""}
+        ${story.textOverlay ? `<div class="story-text">${esc(story.textOverlay)}</div>` : ""}
+        <button type="button" class="story-hit left" aria-label="Previous story"></button>
+        <button type="button" class="story-hit right" aria-label="Next story"></button>
+      </div>
+      ${foot}${viewersSheet}
+    </div>`;
+  }
+  function storyComposerHtml() {
+    const d = state.storyDraft || {};
+    const evs = state.events || [];
+    const preview = d.preview
+      ? `<div class="story-preview">${d.kind === "video"
+          ? `<video src="${esc(d.preview)}" muted playsinline webkit-playsinline autoplay loop></video>`
+          : `<img src="${esc(d.preview)}" alt="">`}
+          ${state.drafts.storyText ? `<div class="story-text">${esc(state.drafts.storyText)}</div>` : ""}</div>`
+      : `<label class="card photo-upload big-pick"><div style="font-size:30px">◎</div>
+          <div style="font-weight:700;margin-top:6px">Add to your story</div>
+          <div class="tiny" style="margin-top:4px">Photo or a video up to 15 seconds. Any size photo works.</div>
+          <input type="file" accept="image/*,video/*,video/mp4,video/quicktime" data-act-file="story-media" aria-label="Add a photo or short video to your story" /></label>`;
+    return `<div class="sheet-bg" data-act="story-composer-close"><div class="sheet" data-stop="1"><div class="grab"></div>
+      <h2 class="h2">New story</h2>
+      <p class="muted" style="margin-top:6px">It stays up for 24 hours, then it disappears.</p>
+      ${preview}
+      ${d.preview ? `<div class="label" style="margin-top:12px">Text overlay (optional)</div>
+        <input data-field="storyText" maxlength="140" placeholder="Add a line..." value="${esc(state.drafts.storyText || "")}" />
+        <div class="label" style="margin-top:12px">Tag an event (optional)</div>
+        <div class="chips"><button type="button" class="chip${!(state.drafts.storyEvent) ? " on" : ""}" data-act="story-event" data-id="">None</button>
+          ${evs.map((e) => `<button type="button" class="chip${state.drafts.storyEvent === e.id ? " on" : ""}" data-act="story-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>` : ""}
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      ${uploadBusy()}
+      ${d.preview ? `<button type="button" class="btn primary" style="margin-top:16px" data-act="submit-story">Share story</button>
+        <button type="button" class="btn ghost" style="margin-top:8px" data-act="story-composer-close">Cancel</button>` : `<button type="button" class="btn ghost" style="margin-top:8px" data-act="story-composer-close">Cancel</button>`}
+    </div></div>`;
+  }
+
   function viewHome() {
     const following = state.feedTab !== "popular";
     let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post" aria-label="New post">＋</button>`);
@@ -1589,6 +1851,7 @@
       <button class="${!following ? "on" : ""}" data-act="feed-tab" data-id="popular">Popular</button>
     </div>`;
     html += `<div class="scroll">`;
+    html += storyBarHtml();
     if (state.me && !state.me.isDemo && !hasRealPhoto(state.me.photos) && !localStorage.getItem("kandi-hide-photo-nudge")) {
       html += `<div class="nudge"><div class="grow"><strong>Add a profile photo</strong><p>Ravers recognize you faster in the feed, in Discover, and in chat.</p></div>
         <button class="btn sm primary" data-act="edit-profile">Add photo</button>
@@ -1838,8 +2101,10 @@
   }
 
   function overlays() {
+    if (state.storyViewer) return storyViewerHtml();
     const o = state.overlay;
     if (!o) return "";
+    if (o.type === "storyComposer") return storyComposerHtml();
     if (o.type === "composer") {
       return composerView();
     }
@@ -2134,10 +2399,12 @@
       else if (state.tab === "events") body = viewEvents();
       else if (state.tab === "matches") body = viewMatches();
       else body = viewYou();
-      html = `<div class="screen has-tabs">${body}${tabbar()}${overlays()}</div>`;
+      const storyOpen = Boolean(state.storyViewer);
+      html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}">${body}${tabbar()}${overlays()}</div>`;
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
-    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "");
+    const v = state.storyViewer;
+    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
     const scrollers = Array.from(root.querySelectorAll(".scroll, .overlay, .sheet"));
     const saved = lastRenderKey === key ? scrollers.map((n) => n.scrollTop) : null;
     const active = document.activeElement;
@@ -2160,6 +2427,8 @@
       const k = n.getAttribute("data-act") + ":" + (n.getAttribute("data-id") || "");
       if (busyActs.has(k)) { n.classList.add("busy"); n.setAttribute("aria-busy", "true"); }
     });
+    if (state.storyViewer) startStoryPlayback();
+    else stopStoryPlayback();
   }
   let lastRenderKey = "";
   const busyActs = new Set();
@@ -2358,6 +2627,7 @@
       }
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
+        if (state.storyViewer) { stopStoryPlayback(); state.storyViewer = null; }
         state.tab = id; state.overlay = null;
         render();
         const scroller = document.querySelector(".screen > .scroll");
@@ -2372,6 +2642,8 @@
         return;
       }
       if (act === "close") {
+        if (state.storyViewer) { closeStoryViewer(); return; }
+        if (state.overlay && state.overlay.type === "storyComposer") { clearStoryDraft(); state.overlay = null; render(); return; }
         if (state.overlay && state.overlay.type === "editProfile" && state.overlay.preview) {
           state.overlay = { type: "editProfile" };
           state.err = "";
@@ -2780,6 +3052,142 @@
         if (state.live.on) await api("/api/live", { method: "POST", body: { on: true, eventId: state.live.eventId, meetupSpot: id } });
         render(); return;
       }
+      if (act === "open-story") {
+        const uid = Number(id);
+        let rings = (state.storyRings || []).filter((r) => (r.stories || []).length);
+        let idx = rings.findIndex((r) => Number(r.user && r.user.id) === uid);
+        if (idx < 0) {
+          const st = await api("/api/stories/user/" + uid);
+          if (!st.stories || !st.stories.length) { toast("No active story."); return; }
+          const ring = { user: st.user, stories: st.stories, unseen: st.stories.some((s) => !s.viewed), storyCount: st.stories.length };
+          rings = rings.concat([ring]);
+          idx = rings.length - 1;
+        }
+        // From the home bar, start at this person and continue through the rest of the tray.
+        const start = rings.splice(idx, 1)[0];
+        const ordered = [start].concat(rings.filter((r) => !(r.user && r.user.isMe) || Number(r.user.id) === uid));
+        state.drafts.storyReply = "";
+        state.overlay = { type: "story" };
+        state.storyViewer = { rings: ordered, ringIndex: 0, storyIndex: 0, showViewers: false, viewers: null };
+        render();
+        return;
+      }
+      if (act === "story-close") { closeStoryViewer(); return; }
+      if (act === "story-next") { goStory(1); return; }
+      if (act === "story-prev") { goStory(-1); return; }
+      if (act === "open-story-composer") {
+        if (state.storyViewer) closeStoryViewer();
+        clearStoryDraft();
+        state.storyDraft = { file: null, preview: "", kind: "photo" };
+        state.overlay = { type: "storyComposer" };
+        state.err = "";
+        if (!(state.events || []).length) try { await loadEvents(); } catch (_) {}
+        render();
+        return;
+      }
+      if (act === "story-composer-close") {
+        clearStoryDraft();
+        state.overlay = null;
+        render();
+        return;
+      }
+      if (act === "story-event") { state.drafts.storyEvent = id || ""; render(); return; }
+      if (act === "submit-story") {
+        const d = state.storyDraft;
+        if (!d || !d.file) { state.err = "Add a photo or a short video first."; render(); return; }
+        state.uploadingPhoto = true;
+        state.uploadProgress = 0;
+        state.uploadError = "";
+        render();
+        try {
+          const fd = new FormData();
+          if (d.kind === "video") fd.append("video", d.file);
+          else fd.append("photo", d.file);
+          if (state.drafts.storyText) fd.append("textOverlay", state.drafts.storyText.trim());
+          if (state.drafts.storyEvent) fd.append("eventId", state.drafts.storyEvent);
+          const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/stories");
+            xhr.withCredentials = true;
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+            };
+            xhr.onload = () => {
+              let body = {};
+              try { body = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
+              if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+              else reject(new Error(body.error || "Couldn't post that story."));
+            };
+            xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+            xhr.send(fd);
+          });
+          clearStoryDraft();
+          state.overlay = null;
+          state.uploadingPhoto = false;
+          state.uploadProgress = null;
+          await loadStories();
+          render();
+          toast("Story is live for 24 hours.");
+        } catch (err) {
+          state.uploadingPhoto = false;
+          state.uploadProgress = null;
+          state.uploadError = err.message || "Couldn't post that story.";
+          state.err = state.uploadError;
+          render();
+          toast(state.err, "err");
+        }
+        return;
+      }
+      if (act === "delete-story") {
+        const sid = Number(id);
+        await api("/api/stories/" + sid, { method: "DELETE" });
+        const v = state.storyViewer;
+        if (v) {
+          const ring = v.rings[v.ringIndex];
+          if (ring) ring.stories = (ring.stories || []).filter((s) => Number(s.id) !== sid);
+          if (!ring || !ring.stories.length) {
+            v.rings.splice(v.ringIndex, 1);
+            if (!v.rings.length) { await loadStories(); closeStoryViewer(); return; }
+            v.ringIndex = Math.min(v.ringIndex, v.rings.length - 1);
+            v.storyIndex = 0;
+          } else if (v.storyIndex >= ring.stories.length) {
+            v.storyIndex = ring.stories.length - 1;
+          }
+        }
+        await loadStories();
+        render();
+        toast("Story deleted.");
+        return;
+      }
+      if (act === "story-viewers") {
+        const cur = currentStory();
+        if (!cur) return;
+        const data = await api("/api/stories/" + cur.story.id + "/viewers");
+        state.storyViewer.showViewers = true;
+        state.storyViewer.viewers = data.viewers || [];
+        render();
+        return;
+      }
+      if (act === "story-hide-viewers") {
+        if (state.storyViewer) { state.storyViewer.showViewers = false; render(); }
+        return;
+      }
+      if (act === "story-reply") {
+        const cur = currentStory();
+        const text = (state.drafts.storyReply || "").trim();
+        if (!cur || !text) return;
+        try {
+          await api("/api/stories/" + cur.story.id + "/reply", { method: "POST", body: { text } });
+          state.drafts.storyReply = "";
+          const input = document.querySelector('[data-field="storyReply"]');
+          if (input) input.value = "";
+          toast("Reply sent.");
+        } catch (err) {
+          if (err.data && err.data.code === "need_match") toast("Match with them first to reply to their story.", "warn");
+          else toast(err.message || "Couldn't send that reply.", "err");
+        }
+        return;
+      }
       if (act === "chat") {
         const m = state.matches.find((x) => String(x.user.id) === String(id));
         state.chatWith = m ? m.user : { id: Number(id), name: "Chat" };
@@ -2835,7 +3243,8 @@
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
     "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
-    "preview-profile", "edit-back"]);
+    "preview-profile", "edit-back",
+    "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
@@ -2861,6 +3270,65 @@
       });
     });
   });
+  // Story viewer: tap left/right, hold to pause, swipe down to close. Real buttons stay tappable in WKWebView.
+  (function bindStoryNav() {
+    let startX = 0, startY = 0, startT = 0, held = false, tracking = false, pointerId = null;
+    let holdTimer = null;
+    const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+    const viewerOf = (e) => e.target && e.target.closest && e.target.closest("[data-story-nav]");
+    const onChrome = (t) => t.closest && t.closest(".story-chrome, .story-foot, .story-viewers, .story-event, input, textarea, button.btn, button.icon-btn, button.who");
+    root.addEventListener("pointerdown", (e) => {
+      const viewer = viewerOf(e);
+      if (!viewer || !state.storyViewer) return;
+      if (onChrome(e.target)) return;
+      tracking = true;
+      held = false;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      startT = Date.now();
+      clearHold();
+      holdTimer = setTimeout(() => {
+        held = true;
+        setStoryPaused(true);
+      }, 180);
+    });
+    root.addEventListener("pointermove", (e) => {
+      if (!tracking || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) + Math.abs(dy) > 12) clearHold();
+      if (dy > 70 && dy > Math.abs(dx) * 1.2) {
+        tracking = false;
+        clearHold();
+        setStoryPaused(false);
+        closeStoryViewer();
+      }
+    });
+    const end = (e) => {
+      if (!tracking || (e.pointerId != null && e.pointerId !== pointerId)) return;
+      tracking = false;
+      clearHold();
+      if (held) { setStoryPaused(false); return; }
+      const dx = (e.clientX || startX) - startX;
+      const dy = (e.clientY || startY) - startY;
+      if (Math.abs(dy) > 70 && dy > Math.abs(dx)) { closeStoryViewer(); return; }
+      const viewer = document.querySelector("[data-story-nav]");
+      if (!viewer) return;
+      const rect = viewer.getBoundingClientRect();
+      const x = e.clientX != null ? e.clientX : startX;
+      if (x - rect.left < rect.width * 0.33) goStory(-1);
+      else goStory(1);
+    };
+    root.addEventListener("pointerup", end);
+    root.addEventListener("pointercancel", (e) => {
+      if (!tracking || e.pointerId !== pointerId) return;
+      tracking = false;
+      clearHold();
+      setStoryPaused(false);
+    });
+  })();
+
   // Keyboard users: Enter/Space on non-button elements that carry an action.
   root.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
@@ -2889,13 +3357,73 @@
       const send = document.querySelector("[data-act=send-chat]");
       if (send) handle("send-chat", send);
     }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "storyReply") {
+      e.preventDefault();
+      handle("story-reply", e.target);
+    }
     if (e.key === "Enter" && (e.target.getAttribute("data-field") === "pass" || e.target.getAttribute("data-field") === "user")) {
       e.preventDefault();
       handle(state.overlay && state.overlay.type === "signup" ? "signup" : "login", e.target);
     }
   });
+  function probeVideoDuration(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.muted = true;
+      v.playsInline = true;
+      v.onloadedmetadata = () => {
+        const d = v.duration;
+        URL.revokeObjectURL(url);
+        resolve(Number.isFinite(d) ? d : 0);
+      };
+      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that video.")); };
+      v.src = url;
+    });
+  }
   async function onPickedFile(e) {
     const kind = e.target.getAttribute("data-act-file");
+    if (kind === "story-media") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      const typ = String(file.type || "").toLowerCase();
+      const name = String(file.name || "").toLowerCase();
+      const isVideo = typ.startsWith("video/") || /\.(mov|mp4|m4v|webm|qt)$/.test(name);
+      if (isVideo) {
+        if (file.size > MAX_STORY_VIDEO_BYTES) {
+          toast("That video is over 8 MB. Try a shorter clip (15 seconds or less).", "err");
+          return;
+        }
+        try {
+          const dur = await probeVideoDuration(file);
+          if (dur > MAX_STORY_VIDEO_SECONDS + 0.25) {
+            toast("Stories can be up to 15 seconds. Try a shorter clip.", "err");
+            return;
+          }
+        } catch (err) {
+          toast(err.message || "Couldn't read that video.", "err");
+          return;
+        }
+        if (state.storyDraft && state.storyDraft.preview) {
+          try { URL.revokeObjectURL(state.storyDraft.preview); } catch (_) {}
+        }
+        state.storyDraft = { file, preview: URL.createObjectURL(file), kind: "video" };
+        state.overlay = { type: "storyComposer" };
+        render();
+        return;
+      }
+      let ready = file;
+      try { ready = (await compressImage(file)) || file; } catch (_) { ready = file; }
+      if (state.storyDraft && state.storyDraft.preview) {
+        try { URL.revokeObjectURL(state.storyDraft.preview); } catch (_) {}
+      }
+      state.storyDraft = { file: ready, preview: URL.createObjectURL(ready), kind: "photo" };
+      state.overlay = { type: "storyComposer" };
+      render();
+      return;
+    }
     if (kind === "post-photo" || kind === "post-photos") {
       const files = Array.from((e.target.files || [])).filter(Boolean);
       e.target.value = "";
