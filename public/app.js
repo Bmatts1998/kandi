@@ -408,6 +408,123 @@
     return `<section class="prof-videos"><div class="label">Videos</div><div class="vid-row">${vids.map((v, i) => videoTileHtml(v, keyPrefix + "-v" + i)).join("")}</div></section>`;
   }
 
+  // ---- Shows I'm going to: one compact field + a searchable multi-select sheet ----
+  function pickableEvents() { return (state.events || []).filter((e) => e && e.id && !e.isExample); }
+  function goingIds() {
+    const mine = new Set(((state.me && state.me.events) || []).map(String));
+    return pickableEvents().filter((e) => e.imGoing || mine.has(String(e.id))).map((e) => String(e.id));
+  }
+  function showDayLabel(e) {
+    const day = String(e.date || "").split(" · ")[0].trim();
+    let year = "";
+    try {
+      if (e.startsAt) {
+        const y = new Intl.DateTimeFormat("en-US", { timeZone: "America/Denver", year: "numeric" }).format(new Date(e.startsAt));
+        if (y !== String(new Date().getFullYear())) year = ", " + y;
+      }
+    } catch (_) {}
+    if (/\b20\d\d\b/.test(day)) year = "";
+    return day ? day + year : "Date TBA";
+  }
+  function showTimeLabel(e) {
+    const parts = String(e.date || "").split(" · ");
+    return e.timeTba ? "Time TBA" : (parts[1] || "").trim();
+  }
+  function showPickerField(where) {
+    const ids = new Set(goingIds());
+    const sel = pickableEvents().filter((e) => ids.has(String(e.id)));
+    const n = sel.length;
+    const loading = !state.eventsLoaded && !pickableEvents().length;
+    return `<div class="show-field" data-where="${esc(where || "")}">
+      <button type="button" class="show-field-btn" data-act="show-pick-open" aria-haspopup="dialog" ${loading ? "disabled" : ""}>
+        ${kIcon("events")}<span class="grow">${loading ? "Loading shows…" : (n ? n + (n === 1 ? " show" : " shows") + " picked" : "Choose shows")}</span>${kIcon("down")}
+      </button>
+      ${n ? `<div class="show-chips">${sel.map((e) => `<span class="show-chip">${e.emoji ? `<span aria-hidden="true">${esc(e.emoji)}</span>` : ""}<span class="show-chip-name">${esc(eventChipLabel(e))}</span><button type="button" class="show-chip-x" data-act="show-unpick" data-id="${esc(e.id)}" aria-label="Remove ${esc(e.name)}">×</button></span>`).join("")}</div>` : ""}
+    </div>`;
+  }
+  function viewShowPicker() {
+    const sp = state.showPicker;
+    if (!sp) return "";
+    const sel = new Set(sp.sel);
+    const groups = [];
+    let cur = null;
+    pickableEvents().forEach((e) => {
+      const day = showDayLabel(e);
+      if (!cur || cur.day !== day) { cur = { day, items: [] }; groups.push(cur); }
+      cur.items.push(e);
+    });
+    const body = groups.map((g) => `<div class="show-group"><div class="show-day">${esc(g.day)}</div>${g.items.map((e) => {
+      const on = sel.has(String(e.id));
+      const q = [e.name, e.venue, e.city, (e.artists || []).join(" "), (e.genres || []).join(" "), g.day].join(" ").toLowerCase();
+      const meta = [showTimeLabel(e), e.venue].filter(Boolean).join(" · ");
+      return `<button type="button" class="show-opt${on ? " on" : ""}" role="option" aria-selected="${on}" data-act="show-pick-toggle" data-id="${esc(e.id)}" data-q="${esc(q)}" data-cat="${esc(e.category || "")}">
+        <span class="show-check" aria-hidden="true">${kIcon("check")}</span>
+        <span class="show-opt-text"><span class="show-opt-name">${e.emoji ? esc(e.emoji) + " " : ""}${esc(e.name)}</span><span class="show-opt-meta">${esc(meta)}</span></span>
+      </button>`;
+    }).join("")}</div>`).join("");
+    const n = sel.size;
+    return `<div class="sheet-bg show-pick-bg"><div class="sheet show-pick" data-stop="1" role="dialog" aria-modal="true" aria-label="Shows I'm going to"><div class="grab"></div>
+      <div class="show-pick-head"><h2 class="h2">Shows I'm going to</h2><button type="button" class="icon-btn" data-act="show-pick-cancel" aria-label="Close without saving">✕</button></div>
+      <label class="show-search">${kIcon("search")}<input type="search" data-field="showPickQ" aria-label="Search shows" placeholder="Search shows, artists, venues" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(sp.q || "")}" /></label>
+      <div class="seg event-cats show-pick-cats">
+        <button type="button" class="${sp.cat === "all" ? "on" : ""}" data-act="show-pick-cat" data-id="all">All</button>
+        <button type="button" class="${sp.cat === "rave" ? "on" : ""}" data-act="show-pick-cat" data-id="rave">Raves &amp; EDM</button>
+        <button type="button" class="${sp.cat === "concert" ? "on" : ""}" data-act="show-pick-cat" data-id="concert">Concerts</button>
+      </div>
+      <div class="show-pick-list" role="listbox" aria-multiselectable="true" aria-label="Upcoming shows">${body || `<p class="muted">No upcoming shows are listed right now.</p>`}
+        <p class="muted show-pick-empty" hidden>No shows match that search.</p></div>
+      <div class="show-pick-foot"><button type="button" class="btn primary" data-act="show-pick-done">${n ? "Done · " + n + (n === 1 ? " show" : " shows") : "Done"}</button></div>
+    </div></div>`;
+  }
+  function filterShowPicker() {
+    const sp = state.showPicker;
+    const sheet = document.querySelector(".show-pick");
+    if (!sp || !sheet) return;
+    const words = String(sp.q || "").toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    sheet.querySelectorAll(".show-group").forEach((g) => {
+      let any = 0;
+      g.querySelectorAll(".show-opt").forEach((o) => {
+        const q = o.getAttribute("data-q") || "";
+        const ok = (sp.cat === "all" || o.getAttribute("data-cat") === sp.cat) && words.every((w) => q.includes(w));
+        o.hidden = !ok;
+        if (ok) any++;
+      });
+      g.hidden = !any;
+      shown += any;
+    });
+    const empty = sheet.querySelector(".show-pick-empty");
+    if (empty) empty.hidden = shown > 0;
+    sheet.querySelectorAll("[data-act=show-pick-cat]").forEach((b) => b.classList.toggle("on", b.getAttribute("data-id") === sp.cat));
+  }
+  function paintShowPickCount() {
+    const sp = state.showPicker;
+    const b = document.querySelector("[data-act=show-pick-done]");
+    if (!sp || !b) return;
+    const n = sp.sel.length;
+    b.textContent = n ? "Done · " + n + (n === 1 ? " show" : " shows") : "Done";
+  }
+  async function saveGoing(nextIds) {
+    const before = new Set(goingIds());
+    const after = new Set(nextIds.map(String));
+    const changes = [];
+    after.forEach((id) => { if (!before.has(id)) changes.push([id, true]); });
+    before.forEach((id) => { if (!after.has(id)) changes.push([id, false]); });
+    let failed = 0;
+    for (const [id, going] of changes) {
+      try {
+        await api("/api/events/" + encodeURIComponent(id) + "/going", { method: "POST", body: { going } });
+        const ev = (state.events || []).find((x) => String(x.id) === id);
+        if (ev) { ev.imGoing = going; if (!going) ev.imOpenToMeet = false; }
+        if (state.me) {
+          const list = (state.me.events || []).map(String).filter((x) => x !== id);
+          state.me.events = going ? list.concat(id) : list;
+        }
+      } catch (_) { failed++; }
+    }
+    return { changed: changes.length, failed };
+  }
+
   const MAX_SONGS = 5;
   function mySongs(p) {
     const list = p && Array.isArray(p.songs) ? p.songs : (p && p.favoriteSong ? [p.favoriteSong] : []);
@@ -1218,7 +1335,7 @@
   function upcomingBlock(shows, opts) {
     opts = opts || {};
     if (opts.hidden) return `<div class="label">Upcoming shows</div><p class="tiny">This person hides their upcoming shows.</p>`;
-    if (!(shows && shows.length)) return opts.mine ? `<div class="label">Upcoming shows</div><p class="tiny">Mark I'm going on an event and it will show up here.</p>` : "";
+    if (!(shows && shows.length)) return opts.mine ? `<div class="label">Upcoming shows</div><p class="tiny">Pick your shows in Edit Profile or the Events tab and they'll show up here.</p>` : "";
     return `<div class="label">Upcoming shows</div><div class="upcoming-list">${shows.map((e) =>
       `<button type="button" class="upcoming-row" data-act="event" data-id="${esc(e.id)}">${esc(e.emoji || "✺")} <span class="grow">${esc(e.name)}</span><span class="tiny">${esc(e.date || eventChipLabel(e))}</span></button>`
     ).join("")}</div>`;
@@ -1249,6 +1366,8 @@
     soundOn: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4v-5Z"/><path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
     video: '<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/>',
     down: '<path d="M6 10l6 6 6-6"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
   };
   function kIcon(name, extraClass) {
@@ -2627,9 +2746,8 @@
         `<button class="chip${me.looking.includes(v.id) ? " on" : ""}" data-act="toggle-look" data-id="${v.id}">${esc(v.label)}</button>`
       ).join("")}</div><p class="sub">Be honest — consent starts here.</p>`;
     } else if (s === 2) {
-      body = `<div class="label">Upcoming events</div><p class="sub" style="margin-bottom:8px">Real SLC raves and concerts. Mark the ones you might hit.</p><div class="chips">${(state.events.length ? state.events.slice(0, 24) : []).map((e) =>
-        `<button class="chip${me.events.includes(e.id) ? " on" : ""}" data-act="toggle-event" data-id="${e.id}">${e.emoji} ${esc(e.name)}</button>`
-      ).join("") || (state.eventsLoaded ? `<p class="muted">No upcoming shows are listed right now. Tap Continue — you can mark shows later from the Events tab.</p>` : "Loading events…")}</div>`;
+      body = `<div class="label">Shows I'm going to</div><p class="sub" style="margin-bottom:8px">Real SLC raves and concerts. Pick the ones you might hit — search or scroll by date.</p>${
+        (state.eventsLoaded && !pickableEvents().length) ? `<p class="muted">No upcoming shows are listed right now. Tap Continue — you can pick shows later from the Events tab.</p>` : showPickerField("onboard")}`;
     } else if (s === 3) {
       body = `<p class="sub" style="margin-bottom:12px">People can like a specific prompt, Hinge-style.</p>`;
       (me.prompts || []).forEach((pr, i) => {
@@ -2764,7 +2882,8 @@
         <button class="${cat === "rave" ? "on" : ""}" data-act="event-cat" data-id="rave">Raves &amp; EDM</button>
         <button class="${cat === "concert" ? "on" : ""}" data-act="event-cat" data-id="concert">Concerts</button>
       </div>
-      <p class="sub" style="margin:0 0 14px">Upcoming Salt Lake City raves and concerts. Mark where you're going so people can find you on the floor.</p>`;
+      <p class="sub" style="margin:0 0 10px">Upcoming Salt Lake City raves and concerts. Mark where you're going so people can find you on the floor.</p>
+      <div class="label">Shows I'm going to</div>${showPickerField("events")}<div style="height:14px"></div>`;
     if (!list.length) {
       html += `<div class="empty"><p>No upcoming ${cat === "rave" ? "raves" : cat === "concert" ? "concerts" : "shows"} in this list yet. Check back soon — we refresh every hour.</p></div>`;
     }
@@ -3291,6 +3410,9 @@
       <div class="label" style="margin-top:14px">Favorite artists / DJs</div>
       <input data-field="editFavoriteArtists" placeholder="Who do you play on repeat?" value="${esc(state.drafts.editFavoriteArtists || "")}" />
       ${editSongPicker()}
+      <div class="label" style="margin-top:14px">Shows I'm going to</div>
+      <p class="tiny" style="margin-bottom:6px">Saves right away. These show as Upcoming shows on your profile.</p>
+      ${showPickerField("edit")}
       <div class="label" style="margin-top:12px">Favorite festival or show</div>
       <input data-field="editFavoriteFestival" placeholder="e.g. Das Energi, CRSSD" value="${esc(state.drafts.editFavoriteFestival || "")}" />
       <div class="label" style="margin-top:12px">Favorite venue</div>
@@ -4343,7 +4465,7 @@
     else if (state.view === "auth") html = viewAuth();
     else if (state.view === "verify") html = viewVerify();
     else if (state.view === "shareLanding") html = viewShareLanding();
-    else if (state.view === "onboard") html = viewOnboard();
+    else if (state.view === "onboard") { html = viewOnboard(); if (state.showPicker) html = html.replace(/<\/div>\s*$/, viewShowPicker() + "</div>"); }
     else {
       let body = "";
       if (state.tab === "home") body = viewHome();
@@ -4355,7 +4477,7 @@
       const storyOpen = Boolean(state.storyViewer);
       html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}"></div>`;
       // Parse each part on its own so stray or nested tags in one screen stay contained inside .screen.
-      appParts = [body, tabbar(), overlays(), viewGenreSheet()];
+      appParts = [body, tabbar(), overlays(), viewGenreSheet(), viewShowPicker()];
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
@@ -4400,6 +4522,46 @@
   async function handle(act, el, extra) {
     const id = el && el.getAttribute("data-id");
     if (act === "song-play") { toggleSong(el); return; }
+    if (act === "show-pick-open") {
+      if (!state.eventsLoaded && !pickableEvents().length) { try { await loadEvents(); } catch (_) {} }
+      state.showPicker = { sel: goingIds(), q: "", cat: "all" };
+      render();
+      return;
+    }
+    if (act === "show-pick-cancel" || (act === "close" && state.showPicker)) { state.showPicker = null; render(); return; }
+    if (act === "show-pick-cat") { if (state.showPicker) { state.showPicker.cat = id || "all"; filterShowPicker(); } return; }
+    if (act === "show-pick-toggle") {
+      const sp = state.showPicker;
+      if (!sp) return;
+      const on = !sp.sel.includes(String(id));
+      sp.sel = on ? sp.sel.concat(String(id)) : sp.sel.filter((x) => x !== String(id));
+      el.classList.toggle("on", on);
+      el.setAttribute("aria-selected", String(on));
+      paintShowPickCount();
+      return;
+    }
+    if (act === "show-pick-done") {
+      const sp = state.showPicker;
+      if (!sp) return;
+      el.textContent = "Saving…";
+      const r = await saveGoing(sp.sel);
+      state.showPicker = null;
+      render();
+      if (r.failed) toast("Couldn't save " + r.failed + (r.failed === 1 ? " show" : " shows") + ". Try again.", "err");
+      else if (r.changed) toast("Your shows are saved");
+      try { await loadEvents(); } catch (_) {}
+      if (state.live && !state.live.eventId) { const g = (state.events || []).find((e) => e.imGoing); if (g) state.live.eventId = g.id; }
+      render();
+      return;
+    }
+    if (act === "show-unpick") {
+      const r = await saveGoing(goingIds().filter((x) => x !== String(id)));
+      render();
+      if (r.failed) toast("Couldn't remove that show. Try again.", "err");
+      try { await loadEvents(); } catch (_) {}
+      render();
+      return;
+    }
     try {
       state.err = "";
       if (act === "song-search") {
@@ -5810,7 +5972,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
@@ -5824,7 +5986,7 @@
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
     // Tapping the dimmed backdrop of a bottom sheet closes it; taps inside the sheet never do.
-    if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.err = ""; handle("close", t); return; }
+    if (t.classList && t.classList.contains("sheet-bg")) { e.preventDefault(); state.err = ""; handle(t.classList.contains("show-pick-bg") ? "show-pick-cancel" : "close", t); return; }
     let actEl = t.closest("[data-act]");
     if (!actEl || !root.contains(actEl)) return;
     // Genre chips inside a tappable row should win (open that genre), not the parent row.
@@ -5922,6 +6084,7 @@
       if (e.target.value !== v) e.target.value = v;
     }
     state.drafts[field] = v;
+    if (field === "showPickQ" && state.showPicker) { state.showPicker.q = v; filterShowPicker(); }
   });
   root.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "commentText") {
