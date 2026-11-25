@@ -277,6 +277,8 @@ async function seedSocial(db, ids) {
     }
   }
 
+  await seedCrews(db, ids);
+
   const existing = await db.prepare(`SELECT COUNT(*) AS c FROM posts`).get();
   if (existing && Number(existing.c) > 0) {
     console.log("Social seed: follows upserted; posts already present, leaving them.");
@@ -355,6 +357,7 @@ async function seedSocial(db, ids) {
       }
     }
   }
+  await seedCrews(db, ids);
   console.log("Social seed: " + postIds.length + " posts, follows, likes, and comments.");
   await seedStories(db, ids);
 }
@@ -414,6 +417,82 @@ async function seedStories(db, ids) {
   return made;
 }
 
+
+async function seedCrews(db, ids) {
+  ids = ids || {};
+  if (!ids.nova && !ids.hex) return;
+  try {
+    await db.prepare(`SELECT id FROM crews LIMIT 1`).get();
+  } catch (_) {
+    return; // tables not migrated yet
+  }
+
+  const specs = [
+    {
+      name: "Rail Fam",
+      emoji: "🌙",
+      bio: "House, techno, and whoever's holding the rail. We look out for each other on the floor and afters.",
+      homeScene: "SLC house & techno",
+      joinMode: "public",
+      owner: "nova",
+      members: [["nova", "owner"], ["luna", "admin"], ["vesper", "member"], ["jade", "member"]],
+    },
+    {
+      name: "Bass Pit",
+      emoji: "⚡",
+      bio: "If the lasers look like a spaceship landing, we're already in the pit. Duck totems welcome.",
+      homeScene: "Bass & dubstep festivals",
+      joinMode: "request",
+      owner: "hex",
+      members: [["hex", "owner"], ["riot", "admin"], ["pixel", "member"]],
+    },
+  ];
+
+  for (const spec of specs) {
+    const ownerId = ids[spec.owner];
+    if (!ownerId) continue;
+    let row = await db.prepare(`SELECT id FROM crews WHERE is_demo=1 AND name=?`).get(spec.name);
+    if (!row) {
+      const info = await db.prepare(
+        `INSERT INTO crews (name, emoji, bio, home_scene, join_mode, created_by, is_demo, created_at) VALUES (?,?,?,?,?,?,1,datetime('now'))`
+      ).run(spec.name, spec.emoji, spec.bio, spec.homeScene, spec.joinMode, ownerId);
+      row = { id: Number(info.lastInsertRowid) };
+    } else {
+      await db.prepare(`UPDATE crews SET emoji=?, bio=?, home_scene=?, join_mode=?, created_by=? WHERE id=?`)
+        .run(spec.emoji, spec.bio, spec.homeScene, spec.joinMode, ownerId, row.id);
+    }
+    for (const [uname, role] of spec.members) {
+      const uid = ids[uname];
+      if (!uid) continue;
+      await db.prepare(`INSERT OR IGNORE INTO crew_members (crew_id, user_id, role, created_at) VALUES (?,?,?,datetime('now'))`)
+        .run(row.id, uid, role);
+      await db.prepare(`UPDATE crew_members SET role=? WHERE crew_id=? AND user_id=?`).run(role, row.id, uid);
+    }
+  }
+
+  // Mark a few crew members as going to upcoming real shows so the group page has something to show.
+  try {
+    const evs = await db.prepare(`
+      SELECT id FROM events
+      WHERE (status IS NULL OR status!='removed')
+        AND (is_example IS NULL OR is_example=0)
+        AND (starts_at IS NULL OR starts_at='' OR starts_at >= ?)
+      ORDER BY starts_at
+      LIMIT 6
+    `).all(new Date().toISOString());
+    const picks = [
+      ["nova", 0], ["luna", 0], ["vesper", 1], ["jade", 0],
+      ["hex", 2], ["riot", 2], ["pixel", 3],
+    ];
+    const goingIns = await db.prepare(`INSERT OR IGNORE INTO event_going (user_id, event_id) VALUES (?,?)`);
+    for (const [uname, i] of picks) {
+      if (ids[uname] && evs[i]) await goingIns.run(ids[uname], evs[i].id);
+    }
+  } catch (_) { /* event_going or events may be empty in a fresh local db */ }
+
+  console.log("Seeded demo crews: Rail Fam and Bass Pit.");
+}
+
 function hashCode(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
@@ -427,4 +506,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, DEMO_PASSWORD, EVENTS, USERS };

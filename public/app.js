@@ -149,8 +149,26 @@
     }).join("") + `</section>`;
   }
   function profileCrewSlot() {
-    // Reserved for rave groups / friend tagging (another worker). Keep this hook so Crew can land here without a layout rewrite.
-    return `<section class="prof-crew" data-crew-slot></section>`;
+    const onOther = Boolean(state.overlay && state.overlay.type === "profile" && state.profile && state.profile.user && !state.profile.user.isMe);
+    const list = onOther ? (state.profileCrews || []) : ((state.crews && state.crews.mine) || []);
+    const inbox = (!onOther && state.crewInbox) || { invites: [], requests: [] };
+    let html = `<section class="prof-crew" data-crew-slot>`;
+    html += `<div class="row"><div class="grow"><div class="label" style="margin:0">Crew</div>
+      <div class="tiny">${onOther ? "Groups they're part of." : "Tag friends, join a rave group, and see who's in whose crew."}</div></div>`;
+    if (!onOther) html += `<button type="button" class="btn sm ghost" data-act="open-groups">See all</button>`;
+    html += `</div>`;
+    if (!onOther && (inbox.invites || []).length) {
+      html += `<div class="notice" style="margin-top:10px">${inbox.invites.length} crew invite${inbox.invites.length === 1 ? "" : "s"} waiting.
+        <button type="button" class="btn sm primary" style="margin-top:8px" data-act="open-groups">Review</button></div>`;
+    }
+    if (!onOther && (inbox.requests || []).length) {
+      html += `<div class="tiny" style="margin-top:8px">${inbox.requests.length} join request${inbox.requests.length === 1 ? "" : "s"} for your crews.</div>`;
+    }
+    html += `<div class="crew-row" style="margin-top:10px">${list.map((c) => crewChip(c)).join("")}`;
+    if (!onOther) html += `<button type="button" class="crew-chip add" data-act="create-group"><span class="crew-av emoji">＋</span><span class="crew-chip-name">New crew</span></button>`;
+    else if (!list.length) html += `<span class="tiny">Not in a crew yet.</span>`;
+    html += `</div></section>`;
+    return html;
   }
 
   function startEditDraft() {
@@ -540,7 +558,14 @@
     chatWith: null,
     blocked: [],
     locationShare: null,
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "" },
+    crews: { mine: [], discover: [] },
+    crewInbox: { invites: [], requests: [] },
+    group: null,
+    groupMessages: [],
+    crewBadges: {},
+    profileCrews: [],
+    crewPeople: [],
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "" },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -809,6 +834,21 @@
         }
         toast((msg.from && msg.from.name ? msg.from.name : "Your match") + " picked a meet spot.");
         render();
+      } else if (msg.type === "crew-message") {
+        const onGroup = state.overlay && state.overlay.type === "group" && state.group && state.group.group && Number(state.group.group.id) === Number(msg.crewId);
+        if (onGroup && msg.message && !(state.groupMessages || []).some((m) => m.id === msg.message.id)) {
+          const row = Object.assign({}, msg.message, { from: msg.from });
+          state.groupMessages = (state.groupMessages || []).concat([row]);
+          render();
+          const log = document.querySelector(".crew-chat");
+          if (log) log.scrollTop = log.scrollHeight;
+        } else {
+          toast("New crew message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
+        }
+      } else if (msg.type === "crew-invite") {
+        quiet(loadCrewInbox());
+        if (msg.accepted && msg.group) toast("You're in " + msg.group.name);
+        else toast((msg.from && msg.from.name ? msg.from.name + " tagged you in " : "You're invited to ") + ((msg.group && msg.group.name) || "a crew"));
       }
     };
   }
@@ -818,13 +858,24 @@
   }
   // Chat fallback: if the socket is down (Render sleeping, network change), poll the open chat.
   setInterval(() => {
-    if (document.hidden || !state.me || !state.overlay || state.overlay.type !== "chat" || !state.chatWith) return;
-    if (ws && ws.readyState === 1) return;
-    const id = state.chatWith.id;
-    api("/api/chats/" + id).then((data) => {
-      if (!state.overlay || state.overlay.type !== "chat" || !state.chatWith || state.chatWith.id !== id) return;
-      if ((data.messages || []).length !== state.chat.length) { state.chat = data.messages || []; render(); scrollChatToEnd(); }
-    }).catch(() => {});
+    if (document.hidden || !state.me || !state.overlay) return;
+    if (state.overlay.type === "chat" && state.chatWith) {
+      if (ws && ws.readyState === 1) return;
+      const id = state.chatWith.id;
+      api("/api/chats/" + id).then((data) => {
+        if (!state.overlay || state.overlay.type !== "chat" || !state.chatWith || state.chatWith.id !== id) return;
+        if ((data.messages || []).length !== state.chat.length) { state.chat = data.messages || []; render(); scrollChatToEnd(); }
+      }).catch(() => {});
+      return;
+    }
+    if (state.overlay.type === "group" && state.group && state.group.membership === "member" && state.group.group) {
+      if (ws && ws.readyState === 1) return;
+      const gid = state.group.group.id;
+      api("/api/groups/" + gid + "/messages").then((data) => {
+        if (!state.overlay || state.overlay.type !== "group" || !state.group || !state.group.group || Number(state.group.group.id) !== Number(gid)) return;
+        if ((data.messages || []).length !== (state.groupMessages || []).length) { state.groupMessages = data.messages || []; render(); }
+      }).catch(() => {});
+    }
   }, 5000);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden || !state.me || state.view !== "app") return;
@@ -1256,7 +1307,7 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox()]);
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
   }
@@ -1291,6 +1342,12 @@
         else state.storyRings = (state.storyRings || []).concat([ring]);
       }
     } catch (_) {}
+    try {
+      const crews = await api("/api/users/" + userId + "/crews");
+      state.profileCrews = crews.crews || [];
+    } catch (_) {
+      state.profileCrews = [];
+    }
   }
   async function loadFeed() {
     const q = new URLSearchParams();
@@ -1304,6 +1361,8 @@
     const data = await api("/api/discover?" + q.toString());
     state.feed = data.people;
     if (data.likesLeft != null) state.likesLeft = data.likesLeft;
+    const ids = (state.feed || []).map((p) => p.id);
+    if (ids.length) await loadCrewBadges(ids);
   }
   async function loadInbound() {
     state.inbound = await api("/api/likes-received");
@@ -1328,6 +1387,65 @@
   async function loadBlocks() {
     const data = await api("/api/blocks");
     state.blocked = data.blocked;
+  }
+  async function loadCrews() {
+    const data = await api("/api/groups");
+    state.crews = { mine: data.mine || [], discover: data.discover || [] };
+    const mine = state.crews.mine || [];
+    state.crewBadges[String(state.me && state.me.id)] = mine;
+  }
+  async function loadCrewInbox() {
+    try {
+      state.crewInbox = await api("/api/groups/inbox");
+    } catch (_) {
+      state.crewInbox = { invites: [], requests: [] };
+    }
+  }
+  async function loadCrewBadges(ids) {
+    const list = (ids || []).filter(Boolean);
+    if (!list.length) return;
+    try {
+      const data = await api("/api/groups/for-users?ids=" + list.map(String).join(","));
+      state.crewBadges = Object.assign({}, state.crewBadges, data.byUser || {});
+    } catch (_) { /* badges are optional */ }
+  }
+  async function loadGroup(id) {
+    const data = await api("/api/groups/" + id);
+    state.group = data;
+    if (data && data.membership === "member") {
+      try {
+        const chat = await api("/api/groups/" + id + "/messages");
+        state.groupMessages = chat.messages || [];
+      } catch (_) {
+        state.groupMessages = [];
+      }
+    } else {
+      state.groupMessages = [];
+    }
+    return data;
+  }
+  function crewChip(c, extraClass) {
+    const photo = c.photoUrl
+      ? `<span class="crew-av" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>`
+      : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`;
+    return `<button type="button" class="crew-chip${extraClass ? " " + extraClass : ""}" data-act="open-group" data-id="${c.id}" aria-label="${esc(c.name)}">${photo}<span class="crew-chip-name">${esc(c.name)}</span></button>`;
+  }
+  function crewBadgesHtml(userId) {
+    const list = (state.crewBadges && state.crewBadges[String(userId)]) || [];
+    if (!list.length) return "";
+    return `<div class="crew-badges">${list.slice(0, 3).map((c) =>
+      `<button type="button" class="crew-badge" data-act="open-group" data-id="${c.id}">${esc(c.emoji || "🧡")} ${esc(c.name)}</button>`
+    ).join("")}</div>`;
+  }
+  function crewSection(list, title, empty) {
+    if (!(list || []).length) return empty || "";
+    return `<div class="label">${esc(title || "Crew")}</div><div class="crew-row">${list.map((c) => crewChip(c)).join("")}</div>`;
+  }
+  const CREW_EMOJI_PICK = ["🧡", "🌙", "⚡", "🦋", "🔥", "🌸", "🌈", "🪐", "💫", "🎮", "🎧", "🪩", "🖤", "💜", "✨", "🎶"];
+  function roleLabel(role) {
+    if (role === "owner") return "Owner";
+    if (role === "admin") return "Admin";
+    return "Member";
   }
 
   function header(title, right) {
@@ -1357,12 +1475,12 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
-      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}</div>` : ""}
+      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
       <button class="heart-fab${liked ? " loved" : ""}" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
@@ -1508,6 +1626,7 @@
     parts.push(`<div class="meta-card"><div class="chips" style="margin-bottom:8px">${discoChips.join("")}</div>
       <div class="muted">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ") || "—"}</div>
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
+      ${crewBadgesHtml(p.id)}
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div></div>`);
     return header("Kandi", right) + `<div class="scroll">${sameBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
@@ -1953,6 +2072,7 @@
     html += `<div class="rsvp-item" style="margin-top:14px"><div class="grow"><div class="rsvp-label">Show upcoming shows on my profile</div>
       <div class="tiny">Turn this off if you want to keep your RSVPs off your public profile.</div></div>
       <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>`;
+    html += `<button type="button" class="btn ghost" style="margin-top:16px" data-act="open-groups">Rave Groups</button>`;
     html += `<h3 style="margin:22px 0 10px;font-size:16px">Safety</h3>
       <div class="notice warn" style="margin-bottom:10px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     if (state.locationShare) {
@@ -2378,6 +2498,164 @@
         <button type="button" class="btn primary" style="margin-top:16px" data-act="save-meet" data-id="${o.id}">Save meet plan</button>
         <button type="button" class="btn ghost" style="margin-top:8px" data-act="close-meet">Cancel</button></div></div>`;
     }
+
+    if (o.type === "groups") {
+      const mine = (state.crews && state.crews.mine) || [];
+      const discover = (state.crews && state.crews.discover) || [];
+      const inbox = state.crewInbox || { invites: [], requests: [] };
+      let body = "";
+      if ((inbox.invites || []).length) {
+        body += `<div class="label">Invites</div>` + inbox.invites.map((inv) => `<div class="card" style="margin-bottom:10px">
+          <div class="row">${crewChip(inv.group)}<div class="grow"><div style="font-weight:800">${esc(inv.group.name)}</div>
+            <div class="tiny">${inv.invitedBy ? esc(inv.invitedBy.name) + " tagged you" : "You were tagged"} · ${inv.group.memberCount || 0} members</div></div></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn sm primary" data-act="accept-crew-request" data-id="${inv.group.id}" data-rid="${inv.id}">Accept</button>
+            <button class="btn sm ghost" data-act="deny-crew-request" data-id="${inv.group.id}" data-rid="${inv.id}">Not now</button>
+          </div></div>`).join("");
+      }
+      if ((inbox.requests || []).length) {
+        body += `<div class="label" style="margin-top:8px">Join requests</div>` + inbox.requests.map((r) => `<div class="card" style="margin-bottom:10px">
+          <div class="row">${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:800">${esc(r.user.name)}</div>
+            <div class="tiny">wants to join ${esc(r.group.emoji || "")} ${esc(r.group.name)}</div></div></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn sm primary" data-act="accept-crew-request" data-id="${r.group.id}" data-rid="${r.id}">Approve</button>
+            <button class="btn sm ghost" data-act="deny-crew-request" data-id="${r.group.id}" data-rid="${r.id}">Deny</button>
+          </div></div>`).join("");
+      }
+      body += `<div class="label">Your crews</div>`;
+      body += mine.length
+        ? `<div class="crew-list">${mine.map((c) => `<button type="button" class="crew-list-item" data-act="open-group" data-id="${c.id}">
+            ${c.photoUrl ? `<span class="crew-av lg" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>` : `<span class="crew-av lg emoji">${esc(c.emoji || "🧡")}</span>`}
+            <span class="grow"><span class="nm">${esc(c.name)}</span>
+            <span class="tiny">${esc(roleLabel(c.myRole))} · ${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""}</span></span>
+          </button>`).join("")}</div>`
+        : `<div class="muted" style="margin-bottom:12px">You're not in a crew yet. Start one or join a public rave group below.</div>`;
+      body += `<button class="btn primary" style="margin:8px 0 18px" data-act="create-group">Start a crew</button>`;
+      body += `<div class="label">Join a rave group</div>`;
+      body += discover.length
+        ? discover.map((c) => `<div class="card" style="margin-bottom:10px"><div class="row">
+            <button type="button" class="crew-chip bare" data-act="open-group" data-id="${c.id}">${c.photoUrl ? `<span class="crew-av" style="background-image:url('${esc(mediaUrl(c.photoUrl))}')"></span>` : `<span class="crew-av emoji">${esc(c.emoji || "🧡")}</span>`}</button>
+            <button type="button" class="grow left-btn" data-act="open-group" data-id="${c.id}"><div style="font-weight:800">${esc(c.name)}</div>
+              <div class="tiny">${c.memberCount || 0} members${c.homeScene ? " · " + esc(c.homeScene) : ""} · ${c.joinMode === "public" ? "Open to join" : "Request to join"}</div>
+              ${c.bio ? `<div class="muted" style="margin-top:4px">${esc(c.bio)}</div>` : ""}</button>
+            <button class="btn sm ${c.joinMode === "public" ? "primary" : "ghost"}" data-act="join-group" data-id="${c.id}">${c.joinMode === "public" ? "Join group" : "Request"}</button>
+          </div></div>`).join("")
+        : `<div class="muted">No other crews to join yet.</div>`;
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Rave Groups</span></div>
+        <div class="right"><button class="btn sm primary" data-act="create-group">New</button></div></div>
+        <div class="scroll pad">${body}</div></div>`;
+    }
+    if (o.type === "createGroup" || o.type === "editGroup") {
+      const editing = o.type === "editGroup";
+      const emoji = state.drafts.crewEmoji || "🧡";
+      const mode = state.drafts.crewJoinMode === "request" ? "request" : "public";
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">${editing ? "Edit crew" : "Start a crew"}</h2>
+        <p class="muted" style="margin-top:6px">Give it a name, pick a vibe, and choose whether people can join instantly or ask first.</p>
+        <div class="label" style="margin-top:12px">Emoji</div>
+        <div class="chips">${CREW_EMOJI_PICK.map((em) => `<button type="button" class="chip${emoji === em ? " on" : ""}" data-act="pick-crew-emoji" data-id="${esc(em)}">${em}</button>`).join("")}</div>
+        <div class="label" style="margin-top:12px">Name</div>
+        <input data-field="crewName" maxlength="40" placeholder="Rail Fam" value="${esc(state.drafts.crewName || "")}" />
+        <div class="label" style="margin-top:12px">Bio</div>
+        <textarea data-field="crewBio" maxlength="280" placeholder="Who you are on the floor...">${esc(state.drafts.crewBio || "")}</textarea>
+        <div class="label" style="margin-top:12px">Home scene</div>
+        <input data-field="crewScene" maxlength="80" placeholder="SLC house & techno" value="${esc(state.drafts.crewScene || "")}" />
+        <div class="label" style="margin-top:12px">Who can join</div>
+        <div class="seg" style="margin-top:8px">
+          <button type="button" class="${mode === "public" ? "on" : ""}" data-act="crew-join-mode" data-id="public">Anyone can join</button>
+          <button type="button" class="${mode === "request" ? "on" : ""}" data-act="crew-join-mode" data-id="request">Request to join</button>
+        </div>
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <button class="btn primary" style="margin-top:16px" data-act="${editing ? "save-group" : "submit-group"}">${editing ? "Save" : "Create crew"}</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+    }
+    if (o.type === "inviteFriends") {
+      const people = state.crewPeople || [];
+      const q = state.drafts.crewSearch || "";
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">Tag friends</h2>
+        <p class="muted" style="margin-top:6px">They'll get a request and won't be added until they accept.</p>
+        <div class="row" style="margin-top:12px"><input data-field="crewSearch" aria-label="Search people" autocapitalize="off" autocorrect="off" placeholder="Search by name or username" value="${esc(q)}" />
+          <button class="btn sm primary" data-act="search-people">Search</button></div>
+        <div style="margin-top:14px">${people.length ? people.map((u) => `<div class="row" style="margin-bottom:10px">
+          ${personAvatar(u, "av")}<div class="grow"><div style="font-weight:800">${esc(u.name)}</div><div class="tiny">@${esc(u.username)}</div></div>
+          ${u.inCrew ? `<span class="tiny">Already in</span>` : u.pending === "invite" ? `<span class="tiny">Invited</span>` : u.pending === "join" ? `<button class="btn sm primary" data-act="invite-friend" data-id="${u.id}">Approve</button>` : `<button class="btn sm primary" data-act="invite-friend" data-id="${u.id}">Tag</button>`}
+        </div>`).join("") : (q ? `<div class="muted">No one matched “${esc(q)}”.</div>` : `<div class="muted">Search for someone to tag.</div>`)}</div>
+        <button class="btn ghost" style="margin-top:8px" data-act="close-invite">Done</button></div></div>`;
+    }
+    if (o.type === "group") {
+      const data = state.group;
+      if (!data || !data.group) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this crew.</div></div>`;
+      const g = data.group;
+      const members = data.members || [];
+      const upcoming = data.upcoming;
+      const isMember = data.membership === "member";
+      const isAdmin = data.myRole === "owner" || data.myRole === "admin";
+      let action = "";
+      if (isMember) {
+        action = `<button class="btn sm ghost" data-act="leave-group" data-id="${g.id}">Leave</button>`;
+      } else if (data.membership === "invited") {
+        const inv = (state.crewInbox.invites || []).find((x) => Number(x.group.id) === Number(g.id));
+        action = inv
+          ? `<button class="btn sm primary" data-act="accept-crew-request" data-id="${g.id}" data-rid="${inv.id}">Accept invite</button>
+             <button class="btn sm ghost" data-act="deny-crew-request" data-id="${g.id}" data-rid="${inv.id}">Decline</button>`
+          : `<button class="btn sm primary" data-act="join-group" data-id="${g.id}">Accept invite</button>`;
+      } else if (data.membership === "requested") {
+        action = `<button class="btn sm ghost" disabled>Requested</button>`;
+      } else {
+        action = `<button class="btn sm primary" data-act="join-group" data-id="${g.id}">${g.joinMode === "public" ? "Join group" : "Request to join"}</button>`;
+      }
+      const av = g.photoUrl
+        ? `<div class="crew-hero-av" style="background-image:url('${esc(mediaUrl(g.photoUrl))}')"></div>`
+        : `<div class="crew-hero-av emoji">${esc(g.emoji || "🧡")}</div>`;
+      let body = `<div class="crew-hero">${av}<div class="grow">
+          <div class="nm">${esc(g.name)}</div>
+          <div class="tiny">${data.memberCount || members.length} members · ${g.joinMode === "public" ? "Open to join" : "Request to join"}${g.homeScene ? " · " + esc(g.homeScene) : ""}</div>
+        </div></div>`;
+      if (g.bio) body += `<p class="sub">${esc(g.bio)}</p>`;
+      body += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">${action}
+        ${isMember ? `<button class="btn sm primary" data-act="invite-open" data-id="${g.id}">Tag friends</button>` : ""}
+        ${isAdmin ? `<button class="btn sm ghost" data-act="edit-group" data-id="${g.id}">Edit</button>` : ""}
+        ${data.myRole === "owner" ? `<button class="btn sm ghost" data-act="delete-group" data-id="${g.id}">Delete crew</button>` : ""}
+      </div>`;
+      if (isAdmin && (data.pendingJoins || []).length) {
+        body += `<div class="label">Join requests</div>` + data.pendingJoins.map((r) => `<div class="row" style="margin-bottom:10px">
+          ${personAvatar(r.user, "av")}<div class="grow"><div style="font-weight:800">${esc(r.user.name)}</div><div class="tiny">@${esc(r.user.username)}</div></div>
+          <button class="btn sm primary" data-act="accept-crew-request" data-id="${g.id}" data-rid="${r.id}">Approve</button>
+          <button class="btn sm ghost" data-act="deny-crew-request" data-id="${g.id}" data-rid="${r.id}">Deny</button>
+        </div>`).join("");
+      }
+      body += `<div class="label">Members</div>` + members.map((m) => `<div class="row" style="margin-bottom:10px">
+        <button type="button" class="row grow left-btn" data-act="open-profile" data-id="${m.id}" style="padding:0;gap:12px">
+          ${personAvatar(m, "av")}<span class="grow" style="text-align:left"><span style="font-weight:800;display:block">${esc(m.name)}${m.isMe ? " (you)" : ""}</span>
+          <span class="tiny">${esc(roleLabel(m.role))}${m.username ? " · @" + esc(m.username) : ""}</span></span>
+        </button>
+        ${isAdmin && !m.isMe && m.role !== "owner" ? `<button class="btn sm ghost" data-act="remove-member" data-id="${g.id}" data-uid="${m.id}">Remove</button>` : ""}
+        ${data.myRole === "owner" && !m.isMe && m.role !== "owner" ? `<button class="btn sm ghost" data-act="toggle-admin" data-id="${g.id}" data-uid="${m.id}" data-role="${m.role === "admin" ? "member" : "admin"}">${m.role === "admin" ? "Remove admin" : "Make admin"}</button>` : ""}
+      </div>`).join("");
+      if (upcoming && upcoming.length) {
+        body += `<div class="label" style="margin-top:8px">Shows they're going to</div>` + upcoming.map((e) => `<button type="button" class="event" style="margin-bottom:10px" data-act="event-from-group" data-id="${esc(e.id)}">
+          <div class="event-main">
+            <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${esc(e.emoji || "✺")}</div>
+            <div class="grow"><div style="font-weight:800">${esc(e.name)}</div>
+              <div class="muted">${esc(e.date || eventWhen(e))}${e.venue ? " · " + esc(e.venue) : ""}</div>
+              <div class="tiny">${(e.going || []).map((u) => esc(u.name)).join(", ")}</div></div>
+          </div>
+        </button>`).join("");
+      }
+      if (isMember) {
+        const msgs = state.groupMessages || [];
+        body += `<div class="label" style="margin-top:8px">Crew chat</div>
+          <div class="crew-chat">${msgs.length ? msgs.map((m) => `<div class="crew-msg${Number(m.fromId) === Number(state.me.id) ? " me" : ""}">
+            <div class="tiny">${esc((m.from && m.from.name) || (Number(m.fromId) === Number(state.me.id) ? "You" : "Member"))} · ${esc(timeAgo(m.at))}</div>
+            <div>${esc(m.text)}</div>
+          </div>`).join("") : `<div class="muted">Say hi to the crew.</div>`}</div>
+          <div class="row" style="margin-top:10px"><input data-field="crewChat" aria-label="Message the crew" enterkeyhint="send" autocomplete="off" placeholder="Message the crew..." value="${esc(state.drafts.crewChat || "")}" />
+            <button class="btn sm primary" data-act="send-crew-chat" data-id="${g.id}">Send</button></div>`;
+      }
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(g.name)}</span></div></div>
+        <div class="scroll pad">${body}${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}</div></div>`;
+    }
     return "";
   }
 
@@ -2775,7 +3053,10 @@
         await loadProfile(id);
         state.profileTab = "posts";
         if (state.overlay && state.overlay.type !== "profile") state.overlayBack = state.overlay;
-        state.overlay = { type: "profile" };
+        const ret = state.overlay && (state.overlay.type === "group" || state.overlay.type === "groups")
+          ? { type: state.overlay.type }
+          : (state.overlay && state.overlay.returnTo) || null;
+        state.overlay = { type: "profile", returnTo: ret };
         render(); return;
       }
       if (act === "follow" || act === "unfollow") {
@@ -3223,6 +3504,177 @@
         state.overlay = null; await refreshAll(); render(); return;
       }
       if (act === "unblock") { await api("/api/blocks/" + id + "/unblock", { method: "POST", body: {} }); await loadBlocks(); render(); return; }
+
+      if (act === "open-groups") {
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        state.overlay = { type: "groups" };
+        render(); return;
+      }
+      if (act === "open-group") {
+        await loadGroup(id);
+        const ret = state.overlay && (state.overlay.type === "groups" || state.overlay.type === "profile" || state.overlay.type === "inviteFriends")
+          ? { type: state.overlay.type === "inviteFriends" ? "group" : state.overlay.type, returnTo: state.overlay.returnTo || null }
+          : (state.overlay && state.overlay.type === "group" ? state.overlay.returnTo : (state.overlay && state.overlay.returnTo) || null);
+        state.overlay = { type: "group", returnTo: ret };
+        state.drafts.crewChat = "";
+        render(); return;
+      }
+      if (act === "create-group") {
+        state.err = "";
+        state.drafts.crewName = "";
+        state.drafts.crewBio = "";
+        state.drafts.crewScene = "";
+        state.drafts.crewEmoji = "🧡";
+        state.drafts.crewJoinMode = "public";
+        state.overlay = { type: "createGroup", returnTo: state.overlay && (state.overlay.type === "groups" || state.overlay.type === "group") ? { type: state.overlay.type } : { type: "groups" } };
+        render(); return;
+      }
+      if (act === "pick-crew-emoji") { state.drafts.crewEmoji = id || "🧡"; render(); return; }
+      if (act === "crew-join-mode") { state.drafts.crewJoinMode = id === "request" ? "request" : "public"; render(); return; }
+      if (act === "submit-group") {
+        const data = await api("/api/groups", { method: "POST", body: {
+          name: state.drafts.crewName, bio: state.drafts.crewBio, homeScene: state.drafts.crewScene,
+          emoji: state.drafts.crewEmoji, joinMode: state.drafts.crewJoinMode,
+        } });
+        state.group = data;
+        state.groupMessages = [];
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        state.overlay = { type: "group", returnTo: { type: "groups" } };
+        toast("Crew created. Tag some friends.");
+        render(); return;
+      }
+      if (act === "edit-group") {
+        const g = state.group && state.group.group;
+        if (!g) return;
+        state.err = "";
+        state.drafts.crewName = g.name || "";
+        state.drafts.crewBio = g.bio || "";
+        state.drafts.crewScene = g.homeScene || "";
+        state.drafts.crewEmoji = g.emoji || "🧡";
+        state.drafts.crewJoinMode = g.joinMode === "request" ? "request" : "public";
+        state.overlay = { type: "editGroup", returnTo: { type: "group" } };
+        render(); return;
+      }
+      if (act === "save-group") {
+        const gid = state.group && state.group.group && state.group.group.id;
+        const data = await api("/api/groups/" + gid, { method: "PUT", body: {
+          name: state.drafts.crewName, bio: state.drafts.crewBio, homeScene: state.drafts.crewScene,
+          emoji: state.drafts.crewEmoji, joinMode: state.drafts.crewJoinMode,
+        } });
+        state.group = data;
+        await loadCrews();
+        state.overlay = { type: "group", returnTo: { type: "groups" } };
+        render(); return;
+      }
+      if (act === "join-group") {
+        const data = await api("/api/groups/" + id + "/join", { method: "POST", body: {} });
+        state.group = data;
+        if (data.membership === "member") {
+          try { state.groupMessages = (await api("/api/groups/" + id + "/messages")).messages || []; } catch (_) { state.groupMessages = []; }
+          toast("You're in " + data.group.name);
+        } else {
+          toast("Request sent. The crew will review it.");
+        }
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        const ret = state.overlay && state.overlay.type === "groups" ? { type: "groups" } : (state.overlay && state.overlay.returnTo) || { type: "groups" };
+        state.overlay = { type: "group", returnTo: ret };
+        render(); return;
+      }
+      if (act === "leave-group") {
+        await api("/api/groups/" + id + "/leave", { method: "POST", body: {} });
+        state.group = null;
+        state.groupMessages = [];
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        state.overlay = { type: "groups" };
+        toast("You left the crew.");
+        render(); return;
+      }
+      if (act === "delete-group") {
+        await api("/api/groups/" + id, { method: "DELETE", body: {} });
+        state.group = null;
+        state.groupMessages = [];
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        state.overlay = { type: "groups" };
+        toast("Crew deleted.");
+        render(); return;
+      }
+      if (act === "accept-crew-request") {
+        const rid = el.getAttribute("data-rid");
+        await api("/api/groups/" + id + "/requests/" + rid + "/accept", { method: "POST", body: {} });
+        await Promise.all([loadCrews(), loadCrewInbox(), loadGroup(id).catch(() => null)]);
+        if (state.overlay && state.overlay.type === "group") state.overlay = { type: "group", returnTo: state.overlay.returnTo || { type: "groups" } };
+        toast("You're in.");
+        render(); return;
+      }
+      if (act === "deny-crew-request") {
+        const rid = el.getAttribute("data-rid");
+        await api("/api/groups/" + id + "/requests/" + rid + "/deny", { method: "POST", body: {} });
+        await Promise.all([loadCrews(), loadCrewInbox()]);
+        if (state.overlay && state.overlay.type === "group" && state.group && state.group.group) await loadGroup(state.group.group.id);
+        render(); return;
+      }
+      if (act === "invite-open") {
+        state.drafts.crewSearch = "";
+        state.crewPeople = [];
+        state.overlay = { type: "inviteFriends", returnTo: { type: "group" } };
+        render(); return;
+      }
+      if (act === "close-invite") {
+        state.overlay = { type: "group", returnTo: { type: "groups" } };
+        render(); return;
+      }
+      if (act === "search-people") {
+        const gid = (state.group && state.group.group && state.group.group.id) || id;
+        const q = (state.drafts.crewSearch || "").trim();
+        if (!gid || !q) { state.crewPeople = []; render(); return; }
+        const data = await api("/api/groups/" + gid + "/people?q=" + encodeURIComponent(q));
+        state.crewPeople = data.people || [];
+        render(); return;
+      }
+      if (act === "invite-friend") {
+        const gid = state.group && state.group.group && state.group.group.id;
+        await api("/api/groups/" + gid + "/invite", { method: "POST", body: { userId: Number(id) } });
+        const q = (state.drafts.crewSearch || "").trim();
+        if (q) {
+          const data = await api("/api/groups/" + gid + "/people?q=" + encodeURIComponent(q));
+          state.crewPeople = data.people || [];
+        }
+        await loadGroup(gid);
+        toast("Invite sent. They have to accept before they're added.");
+        render(); return;
+      }
+      if (act === "remove-member") {
+        const uid = el.getAttribute("data-uid");
+        const data = await api("/api/groups/" + id + "/members/" + uid + "/remove", { method: "POST", body: {} });
+        state.group = data;
+        render(); return;
+      }
+      if (act === "toggle-admin") {
+        const uid = el.getAttribute("data-uid");
+        const role = el.getAttribute("data-role") || "member";
+        const data = await api("/api/groups/" + id + "/members/" + uid + "/role", { method: "POST", body: { role } });
+        state.group = data;
+        render(); return;
+      }
+      if (act === "send-crew-chat") {
+        const text = (state.drafts.crewChat || "").trim();
+        if (!text) return;
+        const data = await api("/api/groups/" + id + "/messages", { method: "POST", body: { text } });
+        const row = Object.assign({}, data.message, { from: data.from });
+        state.groupMessages = (state.groupMessages || []).concat([row]);
+        state.drafts.crewChat = "";
+        render();
+        const log = document.querySelector(".crew-chat");
+        if (log) log.scrollTop = log.scrollHeight;
+        return;
+      }
+      if (act === "event-from-group") {
+        state.overlay = { type: "event", id, returnTo: { type: "group" } };
+        render();
+        await loadEventPosts(id);
+        if (state.overlay && state.overlay.type === "event" && state.overlay.id === id) render();
+        return;
+      }
     } catch (e) {
       if (e.data && e.data.code === "plus_required") {
         state.overlay = { type: "paywall", reason: e.data.reason || "upgrade" };
@@ -3244,7 +3696,8 @@
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
     "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
     "preview-profile", "edit-back",
-    "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers"]);
+    "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers",
+    "create-group", "pick-crew-emoji", "crew-join-mode", "edit-group", "invite-open", "close-invite"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
@@ -3360,6 +3813,15 @@
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "storyReply") {
       e.preventDefault();
       handle("story-reply", e.target);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "crewChat") {
+      e.preventDefault();
+      const send = document.querySelector("[data-act=send-crew-chat]");
+      if (send) handle("send-crew-chat", send);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "crewSearch") {
+      e.preventDefault();
+      handle("search-people", e.target);
     }
     if (e.key === "Enter" && (e.target.getAttribute("data-field") === "pass" || e.target.getAttribute("data-field") === "user")) {
       e.preventDefault();

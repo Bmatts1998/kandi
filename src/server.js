@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
+const { installGroups } = require("./group-routes");
 const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
 const { eventKey, chipLabel } = require("./event-key");
 const {
@@ -1093,6 +1094,16 @@ installStories({
   blockedSet,
   broadcastToUser,
   uploadDir,
+});
+
+installGroups({
+  app,
+  getDb: () => db,
+  auth,
+  upload,
+  publicUser,
+  blockedSet,
+  broadcastToUser: (userId, payload) => broadcastToUser(userId, payload),
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
