@@ -825,3 +825,10 @@ html { height: 100%; height: -webkit-fill-available; }
     .founding-spots .num { color: var(--orange2); font-size: 22px; font-weight: 800; letter-spacing: -.02em; text-shadow: 0 0 12px rgba(255,92,0,.45); }
     .founding-card { border-color: rgba(255,92,0,.45); box-shadow: 0 0 0 1px rgba(255,92,0,.2); }
     @media (max-width: 380px) { .upgrade-screen .upgrade-plans { grid-template-columns: 1fr; } }
+/* Instagram / Facebook buttons on a profile */
+.social-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 2px; }
+.social-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 11px 6px 9px; border-radius: 999px;
+  background: rgba(255,92,0,.12); border: 1px solid rgba(255,92,0,.45); color: #ffb07a; font-size: 12px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 0 12px rgba(255,92,0,.18); min-height: 32px; }
+.social-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.social-btn:active { background: rgba(255,92,0,.25); }

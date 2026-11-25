@@ -89,3 +89,30 @@ test.describe("QA pass regressions (iPhone WebKit)", () => {
     }
   });
 });
+
+test.describe("Instagram and Facebook on profiles (iPhone WebKit)", () => {
+  test("edit profile saves normalized socials and shows tappable IG/FB buttons", async ({ browser }) => {
+    const ctx = await browser.newContext(); const page = await ctx.newPage();
+    const u = "qa_soc_" + Date.now() % 100000;
+    await signup(page, u, "Social Tester");
+    const bad = await page.request.put("/api/me", { data: { instagram: "javascript:alert(1)" } });
+    expect(bad.status()).toBe(400);
+    const bad2 = await page.request.put("/api/me", { data: { facebook: "https://evil.com/me" } });
+    expect(bad2.status()).toBe(400);
+    await page.goto("/");
+    await page.locator('[data-act="tab"][data-id="you"]').click();
+    await page.getByRole("button", { name: "Edit Profile" }).click();
+    await page.locator('[data-field="editInstagram"]').fill("https://www.instagram.com/Rave.Girl_1/?hl=en");
+    await page.locator('[data-field="editFacebook"]').fill("facebook.com/Social.Tester");
+    await page.getByRole("button", { name: "Save" }).first().click();
+    const ig = page.locator("a.social-btn.ig");
+    await expect(ig).toBeVisible({ timeout: 20_000 });
+    await expect(ig).toHaveAttribute("href", "https://www.instagram.com/rave.girl_1/");
+    await expect(ig).toHaveAttribute("target", "_blank");
+    await expect(page.locator("a.social-btn.fb")).toHaveAttribute("href", "https://www.facebook.com/social.tester");
+    const me = await (await page.request.get("/api/me")).json();
+    expect(me.user.instagram).toBe("rave.girl_1");
+    expect(me.user.facebook).toBe("social.tester");
+    await ctx.close();
+  });
+});

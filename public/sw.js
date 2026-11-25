@@ -1,6 +1,6 @@
 // Kandi service worker: network-first for the app shell, cache-first for /uploads images.
 // Never serve a stale app shell while online (old cached app.js was a cause of "nothing works").
-const CACHE = "kandi-v12";
+const CACHE = "kandi-v13";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
   e.waitUntil(

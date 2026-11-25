@@ -238,6 +238,8 @@
     state.drafts.editFavoriteHangout = me.favoriteHangout || "";
     state.drafts.editRaveTotem = me.raveTotem || "";
     state.drafts.editYearsRaving = me.yearsRaving || "";
+    state.drafts.editInstagram = me.instagram ? "@" + me.instagram : "";
+    state.drafts.editFacebook = me.facebook && !String(me.facebook).startsWith("id:") ? me.facebook : (me.facebookUrl || "");
     state.drafts.editCustomHobby = "";
     const tuneUrls = (me.favoriteTunes || []).map((x) => x.url || "");
     for (let i = 0; i < MAX_TUNES; i++) state.drafts["editTune" + i] = tuneUrls[i] || "";
@@ -289,8 +291,45 @@
       yearsRaving: state.drafts.editYearsRaving || "",
       heightIn,
       favoriteTunes: parsedTunes.tunes,
+      instagram: String(state.drafts.editInstagram || "").trim(),
+      facebook: String(state.drafts.editFacebook || "").trim(),
     };
+    const socialErr = socialFieldError("instagram", body.instagram) || socialFieldError("facebook", body.facebook);
+    if (socialErr) return { error: socialErr };
     return { body, parsedTunes };
+  }
+
+  // Light client check + preview links; the server re-validates and stores only a clean handle.
+  function socialHandle(kind, raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    const hosts = kind === "instagram" ? /^(www\.|m\.)?(instagram\.com|instagr\.am)$/i : /^(www\.|m\.|web\.|mbasic\.)?(facebook\.com|fb\.com)$/i;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(s) || s.includes("/") || /\.(com|net|org|am|co|io|me|app|link)$/i.test(s)) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^https?:\/\//i.test(s)) return null;
+      let u; try { u = new URL(/^https?:\/\//i.test(s) ? s : "https://" + s); } catch (_) { return null; }
+      if (!hosts.test(u.hostname)) return null;
+      const first = u.pathname.split("/").filter(Boolean)[0] || "";
+      if (kind === "facebook" && first.toLowerCase() === "profile.php") { const id = u.searchParams.get("id") || ""; return /^\d{3,20}$/.test(id) ? "id:" + id : null; }
+      return socialHandle(kind, first);
+    }
+    const h = s.replace(/^@+/, "").toLowerCase();
+    if (kind === "instagram") return /^[a-z0-9._]{1,30}$/.test(h) ? h : null;
+    if (/^\d{5,20}$/.test(h)) return "id:" + h;
+    return /^[a-z0-9.]{3,50}$/.test(h) ? h : null;
+  }
+  function socialFieldError(kind, raw) {
+    if (socialHandle(kind, raw) !== null) return "";
+    return kind === "instagram" ? "Instagram must be your @handle or an instagram.com profile link." : "Facebook must be your username or a facebook.com profile link.";
+  }
+  function socialLinksHtml(p) {
+    const ig = p.instagramUrl || (p.instagram ? "https://www.instagram.com/" + p.instagram + "/" : "");
+    const fb = p.facebookUrl || (p.facebook ? (String(p.facebook).startsWith("id:") ? "https://www.facebook.com/profile.php?id=" + String(p.facebook).slice(3) : "https://www.facebook.com/" + p.facebook) : "");
+    const safe = (u, host) => /^https:\/\/www\.(instagram|facebook)\.com\//.test(u) && u.includes(host) ? u : "";
+    const igU = safe(ig, "instagram.com"), fbU = safe(fb, "facebook.com");
+    if (!igU && !fbU) return "";
+    const igIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.4" cy="6.6" r="1.3" fill="currentColor"/></svg>`;
+    const fbIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.6-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.9v3h2.6V21h3z"/></svg>`;
+    return `<div class="social-links">${igU ? `<a class="social-btn ig" href="${esc(igU)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(p.name || "their")}'s Instagram">${igIcon}<span>@${esc(p.instagram || "")}</span></a>` : ""}${fbU ? `<a class="social-btn fb" href="${esc(fbU)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(p.name || "their")}'s Facebook">${fbIcon}<span>${esc(p.facebook && !String(p.facebook).startsWith("id:") ? p.facebook : "Facebook")}</span></a>` : ""}</div>`;
   }
 
   function draftPreviewUser() {
@@ -310,6 +349,10 @@
       upcomingHidden: me.showUpcoming === false,
       showUpcoming: me.showUpcoming,
       favoriteTunes: b.favoriteTunes,
+      instagram: socialHandle("instagram", b.instagram) || "",
+      instagramUrl: "",
+      facebook: socialHandle("facebook", b.facebook) || "",
+      facebookUrl: "",
     });
     return { user: preview };
   }
@@ -594,6 +637,7 @@
       <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}${founderBadge(p)}</div>
       <div class="muted">@${esc(p.username)}${pronouns}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
       ${genreRow(p)}
+      ${socialLinksHtml(p)}
       ${buttons}
     </div></div>`;
     html += `<div class="counts">
@@ -2687,6 +2731,10 @@
       <input data-field="editRaveTotem" placeholder="How do people find you in the crowd?" value="${esc(state.drafts.editRaveTotem || "")}" />
       <div class="label" style="margin-top:12px">Years raving</div>
       <input data-field="editYearsRaving" placeholder="e.g. 6" value="${esc(state.drafts.editYearsRaving || "")}" />
+      <div class="label" style="margin-top:18px">Socials (optional)</div>
+      <p class="tiny">Show small Instagram and Facebook buttons on your profile.</p>
+      <input data-field="editInstagram" aria-label="Instagram handle" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" placeholder="Instagram @handle or link" value="${esc(state.drafts.editInstagram || "")}" style="margin-top:6px" />
+      <input data-field="editFacebook" aria-label="Facebook profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Facebook username or profile link" value="${esc(state.drafts.editFacebook || "")}" style="margin-top:8px" />
       <div class="label" style="margin-top:18px">My Tunes</div>
       <p class="tiny">Paste up to 5 links from Spotify, SoundCloud, or Apple Music — tracks, playlists, or albums. We'll show a player on your profile.</p>
       ${tunes}

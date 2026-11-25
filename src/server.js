@@ -1,6 +1,7 @@
 "use strict";
 
 require("./load-env");
+const socials = require("./socials");
 
 const fs = require("fs");
 const path = require("path");
@@ -312,6 +313,7 @@ function publicUser(u, extra) {
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
+    ...socials.publicSocials(u),
     subscription: u.subscription || null,
     createdAt: u.created_at,
     vibes: normalizeGenreIds(parseJsonList(u.vibes, [])),
@@ -618,8 +620,20 @@ app.put("/api/me", auth, async (req, res) => {
   if (body.homeLocation !== undefined || body.home_location !== undefined) {
     homeLocation = clipText(body.homeLocation != null ? body.homeLocation : body.home_location, 80, "");
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, req.user.id
+  let instagram = req.user.instagram || "";
+  if (body.instagram != null) {
+    const r = socials.normalizeInstagram(body.instagram);
+    if (r.error) return res.status(400).json({ error: r.error, field: "instagram" });
+    instagram = r.value;
+  }
+  let facebook = req.user.facebook || "";
+  if (body.facebook != null) {
+    const r = socials.normalizeFacebook(body.facebook);
+    if (r.error) return res.status(400).json({ error: r.error, field: "facebook" });
+    facebook = r.value;
+  }
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, req.user.id
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
