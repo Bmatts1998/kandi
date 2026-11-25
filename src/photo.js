@@ -176,7 +176,14 @@ class BufferCache {
     this.map.set(key, { buffer, mime: value.mime });
     this.bytes += buffer.length;
   }
+  forgetPrefix(prefix) {
+    for (const [k, v] of this.map) {
+      if (k.startsWith(prefix)) { this.map.delete(k); this.bytes -= v.buffer.length; }
+    }
+  }
 }
+// Deleted media stops being served from memory right away.
+function forgetMedia(id) { if (id) mediaCache.forgetPrefix(String(id) + ":"); }
 
 const mediaCache = new BufferCache();
 
@@ -510,6 +517,7 @@ function startPhotoBackfill(db) {
 }
 
 module.exports = {
+  forgetMedia,
   sniffImageMime,
   normalizePhoto,
   buildVariants,

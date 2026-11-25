@@ -311,6 +311,8 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
           if (videoFile.size > videoCap) {
             return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
           }
+          const room = await require("./storage-guard").videoUploadAllowed(db());
+          if (!room.ok) return res.status(507).json({ error: room.error, code: "storage_full" });
           const mime = sniffVideoMime(videoFile.buffer, videoFile.originalname, videoFile.mimetype)
             || (sniffImageMime(videoFile.buffer) ? null : "video/mp4");
           if (!mime || !String(mime).startsWith("video/")) {

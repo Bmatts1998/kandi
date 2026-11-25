@@ -124,8 +124,12 @@ function cachePut(id, entry) {
     cache.delete(k); cacheBytes -= v.buffer.length;
   }
 }
+function cacheDelete(id) {
+  const hit = cache.get(id);
+  if (hit) { cache.delete(id); cacheBytes -= hit.buffer.length; }
+}
 function etagFor(id) {
   return '"' + crypto.createHash("sha1").update(String(id)).digest("hex").slice(0, 16) + '"';
 }
 
-module.exports = { finishVideo, findFfmpeg, cacheGet, cachePut, etagFor, parseInfo };
+module.exports = { finishVideo, findFfmpeg, cacheGet, cachePut, cacheDelete, etagFor, parseInfo };

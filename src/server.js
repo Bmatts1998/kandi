@@ -28,6 +28,7 @@ const { contentRejected, rejectedFromAll } = require("./content-filter");
 
 const { sendBuffer, MAX_VIDEO_BYTES } = require("./media");
 const videoTools = require("./video");
+const storageGuard = require("./storage-guard");
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 const { createEngagement, compareDiscover, compareGoers } = require("./engagement");
 const { createDemoChat } = require("./demo-chat");
@@ -259,6 +260,16 @@ async function auth(req, res, next) {
 }
 
 const MAX_PROFILE_PHOTOS = 6;
+const MAX_PROFILE_VIDEOS = 3;
+// Profile media is one ordered list (users.photos): photo entries and { type: "video" } entries.
+// Slot 1 must always be a photo so Discover, avatars and share cards keep a face.
+function isVideoEntry(ph) { return Boolean(ph && ph.type === "video"); }
+function photosOnly(list) { return (list || []).filter((ph) => ph && !isVideoEntry(ph)); }
+function videosOnly(list) { return (list || []).filter(isVideoEntry); }
+function fileIdFromUrl(url) {
+  const m = String(url || "").match(/^\/uploads\/([^/?#]+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 function parsePhotos(raw) {
   try {
@@ -270,6 +281,7 @@ function parsePhotos(raw) {
 }
 
 function fileIdFromPhoto(ph) {
+  if (isVideoEntry(ph)) return fileIdFromUrl(ph.url);
   if (!ph || ph.type !== "file" || !ph.url) return null;
   const m = String(ph.url).match(/^\/uploads\/([^/?#]+)$/);
   return m ? decodeURIComponent(m[1]) : null;
@@ -293,6 +305,8 @@ async function deletePhotoFileIfOwned(fileId, userId) {
   const row = await db.prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
   if (!row || Number(row.user_id) !== Number(userId)) return;
   await db.prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
+  videoTools.cacheDelete(fileId);
+  require("./photo").forgetMedia(fileId);
   try { fs.unlinkSync(path.join(uploadDir, fileId)); } catch (_) { /* ephemeral disk is ok */ }
 }
 
@@ -312,7 +326,8 @@ function publicUser(u, extra) {
     vibes: parseJsonList(u.vibes, []),
     looking: parseJsonList(u.looking, []),
     prompts: parseJsonList(u.prompts, []),
-    photos: parseJsonList(u.photos, []),
+    photos: photosOnly(parseJsonList(u.photos, [])),
+    media: parseJsonList(u.photos, []).filter(Boolean),
     events: parseJsonList(u.events, []),
     gender: u.gender || "",
     pronouns: u.pronouns || "",
@@ -724,7 +739,7 @@ app.post("/api/me/photo", auth, async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "Choose a photo to upload." });
     const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
     const photos = parsePhotos(fresh && fresh.photos);
-    if (photos.length >= MAX_PROFILE_PHOTOS) {
+    if (photosOnly(photos).length >= MAX_PROFILE_PHOTOS) {
       return res.status(400).json({ error: "You can add up to 6 photos. Remove one to add another." });
     }
     let fileId;
@@ -749,8 +764,17 @@ app.delete("/api/me/photo/:index", auth, async (req, res) => {
   if (!Number.isInteger(index) || index < 0 || index >= photos.length) {
     return res.status(404).json({ error: "Photo not found." });
   }
+  if (!isVideoEntry(photos[index]) && photosOnly(photos).length === 1 && videosOnly(photos).length) {
+    return res.status(400).json({ error: "Keep at least one photo so people can see your face. Add another photo first, or remove your videos." });
+  }
   const removed = photos.splice(index, 1)[0];
+  // Slot 1 stays a photo.
+  if (photos.length && isVideoEntry(photos[0])) {
+    const i = photos.findIndex((ph) => !isVideoEntry(ph));
+    if (i > 0) photos.unshift(photos.splice(i, 1)[0]);
+  }
   await deletePhotoFileIfOwned(fileIdFromPhoto(removed), req.user.id);
+  if (isVideoEntry(removed) && removed.poster) await deletePhotoFileIfOwned(fileIdFromUrl(removed.poster), req.user.id);
   const user = await saveUserPhotos(req.user.id, photos);
   res.json({ user });
 });
@@ -761,12 +785,59 @@ app.post("/api/me/photo/main", auth, async (req, res) => {
   if (!Number.isInteger(index) || index < 0 || index >= photos.length) {
     return res.status(400).json({ error: "Pick one of your photos to set as main." });
   }
+  if (isVideoEntry(photos[index])) return res.status(400).json({ error: "Your main slot has to be a photo so people can see your face." });
   if (index !== 0) {
     const [picked] = photos.splice(index, 1);
     photos.unshift(picked);
   }
   const user = await saveUserPhotos(req.user.id, photos);
   res.json({ user });
+});
+
+// Profile videos: same browser shrink (public/video-prep.js), server finish and storage as posts/stories.
+app.post("/api/me/video", auth, (req, res) => {
+  uploadPost.fields([{ name: "video", maxCount: 1 }, { name: "poster", maxCount: 1 }])(req, res, async (err) => {
+    try {
+      if (err) {
+        const msg = err.code === "LIMIT_FILE_SIZE"
+          ? "That video didn't get shrunk before sending. Close and reopen Kandi, then try again."
+          : (err.message || "Upload failed");
+        return res.status(400).json({ error: msg });
+      }
+      const files = req.files || {};
+      const videoFile = (files.video && files.video[0]) || null;
+      const posterFile = (files.poster && files.poster[0]) || null;
+      if (!videoFile) return res.status(400).json({ error: "Choose a video to add." });
+      const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+      const list = parsePhotos(fresh && fresh.photos);
+      if (!photosOnly(list).length) return res.status(400).json({ error: "Add a photo first. Your first slot is always a photo so people can see your face." });
+      if (videosOnly(list).length >= MAX_PROFILE_VIDEOS) return res.status(400).json({ error: "You can add up to " + MAX_PROFILE_VIDEOS + " videos. Remove one to add another." });
+      if (videoFile.size > MAX_VIDEO_BYTES) return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
+      const room = await storageGuard.videoUploadAllowed(db);
+      if (!room.ok) return res.status(507).json({ error: room.error, code: "storage_full" });
+      const { sniffVideoMime } = require("./media");
+      const mime = sniffVideoMime(videoFile.buffer, videoFile.originalname, videoFile.mimetype);
+      if (!mime || !String(mime).startsWith("video/")) return res.status(400).json({ error: "Please choose a short video (.mov or .mp4)." });
+      const done = await videoTools.finishVideo(videoFile.buffer, mime, { maxSeconds: 60, wantPoster: true });
+      if (done.tooLong) return res.status(400).json({ error: "Videos can be up to 60 seconds. Trim it in Photos and try again." });
+      const videoId = await savePhotoFile(db, { userId: req.user.id, buffer: done.buffer, mime: done.mime, ext: done.ext });
+      storageGuard.noteBytes(done.buffer.length);
+      let posterId = null;
+      try {
+        const posterMime = posterFile ? require("./photo").sniffImageMime(posterFile.buffer) : null;
+        if (posterFile && posterMime) posterId = await savePhotoFile(db, { userId: req.user.id, buffer: posterFile.buffer, mime: posterMime });
+        if (!posterId && done.poster) posterId = await savePhotoFile(db, { userId: req.user.id, buffer: done.poster, mime: "image/jpeg", ext: ".jpg" });
+      } catch (_) { posterId = null; /* poster is optional */ }
+      const duration = Math.round(Number(done.duration) || Number(req.body && req.body.duration) || 0);
+      list.push({ type: "video", url: "/uploads/" + videoId, poster: posterId ? "/uploads/" + posterId : null, duration: Math.min(60, Math.max(0, duration)), caption: "" });
+      const user = await saveUserPhotos(req.user.id, list);
+      console.log("profile-video ok", { userId: Number(req.user.id), bytes: done.buffer.length, videoId });
+      res.json({ user });
+    } catch (e) {
+      console.error("profile video upload failed:", e && (e.message || e));
+      res.status(500).json({ error: "Couldn't add that video. Try again." });
+    }
+  });
 });
 
 app.put("/api/me/photos", auth, async (req, res) => {
@@ -783,6 +854,7 @@ app.put("/api/me/photos", auth, async (req, res) => {
     return res.status(400).json({ error: "That photo order isn't valid." });
   }
   const next = idxs.map((i) => photos[i]);
+  if (next.length && isVideoEntry(next[0])) return res.status(400).json({ error: "Your first slot has to be a photo so people can see your face." });
   const user = await saveUserPhotos(req.user.id, next);
   res.json({ user });
 });

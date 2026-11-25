@@ -297,6 +297,8 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
           }
           mediaId = await storeBuffer(req.user.id, normalized.buffer, normalized.mime, normalized.ext);
         } else if (videoMime) {
+          const room = await require("./storage-guard").videoUploadAllowed(db());
+          if (!room.ok) return res.status(507).json({ error: room.error, code: "storage_full" });
           if (file.size > MAX_STORY_VIDEO_BYTES) {
             return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
           }

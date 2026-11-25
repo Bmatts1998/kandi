@@ -53,8 +53,10 @@ test.describe("Profile preview, edit, and posts (iPhone WebKit)", () => {
     await page.getByRole("button", { name: "Edit Profile" }).click();
     await expect(page.locator(".overlay .header", { hasText: "Edit Profile" })).toBeVisible();
     await expect(page.locator(".photo-editor")).toBeVisible();
-    await expect(page.locator(".photo-editor input.file-sr")).toHaveCount(1);
-    const fileId = await page.locator(".photo-editor input.file-sr").getAttribute("id");
+    await expect(page.locator('.photo-editor input.file-sr[data-act-file="upload-photo"]')).toHaveCount(1);
+    const fileId = await page.locator('.photo-editor input.file-sr[data-act-file="upload-photo"]').getAttribute("id");
+    // Profile videos: one video picker (accept video/*) next to the photo grid.
+    await expect(page.locator('.photo-editor input.file-sr[data-act-file="upload-video"]')).toHaveAttribute("accept", "video/*");
     expect(fileId).toBeTruthy();
     expect(await page.locator(`.photo-editor label[for="${fileId}"]`).count()).toBeGreaterThan(0);
     await expect(page.locator(".photo-slot.add").first()).toHaveAttribute("for", fileId);

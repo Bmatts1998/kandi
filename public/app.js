@@ -322,6 +322,92 @@
       </div>
     </div>`;
   }
+  // ---- Profile videos: inline, muted first, never full-screen; one at a time ----
+  const MAX_PROFILE_VIDEOS = 3;
+  const vidPlayer = { el: null, key: "", sound: false };
+  function mediaOf(p) { return (p && Array.isArray(p.media) ? p.media : (p && p.photos) || []).filter(Boolean); }
+  function videosOf(p) { return mediaOf(p).filter((m) => m.type === "video" && m.url); }
+  function fmtDur(s) { s = Math.round(Number(s) || 0); return s ? Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : ""; }
+  function videoTileHtml(entry, key, opts) {
+    opts = opts || {};
+    const on = vidPlayer.key === key;
+    const bg = entry.poster ? `background-image:url('${esc(mediaUrl(entry.poster, opts.big ? 1080 : 480))}')` : "background:#111";
+    return `<div class="vid-tile${opts.big ? " big" : ""}${opts.cls ? " " + opts.cls : ""}${on ? " playing" : ""}${on && vidPlayer.sound ? " sound" : ""}" data-video-key="${esc(key)}" data-src="${esc(entry.url)}" data-poster="${esc(entry.poster ? mediaUrl(entry.poster, 1080) : "")}" style="${bg}">
+      <button type="button" class="vid-hit" data-act="video-tap" data-key="${esc(key)}" aria-label="${on ? (vidPlayer.sound ? "Stop video" : "Turn on sound") : "Play video, muted"}"></button>
+      <span class="vid-badge" aria-hidden="true">${kIcon("play")}</span>
+      ${entry.duration ? `<span class="vid-dur" aria-hidden="true">${fmtDur(entry.duration)}</span>` : ""}
+      <span class="vid-sound" aria-hidden="true"><span class="off">${kIcon("soundOff")}</span><span class="on">${kIcon("soundOn")}</span></span>
+      ${opts.extra || ""}
+    </div>`;
+  }
+  function paintVideoTiles() {
+    document.querySelectorAll("[data-video-key]").forEach((n) => {
+      const on = Boolean(vidPlayer.key) && n.getAttribute("data-video-key") === vidPlayer.key;
+      n.classList.toggle("playing", on);
+      n.classList.toggle("sound", on && vidPlayer.sound);
+      const b = n.querySelector(".vid-hit");
+      if (b) b.setAttribute("aria-label", on ? (vidPlayer.sound ? "Stop video" : "Turn on sound") : "Play video, muted");
+    });
+  }
+  function stopVideo() {
+    const v = vidPlayer.el;
+    vidPlayer.el = null; vidPlayer.key = ""; vidPlayer.sound = false;
+    if (v) {
+      try { v.pause(); } catch (_) {}
+      try { v.removeAttribute("src"); v.load(); } catch (_) {}
+      try { v.remove(); } catch (_) {}
+    }
+    paintVideoTiles();
+  }
+  function videoTileFor(key) {
+    return Array.from(document.querySelectorAll("[data-video-key]")).find((n) => n.getAttribute("data-video-key") === key) || null;
+  }
+  function videoTap(key) {
+    const tile = videoTileFor(key);
+    if (!tile) return;
+    if (vidPlayer.key === key && vidPlayer.el) {
+      if (!vidPlayer.sound) {
+        vidPlayer.sound = true;
+        stopSong();
+        vidPlayer.el.muted = false;
+        const pr = vidPlayer.el.play();
+        if (pr && pr.catch) pr.catch(() => {});
+        paintVideoTiles();
+      } else stopVideo();
+      return;
+    }
+    stopVideo();
+    const v = document.createElement("video");
+    v.className = "vid-el";
+    v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
+    v.playsInline = true; v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "true");
+    v.setAttribute("disablepictureinpicture", ""); v.setAttribute("disableremoteplayback", "");
+    v.preload = "auto";
+    if (tile.getAttribute("data-poster")) v.poster = tile.getAttribute("data-poster");
+    v.addEventListener("ended", () => { if (vidPlayer.el === v) stopVideo(); });
+    v.addEventListener("error", () => { if (vidPlayer.el === v) { stopVideo(); toast("That video won't play right now.", "err"); } });
+    v.addEventListener("pause", () => { if (vidPlayer.el === v && !v.ended && document.contains(v)) stopVideo(); });
+    v.src = tile.getAttribute("data-src");
+    vidPlayer.el = v; vidPlayer.key = key; vidPlayer.sound = false;
+    tile.appendChild(v);
+    const pr = v.play();
+    if (pr && pr.catch) pr.catch(() => { if (vidPlayer.el === v) { stopVideo(); toast("Tap the video again to play it."); } });
+    paintVideoTiles();
+  }
+  // After every render: keep the playing video in its tile, or stop it if the tile is gone.
+  function syncVideo() {
+    if (!vidPlayer.key) return;
+    const tile = videoTileFor(vidPlayer.key);
+    if (!tile || !vidPlayer.el) { stopVideo(); return; }
+    if (vidPlayer.el.parentNode !== tile) tile.appendChild(vidPlayer.el);
+    paintVideoTiles();
+  }
+  function profileVideos(p, keyPrefix) {
+    const vids = videosOf(p);
+    if (!vids.length) return "";
+    return `<section class="prof-videos"><div class="label">Videos</div><div class="vid-row">${vids.map((v, i) => videoTileHtml(v, keyPrefix + "-v" + i)).join("")}</div></section>`;
+  }
+
   const MAX_SONGS = 5;
   function mySongs(p) {
     const list = p && Array.isArray(p.songs) ? p.songs : (p && p.favoriteSong ? [p.favoriteSong] : []);
@@ -748,10 +834,12 @@
     return null;
   }
 
-  function profilePhotoStrip(photos) {
+  function profilePhotoStrip(photos, keyPrefix) {
     const list = (photos || []).filter(Boolean);
     if (!list.length) return "";
-    return `<div class="photo-strip" aria-label="Photos">` + list.map((ph) => {
+    let vi = 0;
+    return `<div class="photo-strip" aria-label="Photos and videos">` + list.map((ph) => {
+      if (ph.type === "video" && ph.url) return videoTileHtml(ph, (keyPrefix || "ps") + "-s" + (vi++), { cls: "photo-strip-item" });
       if (ph.type === "file" && ph.url) return `<div class="photo-strip-item" ${lazyBg(ph.url, 320)}></div>`;
       const bg = ph.gradient ? `background:${esc(ph.gradient)}` : "background:#141414";
       return `<div class="photo-strip-item" style="${bg}"><span>${esc(ph.emoji || "")}</span></div>`;
@@ -876,6 +964,7 @@
       <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
     </div>`;
     html += profileSongs(p, (opts.asOthers ? "pv" : "p") + p.id);
+    html += profileVideos(p, (opts.asOthers ? "pv" : "p") + p.id);
     html += profileCrewSlot();
     const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
@@ -884,7 +973,7 @@
       <button type="button" class="${tab === "about" ? "on" : ""}" data-act="profile-tab" data-id="about">About</button>
     </div>`;
     if (tab === "about") {
-      html += profilePhotoStrip(p.photos);
+      html += profilePhotoStrip(mediaOf(p), (opts.asOthers ? "pv" : "p") + p.id);
       if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
       else if (isMe) html += `<p class="muted prof-bio">No bio yet. Tap Edit Profile to add one.</p>`;
       html += profileDetails(p, false);
@@ -1155,6 +1244,10 @@
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
     rewind: '<path d="M4 4v5h5"/><path d="M5.1 15a7.5 7.5 0 1 0 .5-6.3L4 9"/>',
     up: '<path d="M6 14l6-6 6 6"/>',
+    play: '<path d="M8 5.5v13l10.5-6.5L8 5.5Z" fill="currentColor"/>',
+    soundOff: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4v-5Z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+    soundOn: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4v-5Z"/><path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+    video: '<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3"/>',
     down: '<path d="M6 10l6 6 6-6"/>',
     external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
   };
@@ -1711,17 +1804,26 @@
   }
   function photoEditor(photos) {
     const list = photos || [];
-    const empty = Math.max(0, 6 - list.length);
+    const nPhotos = list.filter((ph) => ph.type !== "video").length;
+    const nVideos = list.length - nPhotos;
+    const empty = Math.max(0, 6 - nPhotos);
     let slots = list.map((ph, i) => {
-      const inner = (ph.type === "file" && ph.url) ? "" : `<span style="font-size:36px;display:grid;place-items:center;height:100%">${esc(ph.emoji || initialOf(state.me))}</span>`;
-      return `<div class="photo-slot${i === 0 ? " main" : ""}" style="${photoThumbStyle(ph)}" draggable="true" data-drag-i="${i}">
+      const isVid = ph.type === "video";
+      const style = isVid ? (ph.poster ? `background-image:url('${esc(thumbUrl(ph.poster))}')` : "background:#111") : photoThumbStyle(ph);
+      const inner = isVid
+        ? `<span class="slot-vid" aria-hidden="true">${kIcon("play")}</span>${ph.duration ? `<span class="vid-dur">${fmtDur(ph.duration)}</span>` : ""}`
+        : ((ph.type === "file" && ph.url) ? "" : `<span style="font-size:36px;display:grid;place-items:center;height:100%">${esc(ph.emoji || initialOf(state.me))}</span>`);
+      const canLeft = i > 0 && !(isVid && i === 1);
+      const canRight = i < list.length - 1 && !(i === 0 && list[1] && list[1].type === "video");
+      return `<div class="photo-slot${i === 0 ? " main" : ""}${isVid ? " video" : ""}" style="${style}" draggable="true" data-drag-i="${i}">
         ${i === 0 ? `<span class="main-tag">Main</span>` : ""}
+        ${isVid ? `<span class="main-tag vid-tag">Video</span>` : ""}
         ${inner}
-        <button class="slot-x" type="button" data-act="del-photo" data-i="${i}" aria-label="Remove photo">×</button>
+        <button class="slot-x" type="button" data-act="del-photo" data-i="${i}" aria-label="Remove ${isVid ? "video" : "photo"}">×</button>
         <div class="slot-tools">
-          ${i > 0 ? `<button type="button" data-act="photo-left" data-i="${i}" aria-label="Move left">‹</button>` : ""}
-          ${i < list.length - 1 ? `<button type="button" data-act="photo-right" data-i="${i}" aria-label="Move right">›</button>` : ""}
-          ${i > 0 ? `<button type="button" data-act="photo-main" data-i="${i}">Set as main</button>` : ""}
+          ${canLeft ? `<button type="button" data-act="photo-left" data-i="${i}" aria-label="Move left">‹</button>` : ""}
+          ${canRight ? `<button type="button" data-act="photo-right" data-i="${i}" aria-label="Move right">›</button>` : ""}
+          ${i > 0 && !isVid ? `<button type="button" data-act="photo-main" data-i="${i}">Set as main</button>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -1729,12 +1831,48 @@
     for (let i = 0; i < empty; i++) {
       slots += `<label class="photo-slot add" for="${addFile.id}"><span>+</span></label>`;
     }
+    const canVideo = nPhotos > 0 && nVideos < MAX_PROFILE_VIDEOS && window.KandiVideo;
+    const addVid = canVideo ? hiddenFileInput("upload-video", "Add a profile video", { accept: "video/*" }) : null;
     return `<div class="photo-editor">
-      ${addFile.input}
+      ${addFile.input}${addVid ? addVid.input : ""}
       <div class="photo-grid">${slots}</div>
-      <p class="photo-hint">${list.length}/6 photos. Tap the camera or a + square to add one. On iPhone this offers Take Photo or Photo Library. Any size or format is fine — we'll shrink it automatically.</p>
-      ${uploadBusy()}
+      ${addVid ? `<label class="btn ghost add-video-btn" for="${addVid.id}">${kIcon("video")}<span>Add a video</span></label>` : ""}
+      <p class="photo-hint">${nPhotos}/6 photos · ${nVideos}/${MAX_PROFILE_VIDEOS} videos (up to 60 seconds each). Drag or use the arrows to reorder. Your first slot is always a photo.${nPhotos ? "" : " Add a photo first to add videos."} Any size is fine — we shrink it automatically.</p>
+      ${state.videoUpload ? `<div class="upload-busy video-up"><span class="spin"></span>${esc(state.videoUpload.text || "Getting your video ready…")}</div>` : uploadBusy()}
     </div>`;
+  }
+  async function uploadProfileVideo(file) {
+    if (state.uploadingPhoto || state.videoUpload) return;
+    const KV = window.KandiVideo;
+    if (!KV || !KV.isVideoFile(file)) { toast("Choose a video from your library.", "err"); return; }
+    const vids = videosOf(state.me);
+    if (vids.length >= MAX_PROFILE_VIDEOS) { toast("You can add up to " + MAX_PROFILE_VIDEOS + " videos. Remove one to add another.", "warn"); return; }
+    const job = { text: "Getting your video ready… 0% · keep Kandi open" };
+    state.videoUpload = job;
+    state.uploadingPhoto = true;
+    state.uploadError = "";
+    render();
+    const paint = () => { document.querySelectorAll(".video-up").forEach((n) => { n.innerHTML = `<span class="spin"></span>${esc(job.text)}`; }); };
+    try {
+      const meta = await KV.probe(file).catch(() => ({ duration: 0 }));
+      const prepared = await KV.prepare(file, { meta, maxSeconds: MAX_VIDEO_SECONDS, maxBytes: MAX_VIDEO_BYTES, onProgress: (pct) => { job.text = "Getting your video ready… " + pct + "% · keep Kandi open"; paint(); } });
+      const fd = new FormData();
+      fd.append("video", prepared.file, prepared.file.name || "clip.mp4");
+      if (prepared.poster) fd.append("poster", prepared.poster, "poster.jpg");
+      if (prepared.duration) fd.append("duration", String(Math.round(prepared.duration)));
+      job.text = "Uploading video 0%…"; paint();
+      const data = await KV.upload("/api/me/video", fd, (pct) => { job.text = "Uploading video " + pct + "%…"; paint(); });
+      if (!data.user) throw new Error("Upload failed");
+      state.me = data.user;
+      toast(prepared.trimmed ? "Video added (first 60 seconds)" : "Video added");
+    } catch (err) {
+      state.uploadError = (err && err.message) || "Couldn't add that video. Try another one.";
+      toast(state.uploadError, "err");
+    } finally {
+      state.videoUpload = null;
+      state.uploadingPhoto = false;
+      render();
+    }
   }
   function u16(buf, i, le) {
     return le ? (buf[i] | (buf[i + 1] << 8)) : ((buf[i] << 8) | buf[i + 1]);
@@ -2199,7 +2337,7 @@
   }
   function notifText(n) {
     const who = n.user ? `<strong>${esc(n.user.name)}</strong>` : "<strong>Someone</strong>";
-    if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : "photo"}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">${!isNativeIos() && paymentsEnabled() ? "See who with Kandi+" : "Keep exploring Discover. If you like them back, it's a match."}</span>`;
+    if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : (/^v\d/.test(String(n.targetId || "")) ? "video" : "photo")}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">${!isNativeIos() && paymentsEnabled() ? "See who with Kandi+" : "Keep exploring Discover. If you like them back, it's a match."}</span>`;
     if (n.kind === "match") return `You matched with ${who}. Say hi!`;
     if (n.kind === "post_like") return `${who} liked your post`;
     if (n.kind === "comment") return `${who} commented: “${esc(n.text)}”`;
@@ -2511,7 +2649,7 @@
       const hasPhoto = hasRealPhoto(me.photos);
       body = `<p class="sub">${hasPhoto ? "Looking good. You can add up to 6 photos, set a main, or rearrange them." : "Add a photo so people can recognize you on the floor. Take one or pick from your library. You can skip and add one later, but profiles with photos get more likes."}</p>
         <div style="display:flex;justify-content:center;margin:16px 0 8px">${profileAvatarEditor(me)}</div>
-        ${photoEditor(me.photos)}`;
+        ${photoEditor(mediaOf(me))}`;
     } else {
       body = `<div class="notice warn"><strong>PLUR, always.</strong> Ask before you touch, wait for a yes, and look out for each other. Dates and hookups are fine — pressure is not.</div>
         <p class="sub">You can share a meetup note with a friend at a show, and you can report or block anyone at any time.</p>`;
@@ -2553,6 +2691,8 @@
       <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
     if (mySongs(p).length) parts.push(`<div class="disco-song">${discoverSongs(p)}</div>`);
+    const dv = videosOf(p);
+    if (dv.length) parts.push(videoTileHtml(dv[0], "d" + p.id + "-v0", { big: true, extra: `<button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="v0" aria-label="Like this video">♡</button>` }));
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
     if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
     if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
@@ -2598,7 +2738,7 @@
     }
     return head + `<div class="scroll pad">${state.inbound.people.map((p) => {
       const info = p.liked || {};
-      const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
+      const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : (/^v\d/.test(String(info.targetId || "")) ? "a video" : "a photo");
       return `<div class="card" style="margin-bottom:10px"><div class="row">
         <button class="av-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av md")}</button>
         <div class="grow"><div style="font-weight:600">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2 })}
@@ -3117,7 +3257,7 @@
       tunes += `<input data-field="editTune${i}" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Paste a Spotify, SoundCloud, or Apple Music link" value="${esc(state.drafts["editTune" + i] || "")}" style="margin-top:8px" />`;
     }
     return `<div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
-      ${photoEditor(me.photos)}
+      ${photoEditor(mediaOf(me))}
       <div class="label" style="margin-top:8px">Name</div>
       <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
       <div class="label" style="margin-top:12px">Age (18+)</div>
@@ -4173,6 +4313,7 @@
       renderFailures = 0;
       if (songAudio.key && !document.querySelector('[data-song-key="' + songAudio.key.replace(/"/g, "") + '"]')) stopSong();
       else if (songAudio.key) songPaint();
+      syncVideo();
     } catch (err) {
       appParts = null;
       renderFailures++;
@@ -4295,6 +4436,7 @@
         if (d && d.songs) d.songs.splice(Number(id) || 0, 1);
         render(); return;
       }
+      if (act === "video-tap") { videoTap(el.getAttribute("data-key") || ""); return; }
       if (act === "song-up" || act === "song-down") {
         const d = state.editDraft; const i = Number(id) || 0; const j = act === "song-up" ? i - 1 : i + 1;
         if (d && d.songs && j >= 0 && j < d.songs.length) { const t = d.songs[i]; d.songs[i] = d.songs[j]; d.songs[j] = t; }
@@ -4558,6 +4700,7 @@
       }
       if (act === "del-photo") {
         const i = Number(el.getAttribute("data-i"));
+        stopVideo();
         const data = await api("/api/me/photo/" + i, { method: "DELETE", body: {} });
         state.me = data.user;
         render(); return;
@@ -4570,7 +4713,7 @@
       }
       if (act === "photo-left" || act === "photo-right") {
         const i = Number(el.getAttribute("data-i"));
-        const photos = (state.me && state.me.photos) || [];
+        const photos = mediaOf(state.me);
         const j = act === "photo-left" ? i - 1 : i + 1;
         if (j < 0 || j >= photos.length) return;
         const order = photos.map((_, n) => n);
@@ -5667,7 +5810,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
@@ -5962,6 +6105,12 @@
       render();
       return;
     }
+    if (kind === "upload-video") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (file) await uploadProfileVideo(file);
+      return;
+    }
     if (kind === "upload-photo" || kind === "upload-photo-main") {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
@@ -6054,7 +6203,7 @@
     const to = Number(slot.getAttribute("data-drag-i"));
     const from = dragFrom;
     dragFrom = null;
-    const photos = (state.me && state.me.photos) || [];
+    const photos = mediaOf(state.me);
     if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= photos.length || to >= photos.length) return;
     const order = photos.map((_, n) => n);
     const [moved] = order.splice(from, 1);
