@@ -1020,6 +1020,11 @@ async function migrate(db) {
   await migrateBilling(db);
   await migrateFounding(db);
   await migrateEmail(db);
+  if (db.driver === "postgres") {
+    await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_song TEXT DEFAULT ''");
+  } else {
+    try { await db.exec("ALTER TABLE users ADD COLUMN favorite_song TEXT DEFAULT ''"); } catch (_) {}
+  }
 }
 
 // Email + verification + password reset. Existing rows get email_verify_required=0,

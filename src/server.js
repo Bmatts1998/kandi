@@ -36,6 +36,7 @@ const billing = require("./stripe-billing");
 const founding = require("./founding");
 const iap = require("./iap");
 const mailer = require("./email");
+const songs = require("./song");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -326,6 +327,7 @@ function publicUser(u, extra) {
     heightIn: u.height_in == null || u.height_in === "" ? null : Number(u.height_in),
     hobbies: parseJsonList(u.hobbies, []),
     favoriteTunes: parseTunes(parseJsonList(u.favorite_tunes, [])).tunes,
+    favoriteSong: songs.parseStoredSong(u.favorite_song),
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
@@ -674,8 +676,19 @@ app.put("/api/me", auth, async (req, res) => {
     if (r.error) return res.status(400).json({ error: r.error, field: "facebook" });
     facebook = r.value;
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, req.user.id
+  // Favorite song: object from /api/music/search, or null/"" to clear. Omitted = unchanged.
+  let favoriteSong = req.user.favorite_song || "";
+  if (body.favoriteSong !== undefined) {
+    if (body.favoriteSong === null || body.favoriteSong === "" || body.favoriteSong === false) {
+      favoriteSong = "";
+    } else {
+      const song = songs.normalizeSong(body.favoriteSong);
+      if (!song) return res.status(400).json({ error: "Pick your favorite song from the search results.", field: "favoriteSong" });
+      favoriteSong = JSON.stringify(song);
+    }
+  }
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, req.user.id
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
@@ -1341,6 +1354,17 @@ function waitMsg(ms) {
   return s >= 90 ? `Too many emails. Try again in about ${Math.ceil(s / 60)} minutes.` : `Hang on ${s} seconds before sending another email.`;
 }
 
+// Song search for the "Favorite song" picker (Apple iTunes Search API, cached + rate-limited).
+app.get("/api/music/search", auth, async (req, res) => {
+  try {
+    const out = await songs.searchSongs(req.query.q || req.query.term || "", { userId: req.user.id });
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.json({ results: out.results });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message || "Song search failed." });
+  }
+});
+
 app.get("/api/auth/config", (_req, res) => {
   const st = mailer.status();
   res.json({ emailRequired: true, emailVerification: st.verificationActive, passwordReset: st.canSend });
@@ -1623,6 +1647,12 @@ async function boot() {
         console.error("Demo genre seed on boot failed:", err.message || err);
       }
     }
+  }
+  try {
+    const n = await require("./seed").ensureDemoSongs(db);
+    if (n) console.log("Added favorite songs to " + n + " demo profiles.");
+  } catch (err) {
+    console.error("Demo song seed failed:", err.message || err);
   }
   Object.assign(engagement, createEngagement(() => db));
   demoChat = createDemoChat({ getDb: () => db, publicUser, broadcastToUser });

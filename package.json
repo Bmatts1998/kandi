@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:engagement": "node scripts/test-engagement.js",
     "test:billing": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js",
-    "test": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js tests/socials.test.js tests/email-verification.test.js"
+    "test": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js tests/socials.test.js tests/email-verification.test.js tests/song.test.js"
   },
   "engines": {
     "node": ">=22"

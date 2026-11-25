@@ -178,6 +178,179 @@
   function tuneSourceLabel(src) {
     return src === "spotify" ? "Spotify" : src === "soundcloud" ? "SoundCloud" : src === "apple" ? "Apple Music" : "Open in app";
   }
+  // ---- Favorite song (Apple Music preview, capped at ~15s with a fade) ----
+  const SONG_CAP_S = 15;
+  const SONG_FADE_S = 1.6;
+  const songAudio = { el: null, key: "", raf: 0, stopTimer: 0, ctx: null, gain: null, analyser: null, graphEl: null, graphFailed: false, volOk: null };
+  function songArt(url, px) {
+    return String(url || "").replace(/\/\d+x\d+bb\.jpg$/, "/" + px + "x" + px + "bb.jpg");
+  }
+  function volumeIsSettable() {
+    if (songAudio.volOk != null) return songAudio.volOk;
+    try { const a = document.createElement("audio"); a.volume = 0.5; songAudio.volOk = Math.abs(a.volume - 0.5) < 0.01; } catch (_) { songAudio.volOk = false; }
+    return songAudio.volOk;
+  }
+  function songPaint() {
+    const key = songAudio.key;
+    document.querySelectorAll("[data-song-key]").forEach((n) => {
+      const on = Boolean(key) && n.getAttribute("data-song-key") === key;
+      n.classList.toggle("playing", on);
+      const btn = n.querySelector(".song-play");
+      if (btn) { btn.setAttribute("aria-pressed", on ? "true" : "false"); btn.setAttribute("aria-label", (on ? "Pause preview of " : "Play preview of ") + (btn.getAttribute("data-title") || "song")); }
+      const bar = n.querySelector(".song-progress i");
+      if (bar && !on) bar.style.width = "0%";
+    });
+  }
+  function songTick() {
+    const el = songAudio.el;
+    if (!el || !songAudio.key) return;
+    const t = Math.max(0, el.currentTime || 0);
+    const bar = document.querySelector('[data-song-key="' + songAudio.key.replace(/"/g, "") + '"] .song-progress i');
+    if (bar) bar.style.width = Math.min(100, (t / SONG_CAP_S) * 100) + "%";
+    const left = SONG_CAP_S - t;
+    const level = left < SONG_FADE_S ? Math.max(0, left / SONG_FADE_S) : 1;
+    if (songAudio.gain && songAudio.graphEl === el) { try { songAudio.gain.gain.value = level; } catch (_) {} }
+    else if (volumeIsSettable()) { try { el.volume = level; } catch (_) {} }
+    if (t >= SONG_CAP_S) { stopSong(); return; }
+    songAudio.raf = requestAnimationFrame(songTick);
+  }
+  function stopSong() {
+    const el = songAudio.el;
+    cancelAnimationFrame(songAudio.raf);
+    clearTimeout(songAudio.stopTimer);
+    songAudio.key = "";
+    if (el) { try { el.pause(); } catch (_) {} }
+    document.querySelectorAll("[data-song-key].loading").forEach((x) => x.classList.remove("loading"));
+    songPaint();
+  }
+  // iOS ignores audio.volume, so on iOS 17+ route through Web Audio for the fade
+  // (audioSession "playback" keeps it audible with the silent switch on). Any trouble → plain audio.
+  function wantGraph() {
+    return !volumeIsSettable() && typeof navigator !== "undefined" && navigator.audioSession && (window.AudioContext || window.webkitAudioContext);
+  }
+  function freshSongEl() {
+    const a = new Audio();
+    a.preload = "auto";
+    a.setAttribute("playsinline", "");
+    a.setAttribute("webkit-playsinline", "");
+    a.addEventListener("ended", () => { if (songAudio.el === a) stopSong(); });
+    a.addEventListener("error", () => { if (songAudio.el === a && songAudio.key) { stopSong(); toast("That preview won't play right now.", "err"); } });
+    return a;
+  }
+  function toggleSong(btn) {
+    const key = btn.getAttribute("data-key") || "";
+    const src = btn.getAttribute("data-src") || "";
+    if (!src) return;
+    if (songAudio.key === key) { stopSong(); return; }
+    stopSong();
+    document.querySelectorAll("video").forEach((v) => { try { if (!v.paused) v.pause(); } catch (_) {} });
+    if (!songAudio.el) songAudio.el = freshSongEl();
+    let el = songAudio.el;
+    if (wantGraph() && !songAudio.graphFailed) {
+      try {
+        if (!songAudio.ctx) {
+          try { navigator.audioSession.type = "playback"; } catch (_) {}
+          const AC = window.AudioContext || window.webkitAudioContext;
+          songAudio.ctx = new AC();
+        }
+        if (songAudio.graphEl !== el) {
+          el.crossOrigin = "anonymous";
+          const node = songAudio.ctx.createMediaElementSource(el);
+          songAudio.gain = songAudio.ctx.createGain();
+          songAudio.analyser = songAudio.ctx.createAnalyser();
+          node.connect(songAudio.gain); songAudio.gain.connect(songAudio.analyser); songAudio.analyser.connect(songAudio.ctx.destination);
+          songAudio.graphEl = el;
+        }
+        if (songAudio.ctx.state === "suspended") songAudio.ctx.resume().catch(() => {});
+        songAudio.gain.gain.value = 1;
+      } catch (_) {
+        songAudio.graphFailed = true; songAudio.gain = null; songAudio.analyser = null;
+        el = songAudio.el = freshSongEl();
+      }
+    }
+    if (el.getAttribute("src") !== src) el.src = src;
+    try { el.currentTime = 0; } catch (_) {}
+    if (volumeIsSettable()) { try { el.volume = 1; } catch (_) {} }
+    songAudio.key = key;
+    songPaint();
+    const p = el.play();
+    if (p && p.catch) p.catch(() => { if (songAudio.key === key && songAudio.el === el) { stopSong(); toast("Tap play again to hear the preview.", "err"); } });
+    songAudio.raf = requestAnimationFrame(songTick);
+    // Backstop for the 15s cap, counted from when sound actually starts (previews can take a moment to load).
+    const n = btn.closest("[data-song-key]");
+    if (n) n.classList.add("loading");
+    el.addEventListener("playing", () => {
+      document.querySelectorAll("[data-song-key].loading").forEach((x) => x.classList.remove("loading"));
+      clearTimeout(songAudio.stopTimer);
+      if (songAudio.key === key) songAudio.stopTimer = setTimeout(() => { if (songAudio.key === key) stopSong(); }, (SONG_CAP_S + 2) * 1000);
+    }, { once: true });
+    // If the Web Audio route turns out silent (some WebKit builds), switch to plain audio once.
+    if (songAudio.gain && songAudio.analyser && songAudio.graphEl === el) {
+      setTimeout(() => {
+        if (songAudio.key !== key || songAudio.el !== el || (el.currentTime || 0) < 0.8) return;
+        const buf = new Uint8Array(songAudio.analyser.fftSize);
+        try { songAudio.analyser.getByteTimeDomainData(buf); } catch (_) { return; }
+        if (buf.every((v) => v === 128)) {
+          const at = el.currentTime;
+          try { el.pause(); } catch (_) {}
+          songAudio.graphFailed = true;
+          const plain = songAudio.el = freshSongEl();
+          plain.src = src;
+          try { plain.currentTime = at; } catch (_) {}
+          plain.play().catch(() => { if (songAudio.key === key) stopSong(); });
+        }
+      }, 1500);
+    }
+  }
+  function songCard(song, key, opts) {
+    if (!song || !song.title) return "";
+    opts = opts || {};
+    const k = esc(key + "-" + song.trackId);
+    const playing = songAudio.key === key + "-" + song.trackId;
+    const art = song.artworkUrl ? `style="background-image:url('${esc(songArt(song.artworkUrl, opts.compact ? 300 : 600))}')"` : "";
+    const play = song.previewUrl
+      ? `<button type="button" class="song-play" data-act="song-play" data-key="${k}" data-src="${esc(song.previewUrl)}" data-title="${esc(song.title)}" aria-pressed="${playing ? "true" : "false"}" aria-label="${playing ? "Pause" : "Play"} preview of ${esc(song.title)}"><span class="ic-play" aria-hidden="true"></span><span class="ic-pause" aria-hidden="true"></span></button>`
+      : "";
+    const am = song.trackViewUrl ? `<a class="song-am" href="${esc(song.trackViewUrl)}" target="_blank" rel="noopener noreferrer">Listen on Apple Music ↗</a>` : "";
+    return `<div class="song-card${opts.compact ? " compact" : ""}${playing ? " playing" : ""}" data-song-key="${k}">
+      <div class="song-art" ${art}>${play}</div>
+      <div class="song-meta">${opts.label === false ? "" : `<div class="label">${esc(opts.label || "Favorite song")}</div>`}
+        <div class="song-title">${esc(song.title)}</div>
+        <div class="song-artist">${esc(song.artist)}</div>
+        ${am}
+        ${song.previewUrl ? `<div class="song-progress" aria-hidden="true"><i></i></div>` : ""}
+      </div>
+    </div>`;
+  }
+  function songSearchRow(song, i) {
+    const k = "s-" + song.trackId;
+    const playing = songAudio.key === k;
+    return `<div class="song-row${playing ? " playing" : ""}" data-song-key="${esc(k)}">
+      <div class="song-thumb" style="background-image:url('${esc(songArt(song.artworkUrl, 120))}')">${song.previewUrl ? `<button type="button" class="song-play sm" data-act="song-play" data-key="${esc(k)}" data-src="${esc(song.previewUrl)}" data-title="${esc(song.title)}" aria-label="Play preview of ${esc(song.title)}"><span class="ic-play" aria-hidden="true"></span><span class="ic-pause" aria-hidden="true"></span></button>` : ""}</div>
+      <div class="grow song-row-meta"><div class="song-title">${esc(song.title)}</div><div class="song-artist">${esc(song.artist)}${song.album ? " · " + esc(song.album) : ""}</div><div class="song-progress" aria-hidden="true"><i></i></div></div>
+      <button type="button" class="btn sm primary" data-act="song-pick" data-id="${i}">Pick</button>
+    </div>`;
+  }
+  function editSongPicker() {
+    const d = state.editDraft || {};
+    const ss = state.songSearch || { results: [] };
+    let html = `<div class="label" style="margin-top:12px">Favorite song</div>`;
+    if (d.favoriteSong && !ss.open) {
+      html += songCard(d.favoriteSong, "e", { label: false });
+      html += `<div class="row" style="margin-top:8px"><button type="button" class="btn sm ghost" data-act="song-change">Change song</button><button type="button" class="btn sm ghost" data-act="song-remove">Remove</button></div>`;
+      return html;
+    }
+    html += `<p class="tiny" style="margin-bottom:8px">Search Apple Music and pick one. Its album art shows on your profile and people can play a 15-second clip.</p>
+      <div class="row"><input data-field="songQuery" type="search" enterkeyhint="search" placeholder="Search a song or artist" value="${esc(state.drafts.songQuery || "")}" autocomplete="off" autocorrect="off" spellcheck="false" />
+      <button type="button" class="btn sm primary" data-act="song-search">Search</button></div>`;
+    if (ss.loading) html += `<p class="tiny" style="margin-top:8px"><span class="spin"></span> Searching…</p>`;
+    if (ss.error) html += `<div class="err">${esc(ss.error)}</div>`;
+    if (!ss.loading && ss.q && !ss.error && !(ss.results || []).length) html += `<p class="tiny" style="margin-top:8px">No songs found for “${esc(ss.q)}”. Try the artist name too.</p>`;
+    if ((ss.results || []).length) html += `<div class="song-results">${ss.results.map(songSearchRow).join("")}</div><p class="tiny" style="margin-top:6px">Previews courtesy of Apple Music.</p>`;
+    if (d.favoriteSong) html += `<button type="button" class="btn sm ghost" style="margin-top:8px" data-act="song-cancel-change">Keep “${esc(d.favoriteSong.title)}”</button>`;
+    return html;
+  }
+
   function profileTunes(tunes) {
     const list = (tunes || []).filter((t) => t && t.embedUrl);
     if (!list.length) return "";
@@ -224,7 +397,10 @@
       looking: (me.looking || []).slice(),
       hobbies: (me.hobbies || []).slice(),
       kandiTrades: me.kandiTrades || "",
+      favoriteSong: me.favoriteSong || null,
     };
+    state.songSearch = { q: "", results: [], loading: false, error: "", open: !me.favoriteSong };
+    state.drafts.songQuery = "";
     state.drafts.editName = me.name || "";
     state.drafts.editBio = me.bio || "";
     state.drafts.editAge = me.age != null ? String(me.age) : "";
@@ -291,6 +467,7 @@
       yearsRaving: state.drafts.editYearsRaving || "",
       heightIn,
       favoriteTunes: parsedTunes.tunes,
+      favoriteSong: d.favoriteSong || null,
       instagram: String(state.drafts.editInstagram || "").trim(),
       facebook: String(state.drafts.editFacebook || "").trim(),
     };
@@ -645,6 +822,7 @@
       <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
       <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
     </div>`;
+    if (p.favoriteSong) html += `<section class="prof-song">${songCard(p.favoriteSong, (opts.asOthers ? "pv" : "p") + p.id)}</section>`;
     html += profileCrewSlot();
     const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
@@ -1132,6 +1310,7 @@
       }).catch(() => {});
     }
   }, 5000);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopSong(); });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.view === "verify" && state.me) { handle("verify-check", null, { quiet: true }); return; }
     if (document.hidden || !state.me || state.view !== "app") return;
@@ -2190,6 +2369,7 @@
     else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
       <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
+    if (p.favoriteSong) parts.push(`<div class="disco-song">${songCard(p.favoriteSong, "d" + p.id, { compact: true })}</div>`);
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
     if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
     if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
@@ -2785,6 +2965,7 @@
       ${customHobbies.length ? `<p class="tiny" style="margin-top:6px">Custom: ${customHobbies.map(esc).join(", ")}</p>` : ""}
       <div class="label" style="margin-top:14px">Favorite artists / DJs</div>
       <input data-field="editFavoriteArtists" placeholder="Who do you play on repeat?" value="${esc(state.drafts.editFavoriteArtists || "")}" />
+      ${editSongPicker()}
       <div class="label" style="margin-top:12px">Favorite festival or show</div>
       <input data-field="editFavoriteFestival" placeholder="e.g. Das Energi, CRSSD" value="${esc(state.drafts.editFavoriteFestival || "")}" />
       <div class="label" style="margin-top:12px">Favorite venue</div>
@@ -3792,6 +3973,8 @@
     try {
       renderScreen();
       renderFailures = 0;
+      if (songAudio.key && !document.querySelector('[data-song-key="' + songAudio.key.replace(/"/g, "") + '"]')) stopSong();
+      else if (songAudio.key) songPaint();
     } catch (err) {
       appParts = null;
       renderFailures++;
@@ -3876,8 +4059,32 @@
 
   async function handle(act, el, extra) {
     const id = el && el.getAttribute("data-id");
+    if (act === "song-play") { toggleSong(el); return; }
     try {
       state.err = "";
+      if (act === "song-search") {
+        const q = String(state.drafts.songQuery || "").trim();
+        const ss = state.songSearch = state.songSearch || { results: [], open: true };
+        if (q.length < 2) { ss.error = "Type at least 2 letters."; render(); return; }
+        ss.loading = true; ss.error = ""; ss.q = q; render();
+        try {
+          const data = await api("/api/music/search?q=" + encodeURIComponent(q));
+          if (state.songSearch !== ss || ss.q !== q) return;
+          ss.results = data.results || [];
+        } catch (e) {
+          ss.results = []; ss.error = e.message || "Search failed. Try again.";
+        }
+        ss.loading = false; render(); return;
+      }
+      if (act === "song-pick") {
+        const ss = state.songSearch || { results: [] };
+        const song = (ss.results || [])[Number(id)];
+        if (song && state.editDraft) { stopSong(); state.editDraft.favoriteSong = song; ss.open = false; }
+        render(); return;
+      }
+      if (act === "song-change") { if (state.songSearch) state.songSearch.open = true; else state.songSearch = { results: [], open: true }; render(); return; }
+      if (act === "song-cancel-change") { if (state.songSearch) state.songSearch.open = false; render(); return; }
+      if (act === "song-remove") { stopSong(); if (state.editDraft) state.editDraft.favoriteSong = null; state.songSearch = { results: [], open: true, q: "" }; state.drafts.songQuery = ""; render(); return; }
       if (act === "open-notifs") {
         const prev = state.overlay;
         state.overlay = { type: "notifs", returnTo: prev && prev.type === "settings" ? prev : null };
@@ -5196,7 +5403,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "show-forgot", "open-email", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
@@ -5331,6 +5538,10 @@
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "crewSearch") {
       e.preventDefault();
       handle("search-people", e.target);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "songQuery") {
+      e.preventDefault();
+      handle("song-search", e.target);
     }
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "forgotLogin") {
       e.preventDefault();

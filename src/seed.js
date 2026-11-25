@@ -519,4 +519,109 @@ async function ensureDemoGenres(db) {
   return n;
 }
 
-module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, DEMO_PASSWORD, EVENTS, USERS };
+
+// Favorite songs for demo profiles (Apple iTunes Search results) so the song card shows up for reviewers.
+const DEMO_SONGS = {
+  "nova": {
+    "trackId": 1678181925,
+    "title": "Apollo",
+    "artist": "Charlotte de Witte",
+    "album": "Apollo - EP",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/60/b1/7c/60b17c70-52b7-953c-a5c9-b128232362a2/5060972806272.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/f8/07/d0/f807d05e-c4c9-fa8e-2cac-5e6cea404ea9/mzaf_16211535020780953557.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/apollo/1678181915?i=1678181925&uo=4"
+  },
+  "hex": {
+    "trackId": 1655751168,
+    "title": "Bunker Buster VIP",
+    "artist": "Excision & Subtronics",
+    "album": "Antifractals",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/4b/41/55/4b415500-2280-e444-2241-6db9cddfafa2/cover.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/1d/6b/2b/1d6b2b2f-ec9d-bd10-ead5-09566e097b8c/mzaf_7735411082079939647.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/bunker-buster-vip/1655750333?i=1655751168&uo=4"
+  },
+  "luna": {
+    "trackId": 1642696621,
+    "title": "Sun In Your Eyes",
+    "artist": "Above & Beyond",
+    "album": "Sun In Your Eyes (William Orbit Remix)",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/e3/f8/5d/e3f85d9f-f88e-3286-1f4c-636306dd1f53/5039060811092.png/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/a9/7e/3a/a97e3a8a-fef6-44a4-f97f-76c6a3e4d9d5/mzaf_5177865841099490113.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/sun-in-your-eyes/1642696617?i=1642696621&uo=4"
+  },
+  "riot": {
+    "trackId": 1803842104,
+    "title": "A Fine Way to Die (feat. Leo Napier)",
+    "artist": "GRiZ",
+    "album": "Say It Loud",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/89/50/7e/89507e3f-9a51-35ba-2cd9-f48a9b77ff99/889326188070_cover.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/1c/ee/f1/1ceef16a-3eeb-7ba9-a9ad-b7b17faff3dd/mzaf_11351767312864833550.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/a-fine-way-to-die-feat-leo-napier/1803842098?i=1803842104&uo=4"
+  },
+  "vesper": {
+    "trackId": 1706358880,
+    "title": "(It Goes Like) Nanana",
+    "artist": "Peggy Gou",
+    "album": "(It Goes Like) Nanana - Single",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/65/6c/d8/656cd891-bcfe-96df-231f-5c925c7b6d35/191404901175.png/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/11/79/40/11794000-7943-49b0-3af3-91355a147167/mzaf_6018533596191950571.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/it-goes-like-nanana/1706358876?i=1706358880&uo=4"
+  },
+  "sol": {
+    "trackId": 1478926053,
+    "title": "Blah Blah Blah",
+    "artist": "Armin van Buuren",
+    "album": "Balance",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/bd/d2/dd/bdd2dd9e-c9a0-43d0-1cef-6b238c82fd4c/8718522270444.png/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/95/3a/a7/953aa7d7-89ae-c7eb-4fd3-0df708047389/mzaf_17147052923258036974.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/blah-blah-blah/1478925861?i=1478926053&uo=4"
+  },
+  "ember": {
+    "trackId": 1232783021,
+    "title": "Daydream",
+    "artist": "I Hate Models",
+    "album": "Warehouse Memories - EP",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/d7/45/3e/d7453ea0-7d3c-df96-8947-0499f90bda7f/8790001210110.png/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/40/65/cd/4065cda7-29c1-7fba-eb74-08b1ea147504/mzaf_17088445891898943864.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/daydream/1232782843?i=1232783021&uo=4"
+  },
+  "pixel": {
+    "trackId": 1553064274,
+    "title": "Marea (We’ve Lost Dancing)",
+    "artist": "Fred again.. & The Blessed Madonna",
+    "album": "Marea (We’ve Lost Dancing) - Single",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/68/49/e4/6849e4dc-2692-20c7-b80f-6e823c245643/190296770036.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/15/ea/4e/15ea4ed2-f7fc-f87c-b44f-9ca2c628437a/mzaf_1763923556124349361.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/marea-weve-lost-dancing/1553064273?i=1553064274&uo=4"
+  },
+  "jade": {
+    "trackId": 1709178108,
+    "title": "Saving Up",
+    "artist": "Dom Dolla",
+    "album": "Saving Up - Single",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/84/5e/33/845e3390-0d0c-ce76-b1b1-76f17126df60/196871470261.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/eb/f3/bb/ebf3bb3c-caf7-aae1-6b3b-9a7274e0e5f5/mzaf_7114324002687306631.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/saving-up/1709177801?i=1709178108&uo=4"
+  },
+  "orion": {
+    "trackId": 1061140878,
+    "title": "Powers of Ten (Gabriel Ananda Remix)",
+    "artist": "Stephan Bodzin",
+    "album": "Powers of Ten (Remixes)",
+    "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music69/v4/b7/3a/8d/b73a8d04-8ff6-5f05-43cb-2c39742cb0c4/cover.jpg/600x600bb.jpg",
+    "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/ef/51/b7/ef51b794-5e02-65af-2a0d-524bd0bf8039/mzaf_5077120334008838513.plus.aac.p.m4a",
+    "trackViewUrl": "https://music.apple.com/us/album/powers-of-ten-gabriel-ananda-remix/1061140399?i=1061140878&uo=4"
+  }
+};
+
+async function ensureDemoSongs(db) {
+  let n = 0;
+  for (const [username, song] of Object.entries(DEMO_SONGS)) {
+    if (!song) continue;
+    const r = await db.prepare(`UPDATE users SET favorite_song=? WHERE lower(username)=? AND is_demo=1 AND (favorite_song IS NULL OR favorite_song='')`).run(JSON.stringify(song), username);
+    if (r && r.changes) n += Number(r.changes);
+  }
+  return n;
+}
+
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, ensureDemoSongs, DEMO_SONGS, DEMO_PASSWORD, EVENTS, USERS };
