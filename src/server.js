@@ -328,7 +328,8 @@ function publicUser(u, extra) {
     heightIn: u.height_in == null || u.height_in === "" ? null : Number(u.height_in),
     hobbies: parseJsonList(u.hobbies, []),
     favoriteTunes: parseTunes(parseJsonList(u.favorite_tunes, [])).tunes,
-    favoriteSong: songs.parseStoredSong(u.favorite_song),
+    songs: songs.parseStoredSongs(u.songs, u.favorite_song),
+    favoriteSong: songs.parseStoredSongs(u.songs, u.favorite_song)[0] || null,
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
@@ -678,9 +679,18 @@ app.put("/api/me", auth, async (req, res) => {
     if (r.error) return res.status(400).json({ error: r.error, field: "facebook" });
     facebook = r.value;
   }
-  // Favorite song: object from /api/music/search, or null/"" to clear. Omitted = unchanged.
+  // My songs: up to 5 picks from /api/music/search, in order. Omitted = unchanged.
+  let songList = songs.parseStoredSongs(req.user.songs, req.user.favorite_song);
   let favoriteSong = req.user.favorite_song || "";
-  if (body.favoriteSong !== undefined) {
+  if (body.songs !== undefined) {
+    if (body.songs !== null && !Array.isArray(body.songs)) return res.status(400).json({ error: "Pick your songs from the search results.", field: "songs" });
+    const raw = body.songs || [];
+    if (raw.length > songs.MAX_SONGS) return res.status(400).json({ error: "You can add up to " + songs.MAX_SONGS + " songs.", field: "songs" });
+    const clean = songs.normalizeSongList(raw);
+    if (clean.length !== new Set(raw.map((x) => x && Number(x.trackId))).size) return res.status(400).json({ error: "Pick your songs from the search results.", field: "songs" });
+    songList = clean;
+    favoriteSong = songList[0] ? JSON.stringify(songList[0]) : "";
+  } else if (body.favoriteSong !== undefined) {
     if (body.favoriteSong === null || body.favoriteSong === "" || body.favoriteSong === false) {
       favoriteSong = "";
     } else {
@@ -688,9 +698,13 @@ app.put("/api/me", auth, async (req, res) => {
       if (!song) return res.status(400).json({ error: "Pick your favorite song from the search results.", field: "favoriteSong" });
       favoriteSong = JSON.stringify(song);
     }
+    // Older clients edit only the first slot.
+    const first = favoriteSong ? JSON.parse(favoriteSong) : null;
+    songList = first ? [first, ...songList.slice(1).filter((x) => x.trackId !== first.trackId)].slice(0, songs.MAX_SONGS) : songList.slice(1);
+    if (!first && songList[0]) favoriteSong = JSON.stringify(songList[0]);
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, req.user.id
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=?, songs=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, JSON.stringify(songList), req.user.id
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
@@ -1396,7 +1410,7 @@ app.get("/api/share/:username", async (req, res) => {
     profile: {
       id: full.id, username: full.username, name: full.name, age: full.age,
       photos: (full.photos || []).slice(0, 1), genres: full.genres, vibes: full.vibes,
-      favoriteSong: full.favoriteSong, homeLocation: full.homeLocation, isDemo: full.isDemo,
+      favoriteSong: full.favoriteSong, songs: full.songs, homeLocation: full.homeLocation, isDemo: full.isDemo,
     },
     signedIn: Boolean(me), isMe: Boolean(me && Number(me.id) === Number(target.id)), following,
   });
@@ -1698,7 +1712,7 @@ async function boot() {
   }
   try {
     const n = await require("./seed").ensureDemoSongs(db);
-    if (n) console.log("Added favorite songs to " + n + " demo profiles.");
+    if (n) console.log("Updated demo songs (" + n + " changes).");
   } catch (err) {
     console.error("Demo song seed failed:", err.message || err);
   }

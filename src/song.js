@@ -128,4 +128,33 @@ async function searchSongs(term, { userId, fetchImpl } = {}) {
   return { results };
 }
 
-module.exports = { normalizeSong, parseStoredSong, searchSongs, bigArtwork };
+const MAX_SONGS = 5;
+
+// A clean list of up to 5 songs (no duplicates). Invalid entries are dropped.
+function normalizeSongList(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const song = normalizeSong(raw);
+    if (!song || seen.has(song.trackId)) continue;
+    seen.add(song.trackId);
+    out.push(song);
+    if (out.length >= MAX_SONGS) break;
+  }
+  return out;
+}
+
+// "My songs": the songs column (JSON array), falling back to the older single favorite_song.
+function parseStoredSongs(listVal, singleVal) {
+  if (listVal) {
+    try {
+      const arr = typeof listVal === "string" ? JSON.parse(listVal) : listVal;
+      if (Array.isArray(arr)) return normalizeSongList(arr);
+    } catch (_) { /* fall through */ }
+  }
+  const one = parseStoredSong(singleVal);
+  return one ? [one] : [];
+}
+
+module.exports = { normalizeSong, parseStoredSong, normalizeSongList, parseStoredSongs, searchSongs, bigArtwork, MAX_SONGS };

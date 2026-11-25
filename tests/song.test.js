@@ -84,3 +84,79 @@ describe("profile favorite song API", () => {
     assert.deepEqual(r.data.results, []);
   });
 });
+
+describe("My songs (up to 5)", () => {
+  const mk = (n) => songs.normalizeSong({ ...SAMPLE, trackId: SAMPLE.trackId + n, trackName: "Song " + n });
+  test("helpers: list cap, dedupe, and single-song fallback", () => {
+    assert.equal(songs.normalizeSongList([mk(1), mk(2), mk(2), mk(3), mk(4), mk(5), mk(6)]).length, 5);
+    assert.deepEqual(songs.parseStoredSongs("", JSON.stringify(mk(1))).map((x) => x.trackId), [mk(1).trackId]);
+    assert.deepEqual(songs.parseStoredSongs(JSON.stringify([mk(2), mk(1)]), JSON.stringify(mk(1))).map((x) => x.trackId), [mk(2).trackId, mk(1).trackId]);
+    assert.deepEqual(songs.parseStoredSongs("[]", JSON.stringify(mk(1))), []);
+  });
+
+  let dir, port, child;
+  const start = async () => {
+    const env = { ...process.env, PORT: String(port), HOST: "127.0.0.1", KANDI_SQLITE_PATH: path.join(dir, "k.sqlite"), NODE_ENV: "production" };
+    delete env.DATABASE_URL;
+    child = spawn(process.execPath, [path.join(__dirname, "..", "src", "server.js")], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(out)), 60000);
+      const iv = setInterval(() => { if (/listening on/.test(out)) { clearInterval(iv); clearTimeout(t); resolve(); } }, 100);
+    });
+  };
+  const stop = () => new Promise((r) => { child.once("exit", r); child.kill(); });
+  before(async () => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "kandi-songs-")); port = 20000 + Math.floor(Math.random() * 20000); await start(); });
+  after(async () => { if (child && child.exitCode == null) await stop(); fs.rmSync(dir, { recursive: true, force: true }); });
+
+  test("save, reorder, cap, legacy single-song edits, demo lists, and migration", async () => {
+    const base = "http://127.0.0.1:" + port;
+    let cookie = "";
+    const call = async (method, url, body) => {
+      const r = await fetch(base + url, { method, headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      const sc = r.headers.get("set-cookie"); if (sc) cookie = sc.split(";")[0];
+      return { status: r.status, data: await r.json().catch(() => ({})) };
+    };
+    let r = await call("POST", "/api/login", { username: "luna", password: "plur-demo" });
+    assert.ok(r.data.user.songs.length >= 3 && r.data.user.songs.length <= 5, "demo has 3-5 songs");
+    assert.equal(r.data.user.favoriteSong.trackId, r.data.user.songs[0].trackId);
+    cookie = "";
+    r = await call("POST", "/api/signup", { username: "songs_tester", password: "pass-12345", name: "Songs", age: 25, acceptedTerms: true, email: "songs@example.com" });
+    const myId = r.data.user.id;
+    assert.deepEqual(r.data.user.songs, []);
+    r = await call("PUT", "/api/me", { songs: [mk(1), mk(2), mk(3)] });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.deepEqual(r.data.user.songs.map((x) => x.title), ["Song 1", "Song 2", "Song 3"]);
+    assert.equal(r.data.user.favoriteSong.title, "Song 1");
+    r = await call("PUT", "/api/me", { songs: [mk(3), mk(1), mk(2)] });
+    assert.deepEqual(r.data.user.songs.map((x) => x.title), ["Song 3", "Song 1", "Song 2"], "reorder sticks");
+    assert.equal(r.data.user.favoriteSong.title, "Song 3", "first slot is the favorite");
+    assert.equal((await call("PUT", "/api/me", { songs: [mk(1), mk(2), mk(3), mk(4), mk(5), mk(6)] })).status, 400, "max 5");
+    assert.equal((await call("PUT", "/api/me", { songs: [mk(1), { trackId: "x" }] })).status, 400, "junk rejected");
+    r = await call("PUT", "/api/me", { songs: [mk(1), mk(2), mk(3), mk(4), mk(5)] });
+    assert.equal(r.data.user.songs.length, 5);
+    r = await call("PUT", "/api/me", { bio: "x" });
+    assert.equal(r.data.user.songs.length, 5, "omitted = unchanged");
+    // Older app builds only send favoriteSong: it replaces slot 1 and keeps the rest.
+    r = await call("PUT", "/api/me", { favoriteSong: mk(9) });
+    assert.deepEqual(r.data.user.songs.map((x) => x.title), ["Song 9", "Song 2", "Song 3", "Song 4", "Song 5"]);
+    r = await call("GET", "/api/users/" + myId);
+    assert.equal(r.data.user.songs.length, 5, "others see the list");
+    r = await call("PUT", "/api/me", { songs: [] });
+    assert.deepEqual(r.data.user.songs, []);
+    assert.equal(r.data.user.favoriteSong, null);
+
+    // Migration: an account with only the old single favorite_song gets it in slot 1.
+    await stop();
+    const { DatabaseSync } = require("node:sqlite");
+    const raw = new DatabaseSync(path.join(dir, "k.sqlite"));
+    raw.prepare("UPDATE users SET favorite_song=?, songs='' WHERE id=?").run(JSON.stringify(mk(7)), myId);
+    raw.close();
+    await start();
+    cookie = "";
+    await call("POST", "/api/login", { username: "songs_tester", password: "pass-12345" });
+    r = await call("GET", "/api/me");
+    assert.deepEqual(r.data.user.songs.map((x) => x.title), ["Song 7"]);
+  });
+});

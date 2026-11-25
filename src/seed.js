@@ -614,12 +614,281 @@ const DEMO_SONGS = {
   }
 };
 
+// Extra "My songs" for demo profiles (3–5 songs each with the favorite above). Looked up on iTunes Search.
+const DEMO_EXTRA_SONGS = {
+  "nova": [
+    {
+      "trackId": 1408454985,
+      "title": "Losing It",
+      "artist": "FISHER",
+      "album": "Losing It - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/b6/d0/78/b6d078c6-5a24-063e-548e-0d28af65dab9/18UMGIM41789.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/5e/73/3e/5e733e6a-ddae-6081-dbbd-0be7e9542e60/mzaf_15726405558792372151.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/losing-it/1408454984?i=1408454985&uo=4"
+    },
+    {
+      "trackId": 1783998383,
+      "title": "Cola",
+      "artist": "CamelPhat & Elderbrook",
+      "album": "Cola - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/c7/c7/a0/c7c7a005-6cbe-a1a7-78c7-a97afb5d15da/826194369798.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/35/98/b4/3598b477-14a2-1063-ac76-14df1ea07f0e/mzaf_18428237531243601895.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/cola/1783998382?i=1783998383&uo=4"
+    }
+  ],
+  "hex": [
+    {
+      "trackId": 1593750841,
+      "title": "Griztronics II (Another Level)",
+      "artist": "GRiZ & Subtronics",
+      "album": "Griztronics II (Another Level) - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/85/0c/99/850c9960-50f3-6952-2ede-a45b8bda56c7/cover.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/72/d7/4a/72d74a00-688c-83f3-0425-f0a69358362d/mzaf_17735987981043109827.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/griztronics-ii-another-level/1593750838?i=1593750841&uo=4"
+    },
+    {
+      "trackId": 1163512152,
+      "title": "Throwin' Elbows (feat. Space Laces)",
+      "artist": "Excision",
+      "album": "Virus",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/d5/49/c0/d549c0e5-c471-4764-4ca6-f1fcac2b32ac/ROTD191-Orig.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/82/9a/56/829a561d-0255-67a5-20ad-58fd3943bf03/mzaf_3614767132483308034.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/throwin-elbows-feat-space-laces/1163512092?i=1163512152&uo=4"
+    }
+  ],
+  "luna": [
+    {
+      "trackId": 1440851025,
+      "title": "Opus",
+      "artist": "Eric Prydz",
+      "album": "Opus",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/e9/6e/5d/e96e5de7-f9ca-792c-014c-646017c2d854/00602547503701.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/76/89/b1/7689b1ff-209b-5d2b-0c39-5d1f60eb8c42/mzaf_15472529562433833316.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/opus/1440850027?i=1440851025&uo=4"
+    },
+    {
+      "trackId": 1813489559,
+      "title": "Strobe",
+      "artist": "deadmau5",
+      "album": "For Lack of A Better Name (The Extended Mixes)",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/f7/24/19/f724197c-b6b7-b2ad-94a9-06b2f5f95455/617465226458.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/68/f2/85/68f285ca-6cc6-5bc5-54da-5ee164bee249/mzaf_16955640893323702645.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/strobe/1813489294?i=1813489559&uo=4"
+    },
+    {
+      "trackId": 775187389,
+      "title": "Sun & Moon",
+      "artist": "Above & Beyond",
+      "album": "Acoustic",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/20/11/93/20119343-b4fd-07e5-a5bc-e0fa6b78bbc9/5039060215395.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/df/eb/f6/dfebf6d7-320a-c381-f40c-c53e1de19c1f/mzaf_15431377587531624851.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/sun-moon/775187373?i=775187389&uo=4"
+    }
+  ],
+  "riot": [
+    {
+      "trackId": 897564278,
+      "title": "Say My Name (feat. Zyra)",
+      "artist": "ODESZA",
+      "album": "In Return",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/76/5d/55/765d554e-e421-0299-783f-d78ad559d5e5/5021392959191.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/7b/a8/de/7ba8dee7-2146-e403-ee04-d9ad6b8a17b1/mzaf_1843147315490267895.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/say-my-name-feat-zyra/897564246?i=897564278&uo=4"
+    },
+    {
+      "trackId": 1885945784,
+      "title": "Never Be Like You (feat. Kai) [Disclosure Remix]",
+      "artist": "Flume",
+      "album": "Never Be Like You (feat. Kai) [Remixes] - EP",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/29/f4/3b/29f43b3f-cbeb-2cdd-33d3-d3b6bd231a9d/112230.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/86/00/82/8600827a-320a-6995-1359-e24af53fd6d3/mzaf_14790995303205620519.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/never-be-like-you-feat-kai-disclosure-remix/1885945779?i=1885945784&uo=4"
+    },
+    {
+      "trackId": 1462451663,
+      "title": "Good Things Fall Apart",
+      "artist": "ILLENIUM & Jon Bellion",
+      "album": "Good Things Fall Apart - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/5a/ed/7d/5aed7ddd-8208-8c82-b9c6-c3b47882e233/19UMGIM38001.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/12/9d/cc/129dcc57-d299-cd6f-e838-cb139aff36a8/mzaf_13170629027581948356.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/good-things-fall-apart/1462451646?i=1462451663&uo=4"
+    }
+  ],
+  "vesper": [
+    {
+      "trackId": 873131250,
+      "title": "Gecko (Overdrive) [Radio Edit]",
+      "artist": "Oliver Heldens & Becky Hill",
+      "album": "Gecko (Overdrive) [Radio Edit] - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/2f/d5/e9/2fd5e98b-9726-bdfc-582f-a52aed6bb4d7/825646278572.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/fd/c3/7c/fdc37c9f-b0ad-434a-93b9-35ab1f87518a/mzaf_13776257952233740893.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/gecko-overdrive-radio-edit/873131193?i=873131250&uo=4"
+    },
+    {
+      "trackId": 1783952517,
+      "title": "Finally (feat. Julie McKnight) [Extended Mix]",
+      "artist": "Kings of Tomorrow",
+      "album": "Finally (feat. Julie McKnight) - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/8c/75/4d/8c754d77-ec61-1dbd-18b6-62ce3053651e/826194055097.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/cc/96/32/cc963234-0010-3b1a-b45e-0d58c7149162/mzaf_10849029244599127911.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/finally-feat-julie-mcknight-extended-mix/1783952516?i=1783952517&uo=4"
+    }
+  ],
+  "sol": [
+    {
+      "trackId": 1670593167,
+      "title": "Animals",
+      "artist": "Martin Garrix",
+      "album": "Animals - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/6e/1e/f0/6e1ef055-195a-bb73-d5a8-5926058366a5/8712944577525.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/8f/ca/53/8fca53bf-328f-4006-fb9c-eef2feee7790/mzaf_17242236602085711440.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/animals/1670593166?i=1670593167&uo=4"
+    },
+    {
+      "trackId": 1440787349,
+      "title": "Levels",
+      "artist": "Avicii",
+      "album": "Levels - EP",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/67/38/43/67384338-9ed7-fc68-5927-93f1fcf4705d/11UMGIM36900.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/66/dc/bd/66dcbd68-b557-bdfd-f2c2-a05491758783/mzaf_13654489760720011690.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/levels/1440787344?i=1440787349&uo=4"
+    },
+    {
+      "trackId": 1499501875,
+      "title": "Children (Original Version)",
+      "artist": "Robert Miles",
+      "album": "Dreamland",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/56/06/b8/5606b8b2-d9af-78e6-16d0-b8ea543680f6/DBX002.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/a8/66/d4/a866d461-4f5a-228f-6920-0a513896228b/mzaf_7437444357903810938.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/children-original-version/1499501866?i=1499501875&uo=4"
+    }
+  ],
+  "ember": [
+    {
+      "trackId": 500162235,
+      "title": "Firestarter",
+      "artist": "The Prodigy",
+      "album": "The Fat of the Land",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/96/8b/08/968b08e4-cb2b-54c2-32bb-dba77ad1c2ca/634904912161.png/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/fe/f0/48/fef048ad-df35-bbce-dc88-05e424cadba7/mzaf_15874742277122495094.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/firestarter/500162127?i=500162235&uo=4"
+    },
+    {
+      "trackId": 1508239038,
+      "title": "Spastik",
+      "artist": "Plastikman",
+      "album": "Recycled Plastik",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/84/79/10/8479109c-ac3d-ff06-0fbf-f04338b0c7c8/192641482243_Cover.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/71/78/f3/7178f389-3451-1a6e-d145-d778dff444eb/mzaf_15621981303545075686.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/spastik/1508238849?i=1508239038&uo=4"
+    }
+  ],
+  "pixel": [
+    {
+      "trackId": 1640463908,
+      "title": "Delilah (pull me out of this)",
+      "artist": "Fred again.. & Delilah Montagu",
+      "album": "Actual Life 3 (January 1 - September 9 2022)",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/b0/9c/b7/b09cb72c-cca9-5d66-bc9d-a9b5e5f86b22/5054197236389.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/b7/52/49/b75249d5-f30c-15bd-b6b6-2b2592a8273f/mzaf_16220054371150220513.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/delilah-pull-me-out-of-this/1640463893?i=1640463908&uo=4"
+    },
+    {
+      "trackId": 1440862129,
+      "title": "Latch",
+      "artist": "Disclosure & Sam Smith",
+      "album": "Settle (Deluxe)",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/57/93/e0/5793e0d6-4877-e015-ef54-3fd4eff87344/14UMGIM12348.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/4f/44/94/4f4494e5-8a5e-c9ef-548e-760cabd4fd80/mzaf_644961378672752727.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/latch/1440862011?i=1440862129&uo=4"
+    },
+    {
+      "trackId": 1036141817,
+      "title": "Flowers (Sunship Edit)",
+      "artist": "Sweet Female Attitude",
+      "album": "In Person",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/ad/36/f1/ad36f186-e0cf-9573-4243-912cf42843ae/mzm.gingixgt.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/89/4e/a0/894ea0af-6cc2-07c7-0565-bc4608f8308b/mzaf_11282141261461601725.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/flowers-sunship-edit/1036141510?i=1036141817&uo=4"
+    }
+  ],
+  "jade": [
+    {
+      "trackId": 1479872574,
+      "title": "San Frandisco",
+      "artist": "Dom Dolla",
+      "album": "San Frandisco - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/21/84/c7/2184c7a2-eaf6-3445-3e15-38fcf940729a/886447952214.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/77/19/7b/77197b46-6fe7-d3cc-913b-00a60cfdbe84/mzaf_539232983612957776.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/san-frandisco/1479872567?i=1479872574&uo=4"
+    },
+    {
+      "trackId": 1673828907,
+      "title": "Where You Are",
+      "artist": "John Summit & HAYLA",
+      "album": "Where You Are - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/26/86/a9/2686a9dc-0a17-8e7f-82e3-9bb7c53c1494/23UMGIM19042.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/01/c0/ec/01c0ecc6-36cb-6a62-faf4-e2617cc2e33d/mzaf_11012603604995349193.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/where-you-are/1673828877?i=1673828907&uo=4"
+    },
+    {
+      "trackId": 1672155007,
+      "title": "Rumble",
+      "artist": "Skrillex, Fred again.. & Flowdan",
+      "album": "Quest For Fire",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/fc/f4/6b/fcf46b95-cf27-9f04-94c2-4ad257b7a5a6/075679695239.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/51/e6/0d/51e60d1c-5375-530a-a434-4ff93b96fd2e/mzaf_6494976916814603599.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/rumble/1672154692?i=1672155007&uo=4"
+    }
+  ],
+  "orion": [
+    {
+      "trackId": 1058740894,
+      "title": "Innerbloom",
+      "artist": "RÜFÜS DU SOL",
+      "album": "Bloom",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/aa/5f/d8/aa5fd889-4c2e-7e24-e8b2-428beaf9d4fe/SWEATA009.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2c/ce/8d/2cce8d43-f5c9-d691-d068-a7a65eeb8f3b/mzaf_3191095203385516246.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/innerbloom/1058740883?i=1058740894&uo=4"
+    },
+    {
+      "trackId": 1831059987,
+      "title": "Strings Of Life",
+      "artist": "Rhythim Is Rhythim",
+      "album": "Strings Of Life - Single",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/80/f6/a1/80f6a147-3841-dc7f-12d2-629e6d4cddd6/10063.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/34/bd/6b/34bd6ba7-c99d-1a24-6178-b499240133d1/mzaf_9818915045852185348.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/strings-of-life/1831059984?i=1831059987&uo=4"
+    },
+    {
+      "trackId": 1440851025,
+      "title": "Opus",
+      "artist": "Eric Prydz",
+      "album": "Opus",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/e9/6e/5d/e96e5de7-f9ca-792c-014c-646017c2d854/00602547503701.rgb.jpg/600x600bb.jpg",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/76/89/b1/7689b1ff-209b-5d2b-0c39-5d1f60eb8c42/mzaf_15472529562433833316.plus.aac.p.m4a",
+      "trackViewUrl": "https://music.apple.com/us/album/opus/1440850027?i=1440851025&uo=4"
+    }
+  ]
+};
+
 async function ensureDemoSongs(db) {
   let n = 0;
   for (const [username, song] of Object.entries(DEMO_SONGS)) {
     if (!song) continue;
     const r = await db.prepare(`UPDATE users SET favorite_song=? WHERE lower(username)=? AND is_demo=1 AND (favorite_song IS NULL OR favorite_song='')`).run(JSON.stringify(song), username);
     if (r && r.changes) n += Number(r.changes);
+    // Fill the demo's song list once (only while it still has 0–1 songs, so later edits stick).
+    const row = await db.prepare(`SELECT id, songs, favorite_song FROM users WHERE lower(username)=? AND is_demo=1`).get(username);
+    if (!row) continue;
+    let current = [];
+    try { current = row.songs ? JSON.parse(row.songs) : []; } catch (_) { current = []; }
+    if (Array.isArray(current) && current.length > 1) continue;
+    let first = song;
+    try { if (row.favorite_song) first = JSON.parse(row.favorite_song); } catch (_) {}
+    const list = [first, ...(DEMO_EXTRA_SONGS[username] || []).filter((x) => x.trackId !== first.trackId)].slice(0, 5);
+    await db.prepare(`UPDATE users SET songs=? WHERE id=?`).run(JSON.stringify(list), row.id);
+    n++;
   }
   return n;
 }

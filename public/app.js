@@ -322,32 +322,85 @@
       </div>
     </div>`;
   }
+  const MAX_SONGS = 5;
+  function mySongs(p) {
+    const list = p && Array.isArray(p.songs) ? p.songs : (p && p.favoriteSong ? [p.favoriteSong] : []);
+    return list.filter((x) => x && x.title).slice(0, MAX_SONGS);
+  }
+  function songPlayBtn(song, k, sm) {
+    if (!song.previewUrl) return "";
+    const playing = songAudio.key === k;
+    return `<button type="button" class="song-play${sm ? " sm" : ""}" data-act="song-play" data-key="${esc(k)}" data-src="${esc(song.previewUrl)}" data-title="${esc(song.title)}" aria-pressed="${playing ? "true" : "false"}" aria-label="${playing ? "Pause" : "Play"} preview of ${esc(song.title)}"><span class="ic-play" aria-hidden="true"></span><span class="ic-pause" aria-hidden="true"></span></button>`;
+  }
+  // One row in a "My songs" list: art + play, title/artist, then Apple Music link or edit controls.
+  function songListRow(song, key, i, opts) {
+    opts = opts || {};
+    const k = key + "-" + song.trackId;
+    const playing = songAudio.key === k;
+    let right = "";
+    if (opts.edit) {
+      const n = opts.count || 0;
+      right = `<div class="song-edit-btns">
+        <button type="button" class="icon-btn" data-act="song-up" data-id="${i}" aria-label="Move ${esc(song.title)} up"${i === 0 ? " disabled" : ""}>${kIcon("up")}</button>
+        <button type="button" class="icon-btn" data-act="song-down" data-id="${i}" aria-label="Move ${esc(song.title)} down"${i >= n - 1 ? " disabled" : ""}>${kIcon("down")}</button>
+        <button type="button" class="icon-btn" data-act="song-remove" data-id="${i}" aria-label="Remove ${esc(song.title)}">${kIcon("x")}</button></div>`;
+    } else if (song.trackViewUrl) {
+      right = `<a class="icon-btn song-am-link" href="${esc(song.trackViewUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(song.title)} in Apple Music">${kIcon("external")}</a>`;
+    }
+    return `<div class="song-row list${playing ? " playing" : ""}" data-song-key="${esc(k)}">
+      ${opts.edit ? `<span class="song-num" aria-hidden="true">${i + 1}</span>` : ""}
+      <div class="song-thumb" style="background-image:url('${esc(songArt(song.artworkUrl, 160))}')">${songPlayBtn(song, k, true)}</div>
+      <div class="grow song-row-meta"><div class="song-title">${esc(song.title)}</div><div class="song-artist">${esc(song.artist)}</div><div class="song-progress" aria-hidden="true"><i></i></div></div>
+      ${right}
+    </div>`;
+  }
+  function profileSongs(p, keyPrefix) {
+    const list = mySongs(p);
+    if (!list.length) return "";
+    if (list.length === 1) return `<section class="prof-song">${songCard(list[0], keyPrefix)}</section>`;
+    return `<section class="prof-song"><div class="label">My songs</div><div class="song-list">${list.map((x, i) => songListRow(x, keyPrefix, i)).join("")}</div><p class="tiny song-credit">15-second previews from Apple Music</p></section>`;
+  }
+  // Discover: the first song as a card, then the rest as a strip of small album-art tiles.
+  function discoverSongs(p) {
+    const list = mySongs(p);
+    if (!list.length) return "";
+    const key = "d" + p.id;
+    let html = songCard(list[0], key, { compact: true, label: list.length > 1 ? "My songs" : "Favorite song" });
+    if (list.length > 1) {
+      html += `<div class="song-strip">${list.slice(1).map((x) => {
+        const k = key + "-" + x.trackId;
+        return `<div class="song-tile${songAudio.key === k ? " playing" : ""}" data-song-key="${esc(k)}" title="${esc(x.title)} · ${esc(x.artist)}"><div class="song-thumb" style="background-image:url('${esc(songArt(x.artworkUrl, 160))}')">${songPlayBtn(x, k, true)}</div><div class="song-tile-nm">${esc(x.title)}</div></div>`;
+      }).join("")}</div>`;
+    }
+    return html;
+  }
   function songSearchRow(song, i) {
     const k = "s-" + song.trackId;
     const playing = songAudio.key === k;
     return `<div class="song-row${playing ? " playing" : ""}" data-song-key="${esc(k)}">
       <div class="song-thumb" style="background-image:url('${esc(songArt(song.artworkUrl, 120))}')">${song.previewUrl ? `<button type="button" class="song-play sm" data-act="song-play" data-key="${esc(k)}" data-src="${esc(song.previewUrl)}" data-title="${esc(song.title)}" aria-label="Play preview of ${esc(song.title)}"><span class="ic-play" aria-hidden="true"></span><span class="ic-pause" aria-hidden="true"></span></button>` : ""}</div>
       <div class="grow song-row-meta"><div class="song-title">${esc(song.title)}</div><div class="song-artist">${esc(song.artist)}${song.album ? " · " + esc(song.album) : ""}</div><div class="song-progress" aria-hidden="true"><i></i></div></div>
-      <button type="button" class="btn sm primary" data-act="song-pick" data-id="${i}">Pick</button>
+      ${((state.editDraft && state.editDraft.songs) || []).some((x) => x.trackId === song.trackId)
+        ? `<span class="tiny song-added">Added</span>`
+        : `<button type="button" class="btn sm primary" data-act="song-pick" data-id="${i}" aria-label="Add ${esc(song.title)}">Add</button>`}
     </div>`;
   }
   function editSongPicker() {
     const d = state.editDraft || {};
+    const list = d.songs || [];
     const ss = state.songSearch || { results: [] };
-    let html = `<div class="label" style="margin-top:12px">Favorite song</div>`;
-    if (d.favoriteSong && !ss.open) {
-      html += songCard(d.favoriteSong, "e", { label: false });
-      html += `<div class="row" style="margin-top:8px"><button type="button" class="btn sm ghost" data-act="song-change">Change song</button><button type="button" class="btn sm ghost" data-act="song-remove">Remove</button></div>`;
-      return html;
-    }
-    html += `<p class="tiny" style="margin-bottom:8px">Search Apple Music and pick one. Its album art shows on your profile and people can play a 15-second clip.</p>
-      <div class="row"><input data-field="songQuery" type="search" enterkeyhint="search" placeholder="Search a song or artist" value="${esc(state.drafts.songQuery || "")}" autocomplete="off" autocorrect="off" spellcheck="false" />
+    let html = `<div class="label" style="margin-top:12px">My songs</div>
+      <p class="tiny" style="margin-bottom:8px">Add up to ${MAX_SONGS}. People can play a 15-second clip of each, and your first song shows on your Discover card.</p>`;
+    if (list.length) html += `<div class="song-list edit">${list.map((x, i) => songListRow(x, "e", i, { edit: true, count: list.length })).join("")}</div>`;
+    if (list.length >= MAX_SONGS) return html + `<p class="tiny" style="margin-top:8px">That's ${MAX_SONGS}. Remove one to add another.</p>`;
+    if (!ss.open) return html + `<button type="button" class="btn ghost" style="margin-top:10px" data-act="song-change">${list.length ? "Add another song" : "Add a song"}</button>`;
+    html += `<div class="row" style="margin-top:10px"><input data-field="songQuery" type="search" enterkeyhint="search" placeholder="Search a song or artist" aria-label="Search a song or artist" value="${esc(state.drafts.songQuery || "")}" autocomplete="off" autocorrect="off" spellcheck="false" />
       <button type="button" class="btn sm primary" data-act="song-search">Search</button></div>`;
     if (ss.loading) html += `<p class="tiny" style="margin-top:8px"><span class="spin"></span> Searching…</p>`;
     if (ss.error) html += `<div class="err">${esc(ss.error)}</div>`;
     if (!ss.loading && ss.q && !ss.error && !(ss.results || []).length) html += `<p class="tiny" style="margin-top:8px">No songs found for “${esc(ss.q)}”. Try the artist name too.</p>`;
     if ((ss.results || []).length) html += `<div class="song-results">${ss.results.map(songSearchRow).join("")}</div><p class="tiny" style="margin-top:6px">Previews courtesy of Apple Music.</p>`;
-    if (d.favoriteSong) html += `<button type="button" class="btn sm ghost" style="margin-top:8px" data-act="song-cancel-change">Keep “${esc(d.favoriteSong.title)}”</button>`;
+    if (list.length) html += `<button type="button" class="btn sm ghost" style="margin-top:8px" data-act="song-cancel-change">Done adding</button>`;
     return html;
   }
 
@@ -397,9 +450,9 @@
       looking: (me.looking || []).slice(),
       hobbies: (me.hobbies || []).slice(),
       kandiTrades: me.kandiTrades || "",
-      favoriteSong: me.favoriteSong || null,
+      songs: mySongs(me).slice(),
     };
-    state.songSearch = { q: "", results: [], loading: false, error: "", open: !me.favoriteSong };
+    state.songSearch = { q: "", results: [], loading: false, error: "", open: false };
     state.drafts.songQuery = "";
     state.drafts.editName = me.name || "";
     state.drafts.editBio = me.bio || "";
@@ -467,7 +520,7 @@
       yearsRaving: state.drafts.editYearsRaving || "",
       heightIn,
       favoriteTunes: parsedTunes.tunes,
-      favoriteSong: d.favoriteSong || null,
+      songs: (d.songs || []).slice(0, MAX_SONGS),
       instagram: String(state.drafts.editInstagram || "").trim(),
       facebook: String(state.drafts.editFacebook || "").trim(),
     };
@@ -822,7 +875,7 @@
       <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
       <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
     </div>`;
-    if (p.favoriteSong) html += `<section class="prof-song">${songCard(p.favoriteSong, (opts.asOthers ? "pv" : "p") + p.id)}</section>`;
+    html += profileSongs(p, (opts.asOthers ? "pv" : "p") + p.id);
     html += profileCrewSlot();
     const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
@@ -1101,6 +1154,9 @@
     sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
     rewind: '<path d="M4 4v5h5"/><path d="M5.1 15a7.5 7.5 0 1 0 .5-6.3L4 9"/>',
+    up: '<path d="M6 14l6-6 6 6"/>',
+    down: '<path d="M6 10l6 6 6-6"/>',
+    external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
   };
   function kIcon(name, extraClass) {
     const d = KICON_PATHS[name];
@@ -2496,7 +2552,7 @@
     else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
       <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
-    if (p.favoriteSong) parts.push(`<div class="disco-song">${songCard(p.favoriteSong, "d" + p.id, { compact: true })}</div>`);
+    if (mySongs(p).length) parts.push(`<div class="disco-song">${discoverSongs(p)}</div>`);
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
     if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
     if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
@@ -4222,12 +4278,28 @@
       if (act === "song-pick") {
         const ss = state.songSearch || { results: [] };
         const song = (ss.results || [])[Number(id)];
-        if (song && state.editDraft) { stopSong(); state.editDraft.favoriteSong = song; ss.open = false; }
+        const d = state.editDraft;
+        if (song && d) {
+          d.songs = d.songs || [];
+          if (d.songs.length >= MAX_SONGS) toast("You can add up to " + MAX_SONGS + " songs.", "warn");
+          else if (!d.songs.some((x) => x.trackId === song.trackId)) { stopSong(); d.songs.push(song); toast("Added “" + song.title + "”"); }
+          if (d.songs.length >= MAX_SONGS) ss.open = false;
+        }
         render(); return;
       }
       if (act === "song-change") { if (state.songSearch) state.songSearch.open = true; else state.songSearch = { results: [], open: true }; render(); return; }
       if (act === "song-cancel-change") { if (state.songSearch) state.songSearch.open = false; render(); return; }
-      if (act === "song-remove") { stopSong(); if (state.editDraft) state.editDraft.favoriteSong = null; state.songSearch = { results: [], open: true, q: "" }; state.drafts.songQuery = ""; render(); return; }
+      if (act === "song-remove") {
+        stopSong();
+        const d = state.editDraft;
+        if (d && d.songs) d.songs.splice(Number(id) || 0, 1);
+        render(); return;
+      }
+      if (act === "song-up" || act === "song-down") {
+        const d = state.editDraft; const i = Number(id) || 0; const j = act === "song-up" ? i - 1 : i + 1;
+        if (d && d.songs && j >= 0 && j < d.songs.length) { const t = d.songs[i]; d.songs[i] = d.songs[j]; d.songs[j] = t; }
+        render(); return;
+      }
       if (act === "open-notifs") {
         const prev = state.overlay;
         state.overlay = { type: "notifs", returnTo: prev && prev.type === "settings" ? prev : null };
@@ -5595,7 +5667,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",

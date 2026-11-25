@@ -1026,6 +1026,13 @@ async function migrate(db) {
   } else {
     try { await db.exec("ALTER TABLE users ADD COLUMN favorite_song TEXT DEFAULT ''"); } catch (_) {}
   }
+  // "My songs" (up to 5). Each existing single favorite song moves into the first slot.
+  if (db.driver === "postgres") await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS songs TEXT DEFAULT ''");
+  else { try { await db.exec("ALTER TABLE users ADD COLUMN songs TEXT DEFAULT ''"); } catch (_) {} }
+  try {
+    const r = await db.prepare(`UPDATE users SET songs = '[' || favorite_song || ']' WHERE (songs IS NULL OR songs = '') AND favorite_song IS NOT NULL AND favorite_song <> ''`).run();
+    if (r && r.changes) console.log("My songs: moved " + r.changes + " favorite songs into slot 1.");
+  } catch (err) { console.error("songs migration:", err.message || err); }
 }
 
 // Email + verification + password reset. Existing rows get email_verify_required=0,
