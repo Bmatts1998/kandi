@@ -592,7 +592,8 @@
     if (!b || !b.id) return "";
     const name = esc(b.name || "");
     const id = esc(b.id);
-    return ` <button type="button" class="raver-badge ${id}" data-act="badge-info" data-id="${id}" title="${name}" aria-label="${name} badge. How to earn badges."><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${name}</span></button>`;
+    // A span, not a <button>: badges sit inside tappable name buttons, and a nested <button> breaks the page layout.
+    return ` <span role="button" tabindex="0" class="raver-badge ${id}" data-act="badge-info" data-id="${id}" title="${name}" aria-label="${name} badge. How to earn badges."><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${name}</span></span>`;
   }
   function formatUpdatedAgo(iso) {
     if (!iso) return "";
