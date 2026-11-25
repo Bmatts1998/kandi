@@ -43,6 +43,7 @@ test.describe("QA pass regressions (iPhone WebKit)", () => {
     const bubble = pa.locator(".bubble.photo").first();
     await expect(bubble).toBeVisible();
     await expect.poll(() => pa.evaluate(() => { const el = document.querySelector(".bubble.photo"); return el ? el.getBoundingClientRect().height : 0; })).toBeGreaterThan(150);
+    expect(await pa.evaluate(() => { const b = document.querySelector(".bubble.photo").getBoundingClientRect().height; const i = document.querySelector(".bubble.photo .chat-media-btn").getBoundingClientRect().height; return b - i; })).toBeLessThan(40);
     expect(await pa.evaluate(() => document.querySelector(".chat-log").scrollWidth <= document.querySelector(".chat-log").clientWidth + 1)).toBeTruthy();
 
     await pa.locator('[data-act="chat-menu"]').click();

@@ -789,6 +789,11 @@
 /* ---- QA pass (Nov 2026) ---- */
 /* Chat/crew logs are flex columns inside a scroller: never let a photo or video bubble get squashed. */
 .chat-log > *, .crew-chat > * { flex-shrink: 0; }
+/* Chat photo bubbles share the .photo class name with Discover cards (430px tall); undo that here. */
+.bubble.photo { height: auto; display: block; overflow: visible; isolation: auto; }
+.chat-media-btn { display: block; padding: 0; line-height: 0; }
+/* Reserve the photo's box before it loads so lazy images don't collapse and the chat doesn't jump. */
+.chat-photo { width: min(240px, 62vw); height: auto; aspect-ratio: 3 / 4; }
 /* Long words, links, and emoji runs wrap instead of running off the screen. */
 .bubble, .bubble-cap, .prompt .a, .prof-bio, .caption, .cap, .post-text-inner, .crew-msg, .wrap-text,
 .card .muted, .overlay .sub, .notif .grow, .story-text { overflow-wrap: anywhere; word-break: normal; }
