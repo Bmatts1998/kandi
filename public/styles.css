@@ -626,3 +626,30 @@
     }
     .badge-explain.on { border-color: rgba(255,92,0,.55); background: rgba(255,92,0,.1); box-shadow: 0 0 18px rgba(255,92,0,.18); }
     .photo .who .raver-badge { margin-top: 4px; }
+    /* ---- Hinge/Instagram UX pass ---- */
+    .icon-btn.bell { position: relative; }
+    .icon-btn .badge { top: -4px; right: -4px; }
+    .badge.dot { min-width: 10px; width: 10px; height: 10px; padding: 0; top: 6px; }
+    .notif { display: flex; width: 100%; text-align: left; gap: 12px; padding: 12px 10px; border-radius: 14px; margin-bottom: 4px; align-items: center; min-height: 56px; }
+    .notif.unread { background: rgba(255,92,0,.10); }
+    .notif .dot-new { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+    .unread-pill { font-size: 10px; font-weight: 800; background: var(--orange); color: #000; padding: 2px 7px; border-radius: 999px; vertical-align: 2px; }
+    .unread-text { color: var(--text); font-weight: 700; }
+    .chat-head { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+    .av-btn { padding: 0; border-radius: 50%; flex-shrink: 0; }
+    .name-btn { padding: 0; min-height: 0; }
+    .set-group { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin-bottom: 18px; }
+    .set-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 14px 16px; min-height: 52px;
+      border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
+    .set-row:last-child { border-bottom: 0; }
+    .set-row.static { cursor: default; }
+    .set-row.danger-row { color: var(--danger); }
+    .skeleton .sk { display: block; background: linear-gradient(90deg, #141414, #222, #141414); background-size: 200% 100%; animation: kbar 1.2s linear infinite; border-radius: 8px; }
+    .skeleton .sk-av { width: 36px; height: 36px; border-radius: 50%; }
+    .skeleton .sk-line { height: 12px; width: 40%; }
+    .skeleton .sk-photo { width: 100%; aspect-ratio: 1; border-radius: 0; }
+    #kandi-ptr { position: fixed; z-index: 60; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 56px); transform: translate(-50%, 0);
+      width: 36px; height: 36px; border-radius: 50%; background: #1c1c1c; border: 1px solid var(--line); display: grid; place-items: center;
+      opacity: 0; pointer-events: none; transition: opacity .15s; }
+    #kandi-ptr.on { opacity: 1 !important; transform: translate(-50%, 40px) !important; }
+    .story > .av { width: 62px; height: 62px; margin: 0 auto 6px; font-size: 28px; }

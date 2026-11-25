@@ -13,6 +13,7 @@ const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
 const { installGroups } = require("./group-routes");
+const { installSocialExtras } = require("./social-extras");
 const { sniffImageMime, normalizePhoto, servePhoto, MAX_UPLOAD_BYTES } = require("./photo");
 const { eventKey, chipLabel } = require("./event-key");
 const {
@@ -410,6 +411,9 @@ app.delete("/api/account", auth, async (req, res) => {
   await db.prepare(`DELETE FROM post_likes WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM posts WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM follows WHERE follower_id=? OR following_id=?`).run(id, id);
+  for (const sql of [`DELETE FROM chat_reads WHERE user_id=?`, `DELETE FROM notif_seen WHERE user_id=?`, `DELETE FROM we_met WHERE user_id=? OR other_id=?`]) {
+    try { await db.prepare(sql).run(...(sql.includes("other_id") ? [id, id] : [id])); } catch (_) { /* table not created yet */ }
+  }
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM users WHERE id=?`).run(id);
@@ -1117,6 +1121,14 @@ installStories({
   blockedSet,
   broadcastToUser,
   uploadDir,
+});
+installSocialExtras({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  broadcastToUser: (...args) => broadcastToUser(...args),
 });
 
 installGroups({

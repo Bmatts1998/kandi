@@ -551,6 +551,11 @@
     matches: [],
     events: [],
     eventsUpdatedAt: null,
+    notifs: [],
+    notifUnread: 0,
+    unreadMsgs: 0,
+    unreadByUser: {},
+    loaded: {},
     eventCategory: "all",
     live: { on: false },
     nearby: [],
@@ -828,14 +833,18 @@
         if (!state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
         render();
         scrollChatToEnd();
+        markChatRead(state.chatWith.id);
       } else if (msg.type === "message") {
-        quiet(loadMatches());
+        quiet(Promise.all([loadMatches(), loadUnread()]));
         toast("New message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
       } else if (msg.type === "match") {
         quiet(Promise.all([loadMatches(), loadFeed()]));
         toast("It's a match" + (msg.user && msg.user.name ? " with " + msg.user.name : "") + "! Check Matches.");
       } else if (msg.type === "like") {
-        quiet(loadInbound());
+        quiet(Promise.all([loadInbound(), loadNotifs()]));
+      } else if (msg.type === "unmatch") {
+        if (state.overlay && state.overlay.type === "chat" && state.chatWith && Number(state.chatWith.id) === Number(msg.userId)) { state.overlay = null; toast("This match ended."); }
+        quiet(Promise.all([loadMatches(), loadUnread()]));
       } else if (msg.type === "meet-plan") {
         quiet(loadMatches());
         if (state.overlay && (state.overlay.type === "chat" || state.overlay.type === "meetSpot") && Number(msg.matchId) === Number(state.chatMatchId)) {
@@ -860,6 +869,11 @@
         else toast((msg.from && msg.from.name ? msg.from.name + " tagged you in " : "You're invited to ") + ((msg.group && msg.group.name) || "a crew"));
       }
     };
+  }
+  function markChatRead(id) {
+    api("/api/chats/" + id + "/read", { method: "POST", body: {} }).then((r) => {
+      if (r && r.unread) { state.unreadMsgs = r.unread.total || 0; state.unreadByUser = r.unread.byUser || {}; render(); }
+    }).catch(() => {});
   }
   function scrollChatToEnd() {
     const log = document.querySelector(".chat-log");
@@ -889,7 +903,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden || !state.me || state.view !== "app") return;
     connectWs();
-    quiet(Promise.all([loadInbound(), loadMatches()]));
+    quiet(Promise.all([loadInbound(), loadMatches(), loadNotifs()]));
   });
 
   async function boot() {
@@ -933,6 +947,15 @@
     render();
     await refreshAll();
     if (state.me) render();
+    // Shared links: /?post=123 opens the post, /?u=5 opens a profile.
+    const qs = new URLSearchParams(location.search);
+    if (state.view === "app" && (qs.get("post") || qs.get("u"))) {
+      history.replaceState({}, "", "/");
+      try {
+        if (qs.get("post")) await handle("open-comments", { getAttribute: (k) => (k === "data-id" ? qs.get("post") : null) });
+        else await handle("open-profile", { getAttribute: (k) => (k === "data-id" ? qs.get("u") : null) });
+      } catch (_) {}
+    }
   }
   function applyMe(data) {
     state.me = data.user;
@@ -1317,7 +1340,8 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs()]);
+    state.loaded.home = true;
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
   }
@@ -1385,6 +1409,49 @@
     const data = await api("/api/events");
     state.events = data.events || [];
     state.eventsUpdatedAt = data.updatedAt || null;
+  }
+  async function loadNotifs() {
+    const data = await api("/api/notifications");
+    state.notifs = data.notifications || [];
+    state.notifUnread = data.unreadCount || 0;
+    state.unreadMsgs = data.unreadMessages || 0;
+    state.unreadByUser = data.unreadByUser || {};
+  }
+  async function loadUnread() {
+    const data = await api("/api/chat/unread");
+    state.unreadMsgs = data.total || 0;
+    state.unreadByUser = data.byUser || {};
+  }
+  function bellBtn() {
+    const n = state.notifUnread;
+    return `<button class="icon-btn bell" data-act="open-notifs" aria-label="Notifications${n ? ", " + n + " new" : ""}">🔔${n ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : ""}</button>`;
+  }
+  function notifText(n) {
+    const who = n.user ? `<strong>${esc(n.user.name)}</strong>` : "<strong>Someone</strong>";
+    if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : "photo"}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">See who with Kandi+</span>`;
+    if (n.kind === "match") return `You matched with ${who}. Say hi!`;
+    if (n.kind === "post_like") return `${who} liked your post`;
+    if (n.kind === "comment") return `${who} commented: “${esc(n.text)}”`;
+    if (n.kind === "follow") return `${who} started following you`;
+    return who;
+  }
+  function notifAct(n) {
+    if (n.kind === "like" && !n.user) return `data-act="tab" data-id="likes"`;
+    if (n.kind === "like") return `data-act="tab" data-id="likes"`;
+    if (n.kind === "match") return `data-act="chat" data-id="${n.user.id}"`;
+    if (n.kind === "post_like" || n.kind === "comment") return `data-act="open-comments" data-id="${n.postId}"`;
+    return `data-act="open-profile" data-id="${n.user.id}"`;
+  }
+  function skeletonPosts(n) {
+    return Array.from({ length: n || 3 }, () => `<div class="post skeleton" aria-hidden="true"><div class="post-hd"><span class="sk sk-av"></span><span class="sk sk-line"></span></div><div class="sk sk-photo"></div><div class="sk sk-line" style="margin:12px 14px;width:60%"></div></div>`).join("");
+  }
+  async function shareLink(path, title) {
+    const url = location.origin + path;
+    try {
+      if (navigator.share) { await navigator.share({ title: title || "Kandi", url }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+    catch (_) { toast(url); }
   }
   async function loadEventPosts(id) {
     try {
@@ -1467,14 +1534,15 @@
       ["discover", "✦", "Discover"],
       ["likes", "♡", "Likes"],
       ["events", "✺", "Events"],
-      ["matches", "✉", "Matches"],
+      ["matches", "✉", "Chats"],
       ["you", "●", "You"],
     ];
     return `<nav class="tabbar" aria-label="Main">${items.map((t) => {
       const on = state.tab === t[0];
       let badge = "";
       if (t[0] === "likes" && state.inbound.count) badge = `<span class="badge">${state.inbound.count}</span>`;
-      if (t[0] === "matches" && state.matches.length) badge = `<span class="badge">${state.matches.length}</span>`;
+      if (t[0] === "matches" && state.unreadMsgs) badge = `<span class="badge" aria-label="${state.unreadMsgs} unread">${state.unreadMsgs > 99 ? "99+" : state.unreadMsgs}</span>`;
+      else if (t[0] === "matches" && state.matches.some((m) => !m.lastMessage)) badge = `<span class="badge dot" aria-label="New match"></span>`;
       return `<button class="tab${on ? " on" : ""}" data-act="tab" data-id="${t[0]}" aria-label="${t[2]}"${on ? ' aria-current="page"' : ""}><span class="ic" aria-hidden="true">${t[1]}</span>${t[2]}${badge}</button>`;
     }).join("")}</nav>`;
   }
@@ -1620,7 +1688,9 @@
         <button class="btn sm primary" style="margin-top:16px" data-act="rewind">Rewind last pass</button></div></div>`;
     }
     const parts = [];
-    parts.push(photoEl(p, 0, true));
+    if ((p.photos || []).length) parts.push(photoEl(p, 0, true));
+    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}</div>
+      <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
     if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
@@ -1637,7 +1707,9 @@
       <div class="muted">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ") || "—"}</div>
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       ${crewBadgesHtml(p.id)}
-      <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div></div>`);
+      <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div>
+      <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" data-act="open-profile" data-id="${p.id}">View posts &amp; profile</button>
+      <button type="button" class="btn sm ghost" data-act="report" data-id="${p.id}">Report</button></div></div>`);
     return header("Kandi", right) + `<div class="scroll">${sameBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
         <button class="round rewind" data-act="rewind" aria-label="Rewind last pass">↺</button>
@@ -1665,7 +1737,7 @@
       const info = p.liked || {};
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
-        ${personAvatar(p, "av md")}
+        <button class="av-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av md")}</button>
         <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}${personBadge(p)}</div>
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
@@ -1721,15 +1793,23 @@
   }
 
   function viewMatches() {
-    let html = header("Matches") + `<div class="scroll pad">`;
-    if (!state.matches.length) return html + `<div class="empty"><p>When you and another raver like each other, the match lands here.</p></div></div>`;
+    let html = header("Chats", bellBtn()) + `<div class="scroll pad">`;
+    if (!state.matches.length) return html + `<div class="empty"><div style="font-size:40px;margin-bottom:8px">✉</div><h2 class="h2" style="font-size:22px">No matches yet</h2><p class="sub">When you and another raver like each other, you can chat here.</p>
+      <button class="btn primary" style="margin-top:16px" data-act="tab" data-id="discover">Find people in Discover</button>
+      <button class="btn ghost" style="margin-top:8px" data-act="tab" data-id="likes">See who liked you</button></div></div>`;
+    const fresh = state.matches.filter((m) => !m.lastMessage);
+    if (fresh.length) {
+      html += `<div class="label">New matches</div><div class="stories" style="padding:0 0 12px">${fresh.map((m) =>
+        `<button class="story" data-act="chat" data-id="${m.user.id}" aria-label="Chat with ${esc(m.user.name)}">${personAvatar(m.user, "av")}<div class="nm">${esc(m.user.name)}</div></button>`).join("")}</div>
+        <div class="label">Messages</div>`;
+    }
     state.matches.forEach((m) => {
       const p = m.user;
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}${personBadge(p)}</div>
-        <div class="muted">${esc(last ? last.text : "You matched. Say hi.")}</div>
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}${personBadge(p)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>
+        <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + last.text : "You matched. Say hi.")}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
     });
@@ -1974,7 +2054,7 @@
 
   function viewHome() {
     const following = state.feedTab !== "popular";
-    let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post" aria-label="New post">＋</button>`);
+    let html = header("Kandi", `<button class="icon-btn" data-act="open-composer" title="New post" aria-label="New post">＋</button>${bellBtn()}`);
     html += `<div class="feed-tabs">
       <button class="${following ? "on" : ""}" data-act="feed-tab" data-id="following">Following</button>
       <button class="${!following ? "on" : ""}" data-act="feed-tab" data-id="popular">Popular</button>
@@ -1994,7 +2074,9 @@
       html += `</div>`;
     }
     const posts = state.homePosts || [];
-    if (!posts.length) {
+    if (!posts.length && !state.loaded.home) {
+      html += skeletonPosts(3);
+    } else if (!posts.length) {
       if (following) {
         html += `<div class="empty"><div style="font-size:40px;margin-bottom:8px">⌁</div><h2 class="h2" style="font-size:22px">Your floor is quiet</h2><p class="sub">Follow ravers and their posts show up here. Check Popular, or find people in Discover.</p>
           <button class="btn primary" style="margin-top:16px" data-act="feed-tab" data-id="popular">See what's popular</button></div>`;
@@ -2050,6 +2132,7 @@
       <div class="post-actions">
         <button type="button" class="${p.liked ? "loved" : ""}" data-act="toggle-post-like" data-id="${p.id}" aria-label="Like">♥</button>
         <button type="button" data-act="open-comments" data-id="${p.id}" aria-label="Comments">💬</button>
+        <button type="button" data-act="share-post" data-id="${p.id}" aria-label="Share post">↗</button>
         <span class="spacer"></span>
       </div>
       <div class="post-body">
@@ -2065,7 +2148,7 @@
     const soc = state.profile && state.profile.user && state.profile.user.id === p.id ? state.profile : null;
     const posts = (soc && soc.posts) || [];
     const counts = soc && soc.user ? { followerCount: soc.user.followerCount, followingCount: soc.user.followingCount } : {};
-    let html = header("You", `<button type="button" class="btn sm ghost" data-act="settings">Settings</button>`);
+    let html = header("You", `<button type="button" class="icon-btn" data-act="share-profile" data-id="${p.id}" aria-label="Share my profile">↗</button>${bellBtn()}<button type="button" class="icon-btn" data-act="open-settings" aria-label="Settings">⚙︎</button>`);
     html += `<div class="scroll pad">`;
     html += profilePreview(p, posts, { isMe: true, counts });
     html += `</div>`;
@@ -2075,31 +2158,40 @@
   function settingsBody() {
     const p = state.me || {};
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
-    let html = `<div class="card" style="margin-top:8px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
-      <div class="tiny">${p.subscription ? "Free during the beta — no payment on file." : "Free to use. Kandi+ (free during the beta) adds unlimited likes and more."}</div></div>
-      ${p.subscription ? `<button type="button" class="btn sm ghost" data-act="cancel-sub">Turn off</button>` : `<button type="button" class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
-    </div>`;
-    html += `<div class="rsvp-item" style="margin-top:14px"><div class="grow"><div class="rsvp-label">Show upcoming shows on my profile</div>
-      <div class="tiny">Turn this off if you want to keep your RSVPs off your public profile.</div></div>
-      <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>`;
-    html += `<button type="button" class="btn ghost" style="margin-top:16px" data-act="open-groups">Rave Groups</button>`;
-    html += `<h3 style="margin:22px 0 10px;font-size:16px">Safety</h3>
-      <div class="notice warn" style="margin-bottom:10px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
-    if (state.locationShare) {
-      html += `<div class="notice ok" style="margin-bottom:10px">Meetup note shared with ${esc(state.locationShare.with)}${state.locationShare.event ? " · " + esc(state.locationShare.event) : ""}. In-app only — no real location was sent.</div>`;
-    } else {
-      html += `<button type="button" class="btn ghost" style="margin-bottom:10px" data-act="share-loc">Share a meetup note with a friend</button>`;
-    }
-    if ((state.blocked || []).length) {
-      html += `<div class="label" style="margin-top:16px">Blocked</div>` + state.blocked.map((b) =>
-        `<div class="row" style="margin:6px 0"><div class="grow">${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`
-      ).join("");
-    }
+    const row = (act, label, sub, extra) => `<button type="button" class="set-row" data-act="${act}" ${extra || ""}><div class="grow"><div>${label}</div>${sub ? `<div class="tiny">${sub}</div>` : ""}</div><span aria-hidden="true">›</span></button>`;
+    let html = `<div class="label">Account</div><div class="set-group">
+        ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
+        ${row("preview-profile", "Preview my profile", "See what other ravers see")}
+        ${row("share-profile", "Share my profile", "", `data-id="${p.id}"`)}
+        <div class="set-row static"><div class="grow"><div>Username</div><div class="tiny">@${esc(p.username || "")}</div></div></div>
+      </div>
+      <div class="label">Subscription</div><div class="set-group">
+        ${p.subscription ? row("cancel-sub", plan + " · free during the beta", "No payment on file. Tap to turn it off") : row("paywall", "Get Kandi+", "Free during the beta: unlimited likes, see who likes you", 'data-reason="upgrade"')}
+      </div>
+      <div class="label">Community</div><div class="set-group">
+        ${row("open-groups", "Rave Groups", "Form a crew or join one")}
+      </div>
+      <div class="label">Notifications</div><div class="set-group">
+        ${row("open-notifs", "Activity", "Likes, matches, comments and follows")}
+        <div class="set-row static"><div class="grow"><div>Push notifications</div><div class="tiny">Coming with the next App Store update. In-app alerts are on.</div></div></div>
+      </div>
+      <div class="label">Safety &amp; privacy</div><div class="set-group">
+        <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
+          <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
+        ${state.locationShare
+          ? `<div class="set-row static"><div class="grow"><div>Meetup note shared with ${esc(state.locationShare.with)}</div><div class="tiny">In-app only — no real location was sent.</div></div></div>`
+          : row("share-loc", "Share a meetup note", "Tell a trusted friend where you'll be at a show")}
+        ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
+        <a class="set-row" href="/privacy" target="_blank" rel="noopener"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
+        <a class="set-row" href="/terms" target="_blank" rel="noopener"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
+      </div>
+      <div class="notice warn" style="margin-bottom:18px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     html += iosTip();
-    html += `<button type="button" class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
-      <button type="button" class="btn danger" style="margin-top:8px;width:100%" data-act="delete-account">Delete account</button>
-      <p class="tiny" style="text-align:center;margin-top:12px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a></p>
-      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1.1</p>`;
+    html += `<div class="set-group" style="margin-top:18px">
+        ${row("ask-logout", "Log out", "")}
+        <button type="button" class="set-row danger-row" data-act="delete-account"><div class="grow">Delete account</div><span aria-hidden="true">›</span></button>
+      </div>
+      <p class="tiny" style="text-align:center;margin-top:16px">Kandi v1.2</p>`;
     return html;
   }
 
@@ -2244,8 +2336,8 @@
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">Comments</h2>
         <div style="margin-top:12px">${comments.length ? comments.map((c) => `<div class="row" style="margin-bottom:12px;align-items:flex-start">
-          ${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}
-          <div class="grow"><div><strong>${esc(c.author.name)}</strong>${personBadge(c.author)} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
+          <button class="av-btn" data-act="open-profile" data-id="${c.author && c.author.id}" aria-label="View ${esc(c.author && c.author.name)}'s profile">${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}</button>
+          <div class="grow"><div><button class="name-btn" data-act="open-profile" data-id="${c.author && c.author.id}"><strong>${esc(c.author.name)}</strong></button>${personBadge(c.author)} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
           <div>${esc(c.text)}</div></div>
           ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
         </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
@@ -2281,7 +2373,7 @@
         <div class="scroll pad">${editProfileForm()}</div></div>`;
     }
     if (o.type === "settings") {
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Settings</span></div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:800">Settings</span></div></div>
         <div class="scroll pad">${settingsBody()}</div></div>`;
     }
     if (o.type === "post") {
@@ -2462,14 +2554,44 @@
       if (!p) return "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
-        <div class="chat-head">${personAvatar(p, "av chat")}<div><div class="nm">${esc(p.name)}${personBadge(p)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : ""}</div></div></div>
-        <div class="right"><button class="icon-btn" data-act="report" data-id="${p.id}" title="Report or block" aria-label="Report or block">⚑</button></div></div>
+        <button class="chat-head" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}${personBadge(p)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`}</div></button></div>
+        <div class="right"><button class="icon-btn" data-act="chat-menu" data-id="${p.id}" aria-label="More options">⋯</button></div></div>
         ${bothGoingLine(state.chatShared, state.chatMeetPlan)}
         ${state.chatShared && state.chatShared.length ? `<div style="padding:0 16px 8px"><button type="button" class="btn sm ghost" data-act="pick-meet" data-id="${p.id}">${state.chatMeetPlan && (state.chatMeetPlan.spot || state.chatMeetPlan.time) ? "Edit meet spot" : "Pick a meet spot"}</button></div>` : ""}
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
-        <div class="scroll chat-log">${state.chat.map((m) => `<div class="bubble ${m.fromId === state.me.id ? "me" : "them"}">${esc(m.text)}</div>`).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
+        <div class="scroll chat-log">${state.chat.map((m) => `<div class="bubble ${Number(m.fromId) === Number(state.me.id) ? "me" : "them"}">${esc(m.text)}</div>`).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
         <div class="chat-bar"><input data-field="chat" aria-label="Message" enterkeyhint="send" autocomplete="off" placeholder="Say something..." value="${esc(state.drafts.chat)}" />
         <button class="btn sm primary" data-act="send-chat">Send</button></div></div>`;
+    }
+    if (o.type === "notifs") {
+      const list = state.notifs || [];
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:800">Notifications</span></div></div>
+        <div class="scroll pad">${list.length ? list.map((n) => `<button class="notif row${n.unread ? " unread" : ""}" ${notifAct(n)}>
+            ${n.user ? personAvatar(n.user, "av sm") : `<span class="av sm" style="background:linear-gradient(160deg,#111,#ff5c00)">♡</span>`}
+            <div class="grow"><div>${notifText(n)}</div><div class="tiny">${esc(timeAgo(n.at))}</div></div>${n.unread ? `<span class="dot-new" aria-label="New"></span>` : ""}</button>`).join("")
+          : `<div class="empty"><div style="font-size:40px;margin-bottom:8px">🔔</div><h2 class="h2" style="font-size:22px">Nothing yet</h2><p class="sub">Likes, matches, comments and new followers show up here.</p>
+            <button class="btn primary" style="margin-top:16px" data-act="open-composer">Share your first post</button></div>`}</div></div>`;
+    }
+    if (o.type === "chatMenu") {
+      const p = state.chatWith || { name: "" };
+      const met = o.weMet;
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">${esc(p.name)}</h2>
+        <button class="btn ghost" style="margin-top:14px" data-act="open-profile" data-id="${p.id}">View profile</button>
+        <div class="card" style="margin-top:10px"><div style="font-weight:700">Did you two meet up?</div>
+          <p class="tiny" style="margin:4px 0 10px">Private — only helps Kandi get better at matches. They won't see your answer.</p>
+          <div class="row"><button class="btn sm ${met === "yes" ? "primary" : "ghost"}" data-act="we-met" data-id="${p.id}" data-t="yes">We met 🎉</button>
+          <button class="btn sm ${met === "no" ? "primary" : "ghost"}" data-act="we-met" data-id="${p.id}" data-t="no">Not yet</button></div></div>
+        <button class="btn ghost" style="margin-top:10px" data-act="ask-unmatch" data-id="${p.id}">Unmatch</button>
+        <button class="btn danger" style="margin-top:8px;width:100%" data-act="report" data-id="${p.id}">Report or block</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+    }
+    if (o.type === "confirm") {
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1" role="alertdialog" aria-label="${esc(o.title)}"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">${esc(o.title)}</h2>
+        <p class="sub">${esc(o.body || "")}</p>
+        <button class="btn ${o.danger ? "danger" : "primary"}" style="margin-top:16px;width:100%" data-act="confirm-ok" data-id="${esc(o.okId || "")}">${esc(o.okLabel || "OK")}</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
     }
     if (o.type === "share") {
       const evName = (state.events.find((e) => e.id === state.live.eventId) || {}).name || "your event";
@@ -2745,6 +2867,65 @@
     const id = el && el.getAttribute("data-id");
     try {
       state.err = "";
+      if (act === "open-notifs") {
+        const prev = state.overlay;
+        state.overlay = { type: "notifs", returnTo: prev && prev.type === "settings" ? prev : null };
+        render();
+        await loadNotifs();
+        render();
+        if (state.notifUnread) {
+          await api("/api/notifications/seen", { method: "POST", body: {} });
+          state.notifUnread = 0;
+          setTimeout(() => { (state.notifs || []).forEach((n) => { n.unread = false; }); if (state.overlay && state.overlay.type === "notifs") render(); }, 2500);
+          render();
+        }
+        return;
+      }
+      if (act === "open-settings") { state.overlay = { type: "settings" }; render(); quiet(loadBlocks()); return; }
+      if (act === "chat-menu") {
+        state.overlay = { type: "chatMenu", weMet: null, returnTo: state.overlay };
+        render();
+        try { const r = await api("/api/matches/" + id + "/we-met"); if (state.overlay && state.overlay.type === "chatMenu") { state.overlay.weMet = r.answer; render(); } } catch (_) {}
+        return;
+      }
+      if (act === "we-met") {
+        const answer = el.getAttribute("data-t");
+        await api("/api/matches/" + id + "/we-met", { method: "POST", body: { answer } });
+        if (state.overlay && state.overlay.type === "chatMenu") state.overlay.weMet = answer;
+        toast(answer === "yes" ? "Love that for you two 🎉" : "Got it. Thanks!");
+        render(); return;
+      }
+      if (act === "ask-unmatch") {
+        const p = state.chatWith || {};
+        state.overlay = { type: "confirm", title: "Unmatch " + (p.name || "this person") + "?", body: "Your chat will be deleted and you won't see each other again. They won't be told why.", okLabel: "Unmatch", danger: true, okAct: "unmatch", okId: String(id) };
+        render(); return;
+      }
+      if (act === "ask-logout") {
+        state.overlay = { type: "confirm", title: "Log out of Kandi?", body: "You can log back in anytime with your username and password.", okLabel: "Log out", okAct: "logout", returnTo: state.overlay };
+        render(); return;
+      }
+      if (act === "confirm-ok") {
+        const o = state.overlay || {};
+        state.overlay = null;
+        if (o.okAct === "unmatch") {
+          await api("/api/matches/" + o.okId + "/unmatch", { method: "POST", body: {} });
+          state.chatWith = null; state.tab = "matches";
+          await Promise.all([loadMatches(), loadUnread()]);
+          toast("Unmatched");
+          render(); return;
+        }
+        if (o.okAct === "delete-post") {
+          await api("/api/posts/" + o.okId, { method: "DELETE", body: {} });
+          state.homePosts = (state.homePosts || []).filter((p) => String(p.id) !== String(o.okId));
+          if (state.profile && state.profile.posts) state.profile.posts = state.profile.posts.filter((p) => String(p.id) !== String(o.okId));
+          toast("Post deleted");
+          render(); return;
+        }
+        if (o.okAct) return handle(o.okAct, el);
+        render(); return;
+      }
+      if (act === "share-post") { await shareLink("/?post=" + id, "A post on Kandi"); return; }
+      if (act === "share-profile") { await shareLink("/?u=" + id, "A raver on Kandi"); return; }
       if (act === "retry-boot") { state.view = "boot"; state.err = ""; render(); await boot(); return; }
       if (act === "dismiss-ios-tip") { localStorage.setItem("kandi-hide-ios-tip", "1"); render(); return; }
       if (act === "claim-finish") {
@@ -2780,10 +2961,10 @@
       if (act === "edit-profile") {
         state.err = "";
         startEditDraft();
-        state.overlay = { type: "editProfile" };
+        state.overlay = { type: "editProfile", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : null };
         render(); return;
       }
-      if (act === "settings") { state.overlay = { type: "settings" }; render(); return; }
+      if (act === "settings") { state.overlay = { type: "settings" }; render(); quiet(loadBlocks()); return; }
       if (act === "profile-tab") { state.profileTab = id === "about" ? "about" : "posts"; render(); return; }
       if (act === "post-view") { state.profilePostView = id === "list" ? "list" : "grid"; render(); return; }
       if (act === "edit-set-gender") { state.editDraft = state.editDraft || {}; state.editDraft.gender = state.editDraft.gender === id ? "" : id; render(); return; }
@@ -2828,12 +3009,12 @@
         if (built.error) { state.err = built.error; render(); return; }
         state.err = "";
         state.profileTab = state.profileTab || "posts";
-        state.overlay = { type: "editProfile", preview: true };
+        state.overlay = { type: "editProfile", preview: true, returnTo: state.overlay && state.overlay.returnTo };
         render(); return;
       }
       if (act === "edit-back") {
         state.err = "";
-        state.overlay = { type: "editProfile" };
+        state.overlay = { type: "editProfile", returnTo: state.overlay && state.overlay.returnTo };
         render(); return;
       }
       if (act === "save-profile") {
@@ -2848,8 +3029,9 @@
         const body = collected.body;
         const data = await api("/api/me", { method: "PUT", body });
         state.me = data.user;
-        state.overlay = null;
+        state.overlay = (state.overlay && state.overlay.returnTo) || null;
         state.err = "";
+        toast("Profile saved");
         if (state.me) await loadProfile(state.me.id);
         render(); return;
       }
@@ -2903,7 +3085,7 @@
         if (ws) { try { ws.close(); } catch (_) {} ws = null; }
         render(); return;
       }
-      if (act === "delete-account") { state.err = ""; state.drafts.deleteUser = ""; state.drafts.deleteConfirm = ""; state.overlay = { type: "deleteAccount" }; render(); return; }
+      if (act === "delete-account") { state.err = ""; state.drafts.deleteUser = ""; state.drafts.deleteConfirm = ""; state.overlay = { type: "deleteAccount", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : null }; render(); return; }
       if (act === "delete-account-confirm") {
         await api("/api/account", { method: "DELETE", body: { username: state.drafts.deleteUser, confirm: state.drafts.deleteConfirm } });
         state.me = null; state.view = "auth"; state.overlay = null; state.err = ""; state.info = "Your account and data were deleted.";
@@ -3089,12 +3271,15 @@
         render(); return;
       }
       if (act === "open-profile") {
+        if (!id || id === "undefined") return;
+        let prev = state.overlay;
+        if (prev && prev.type === "chatMenu") prev = prev.returnTo;
+        if (prev && prev.type === "profile") prev = prev.returnTo;
         await loadProfile(id);
         state.profileTab = "posts";
-        if (state.overlay && state.overlay.type !== "profile") state.overlayBack = state.overlay;
-        const ret = state.overlay && (state.overlay.type === "group" || state.overlay.type === "groups")
-          ? { type: state.overlay.type }
-          : (state.overlay && state.overlay.returnTo) || null;
+        const ret = prev && (prev.type === "group" || prev.type === "groups")
+          ? { type: prev.type }
+          : prev && ["chat", "notifs", "event", "comments", "live", "settings"].includes(prev.type) ? prev : (prev && prev.returnTo) || null;
         state.overlay = { type: "profile", returnTo: ret };
         render(); return;
       }
@@ -3167,7 +3352,10 @@
         render(); return;
       }
       if (act === "delete-post") {
-        if (!confirm("Delete this post?")) return;
+        state.overlay = { type: "confirm", title: "Delete this post?", body: "It'll be removed from the feed and your profile. This can't be undone.", okLabel: "Delete post", danger: true, okAct: "delete-post", okId: String(id) };
+        render(); return;
+      }
+      if (act === "delete-post-legacy") {
         await api("/api/posts/" + id, { method: "DELETE", body: {} });
         state.homePosts = (state.homePosts || []).filter((p) => String(p.id) !== String(id));
         if (state.profile && state.profile.posts) state.profile.posts = state.profile.posts.filter((p) => String(p.id) !== String(id));
@@ -3240,7 +3428,8 @@
           }
           state.overlay = { type: "match", person: person || { id: o.id, name: "them", photos: [] } };
         } else state.overlay = { type: "liked" };
-        await loadFeed(); await loadInbound(); await loadMatches();
+        render();
+        await Promise.allSettled([loadFeed(), loadInbound(), loadMatches()]);
         render(); return;
       }
       if (act === "like-back") {
@@ -3258,7 +3447,7 @@
         await api("/api/rewind", { method: "POST", body: {} });
         await loadFeed(); render(); return;
       }
-      if (act === "paywall") { state.overlay = { type: "paywall", reason: el.getAttribute("data-reason") || "upgrade" }; render(); return; }
+      if (act === "paywall") { state.overlay = { type: "paywall", reason: el.getAttribute("data-reason") || "upgrade", returnTo: state.overlay && ["settings", "event"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
       if (act === "billing") { state.billing = id; render(); return; }
       if (act === "pick-plan") { state.pendingPlan = id; render(); return; }
       if (act === "buy") {
@@ -3518,7 +3707,9 @@
         state.chatMatchId = data.matchId || (m && m.matchId) || null;
         state.drafts.chat = "";
         state.overlay = { type: "chat", id: Number(id) };
-        render(); scrollChatToEnd(); return;
+        render(); scrollChatToEnd();
+        markChatRead(id);
+        return;
       }
       if (act === "send-chat") {
         const text = state.drafts.chat.trim();
@@ -3528,7 +3719,7 @@
         state.drafts.chat = "";
         render(); scrollChatToEnd(); return;
       }
-      if (act === "share-loc") { state.overlay = { type: "share", with: "Riley (trusted friend)" }; render(); return; }
+      if (act === "share-loc") { state.overlay = { type: "share", with: "Riley (trusted friend)", returnTo: state.overlay && ["settings", "live"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
       if (act === "share-with") { state.overlay = Object.assign({}, state.overlay, { with: id }); render(); return; }
       if (act === "confirm-share") {
         const evName = (state.events.find((e) => e.id === state.live.eventId) || {}).name || "";
@@ -3989,6 +4180,54 @@
   }
   root.addEventListener("change", onPickedFile);
   root.addEventListener("input", onPickedFile);
+
+  // Pull to refresh (Instagram-style) on the main scrolling area of each tab.
+  let ptr = null;
+  function ptrEl() {
+    let el = document.getElementById("kandi-ptr");
+    if (!el) { el = document.createElement("div"); el.id = "kandi-ptr"; el.setAttribute("aria-hidden", "true"); el.innerHTML = '<span class="spin"></span>'; document.body.appendChild(el); }
+    return el;
+  }
+  async function refreshTab() {
+    const t = state.tab;
+    const jobs = [loadNotifs(), loadUnread()];
+    if (t === "home") jobs.push(loadHome());
+    if (t === "discover") jobs.push(loadFeed());
+    if (t === "likes") jobs.push(loadInbound());
+    if (t === "events") jobs.push(loadEvents());
+    if (t === "matches") jobs.push(loadMatches());
+    if (t === "you" && state.me) jobs.push(loadProfile(state.me.id));
+    await Promise.allSettled(jobs);
+    render();
+  }
+  root.addEventListener("touchstart", (e) => {
+    if (state.view !== "app" || state.overlay) return;
+    const sc = e.target.closest && e.target.closest(".screen > .scroll");
+    if (!sc || sc.scrollTop > 0) return;
+    ptr = { y: e.touches[0].clientY, dy: 0 };
+  }, { passive: true });
+  root.addEventListener("touchmove", (e) => {
+    if (!ptr) return;
+    ptr.dy = e.touches[0].clientY - ptr.y;
+    const el = ptrEl();
+    const d = Math.max(0, Math.min(90, ptr.dy * 0.5));
+    el.style.transform = `translate(-50%, ${d}px)`;
+    el.style.opacity = String(Math.min(1, d / 45));
+  }, { passive: true });
+  root.addEventListener("touchend", async () => {
+    if (!ptr) return;
+    const go = ptr.dy > 80;
+    ptr = null;
+    const el = ptrEl();
+    if (!go) { el.style.opacity = "0"; el.style.transform = "translate(-50%, 0)"; return; }
+    el.classList.add("on");
+    try { await refreshTab(); } finally { el.classList.remove("on"); el.style.opacity = "0"; el.style.transform = "translate(-50%, 0)"; }
+  });
+  // Keep the bell and chat badges fresh while the app is open.
+  setInterval(() => {
+    if (document.hidden || !state.me || state.view !== "app") return;
+    Promise.allSettled([loadNotifs()]).then(() => { if (!document.activeElement || !document.activeElement.getAttribute || !document.activeElement.getAttribute("data-field")) render(); });
+  }, 60000);
 
   // Multi-photo posts: keep the "2/5" counter in sync while swiping.
   root.addEventListener("scroll", (e) => {
