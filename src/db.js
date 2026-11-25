@@ -1020,6 +1020,7 @@ async function migrate(db) {
   await migrateBilling(db);
   await migrateFounding(db);
   await migrateEmail(db);
+  await require("./follow-rules").migrateFollowRules(db);
   if (db.driver === "postgres") {
     await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_song TEXT DEFAULT ''");
   } else {

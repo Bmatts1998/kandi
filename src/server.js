@@ -37,6 +37,7 @@ const founding = require("./founding");
 const iap = require("./iap");
 const mailer = require("./email");
 const songs = require("./song");
+const followRules = require("./follow-rules");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -396,6 +397,7 @@ function selfEmailExtra(user) {
     emailVerified: Boolean(user.email_verified_at),
     emailLocked: mailer.isLocked(user),
     emailVerificationOn: mailer.verificationActive(),
+    allowLinkFollows: followRules.shareFollowEnabled(user),
   };
 }
 
@@ -1144,6 +1146,7 @@ app.post("/api/block", auth, async (req, res) => {
   const reason = String(req.body.reason || "");
   if (!id || id === req.user.id) return res.status(400).json({ error: "Invalid user." });
   await db.prepare(`INSERT OR REPLACE INTO blocks (user_id, blocked_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
+  await followRules.removeFollowsBetween(db, req.user.id, id);
   const [a, b] = pairIds(req.user.id, id);
   const match = await db.prepare(`SELECT id FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
   if (match) await db.prepare(`DELETE FROM messages WHERE match_id=?`).run(match.id);
@@ -1158,6 +1161,7 @@ app.post("/api/report", auth, async (req, res) => {
   if (!id) return res.status(400).json({ error: "Invalid user." });
   await db.prepare(`INSERT INTO reports (reporter_id, target_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
   await db.prepare(`INSERT OR IGNORE INTO blocks (user_id, blocked_id, reason) VALUES (?,?,?)`).run(req.user.id, id, reason);
+  await followRules.removeFollowsBetween(db, req.user.id, id);
   const [ra, rb] = pairIds(req.user.id, id);
   const reportedMatch = await db.prepare(`SELECT id FROM matches WHERE a_id=? AND b_id=?`).get(ra, rb);
   if (reportedMatch) await db.prepare(`DELETE FROM messages WHERE match_id=?`).run(reportedMatch.id);
@@ -1353,6 +1357,48 @@ function waitMsg(ms) {
   const s = Math.max(1, Math.ceil(ms / 1000));
   return s >= 90 ? `Too many emails. Try again in about ${Math.ceil(s / 60)} minutes.` : `Hang on ${s} seconds before sending another email.`;
 }
+
+// ---- share-my-profile links (the only way to follow someone you haven't matched) ----
+app.get("/api/me/share-link", auth, async (req, res) => {
+  const token = await followRules.ensureShareToken(db, req.user);
+  res.json({ url: followRules.shareUrl(req.user, token, req), allowLinkFollows: followRules.shareFollowEnabled(req.user) });
+});
+app.post("/api/me/share-link/reset", auth, async (req, res) => {
+  const token = await followRules.resetShareToken(db, req.user.id);
+  res.json({ ok: true, url: followRules.shareUrl(req.user, token, req), allowLinkFollows: followRules.shareFollowEnabled(req.user) });
+});
+app.put("/api/me/share-settings", auth, async (req, res) => {
+  const on = !(req.body && (req.body.allowLinkFollows === false || req.body.allowLinkFollows === 0 || req.body.allowLinkFollows === "0"));
+  await db.prepare(`UPDATE users SET share_follow=? WHERE id=?`).run(on ? 1 : 0, req.user.id);
+  res.json({ ok: true, allowLinkFollows: on });
+});
+// Limited card for someone who opened a share link. Works logged out; needs the right token.
+const shareHits = new Map();
+app.get("/api/share/:username", async (req, res) => {
+  const ip = String(req.ip || "");
+  const now = Date.now();
+  const list = (shareHits.get(ip) || []).filter((t) => now - t < 60000);
+  if (list.length >= 30) return res.status(429).json({ error: "Too many tries. Try again in a minute." });
+  list.push(now); shareHits.set(ip, list);
+  if (shareHits.size > 5000) shareHits.clear();
+  const username = String(req.params.username || "").trim().toLowerCase();
+  const token = String(req.query.k || "");
+  const target = /^[a-z0-9_]{3,20}$/.test(username) ? await db.prepare(`SELECT * FROM users WHERE lower(username)=?`).get(username) : null;
+  const invalid = { error: "This profile link isn't working anymore. Ask them for a new one." };
+  if (!target || !followRules.linkTokenValid(target, token) || mailer.isLocked(target)) return res.status(404).json(invalid);
+  const me = await getUserFromReq(req);
+  if (me && Number(me.id) !== Number(target.id) && await followRules.isBlockedEitherWay(db, me.id, target.id)) return res.status(404).json(invalid);
+  const full = publicUser(target);
+  const following = me ? Boolean(await db.prepare(`SELECT 1 AS x FROM follows WHERE follower_id=? AND following_id=?`).get(me.id, target.id)) : false;
+  res.json({
+    profile: {
+      id: full.id, username: full.username, name: full.name, age: full.age,
+      photos: (full.photos || []).slice(0, 1), genres: full.genres, vibes: full.vibes,
+      favoriteSong: full.favoriteSong, homeLocation: full.homeLocation, isDemo: full.isDemo,
+    },
+    signedIn: Boolean(me), isMe: Boolean(me && Number(me.id) === Number(target.id)), following,
+  });
+});
 
 // Song search for the "Favorite song" picker (Apple iTunes Search API, cached + rate-limited).
 app.get("/api/music/search", auth, async (req, res) => {

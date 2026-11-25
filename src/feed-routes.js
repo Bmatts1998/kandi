@@ -1,4 +1,5 @@
 "use strict";
+const followRules = require("./follow-rules");
 
 const crypto = require("crypto");
 const { normalizePhoto, sniffImageMime, savePhotoFile } = require("./photo");
@@ -104,6 +105,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     const following = Number(row.user_id) === Number(meId)
       ? false
       : Boolean(await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(meId, row.user_id));
+    const canFollow = !following && Number(row.user_id) !== Number(meId) && await followRules.canFollowSimple(db(), meId, row.user_id);
     const photoIds = parsePhotoIds(row);
     const photoUrls = photoIds.map((id) => "/uploads/" + id);
     const posterUrl = row.poster_id ? "/uploads/" + row.poster_id : null;
@@ -141,6 +143,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         avatar: firstAvatar(row.user_photos),
         isDemo: Boolean(row.is_demo),
         following,
+        canFollow,
         ...authorBits(row),
       },
       authorScore: Number(row.engagement_score) || 0,
@@ -255,6 +258,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
       if (blocked.has(Number(u.id))) continue;
       if (Number(u.follower_count) < 1) continue;
       const following = Boolean(await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(req.user.id, u.id));
+      const canFollow = !following && await followRules.canFollowSimple(db(), req.user.id, u.id);
       people.push({
         id: Number(u.id),
         username: u.username,
@@ -264,6 +268,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
         followerCount: Number(u.follower_count) || 0,
         ...authorBits(u),
         following,
+        canFollow,
       });
       if (people.length >= 12) break;
     }
@@ -472,19 +477,26 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     await db().prepare(`INSERT OR IGNORE INTO blocks (user_id, blocked_id, reason) VALUES (?,?,?)`).run(
       req.user.id, post.user_id, reason
     );
+    await followRules.removeFollowsBetween(db(), req.user.id, post.user_id);
     bump();
     res.json({ ok: true, blocked: true });
   });
 
+  // Follow rule: mutual match, or the person's own share-link token (body.k). Blocks always win.
   app.post("/api/users/:id/follow", auth, async (req, res) => {
     const id = Number(req.params.id);
     if (!id || id === Number(req.user.id)) return res.status(400).json({ error: "You can't follow yourself." });
-    const user = await db().prepare(`SELECT id FROM users WHERE id=?`).get(id);
+    const user = await db().prepare(`SELECT id, username, share_token, share_follow FROM users WHERE id=?`).get(id);
     if (!user) return res.status(404).json({ error: "User not found." });
-    const blocked = await blockedSet(req.user.id);
-    if (blocked.has(id)) return res.status(403).json({ error: "You can't follow this person." });
-    await db().prepare(`INSERT OR IGNORE INTO follows (follower_id, following_id, created_at) VALUES (?,?,?)`).run(
-      req.user.id, id, new Date().toISOString()
+    const already = await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(req.user.id, id);
+    if (already && !(await followRules.isBlockedEitherWay(db(), req.user.id, id))) {
+      return res.json({ ok: true, following: true, ...(await followCounts(id)) });
+    }
+    const token = String((req.body && (req.body.k || req.body.token)) || "");
+    const check = await followRules.checkFollow(db(), req.user, user, token);
+    if (!check.ok) return res.status(check.status).json({ error: check.error, code: check.code });
+    await db().prepare(`INSERT OR IGNORE INTO follows (follower_id, following_id, created_at, via) VALUES (?,?,?,?)`).run(
+      req.user.id, id, new Date().toISOString(), check.via
     );
     const counts = await followCounts(id);
     bump();
@@ -515,10 +527,12 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     const following = id !== Number(req.user.id) && Boolean(
       await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(req.user.id, id)
     );
+    const matched = id !== Number(req.user.id) && await followRules.isMutualMatch(db(), req.user.id, id);
+    const canFollow = !following && matched;
     const rows = await db().prepare(`${authorJoin} WHERE p.user_id=? ORDER BY p.created_at DESC, p.id DESC LIMIT 60`).all(id);
     const upcoming = await listUpcomingForProfile(db(), user, req.user);
     res.json({
-      user: publicUser(user, { ...counts, following, isMe: id === Number(req.user.id), upcomingShows: upcoming.hidden ? [] : upcoming.shows, upcomingHidden: upcoming.hidden }),
+      user: publicUser(user, { ...counts, following, canFollow, matched, isMe: id === Number(req.user.id), upcomingShows: upcoming.hidden ? [] : upcoming.shows, upcomingHidden: upcoming.hidden }),
       posts: await shapePosts(rows, req.user.id),
       upcomingShows: upcoming.hidden ? [] : upcoming.shows,
       upcomingHidden: upcoming.hidden,

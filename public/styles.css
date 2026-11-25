@@ -874,3 +874,10 @@ html { height: 100%; height: -webkit-fill-available; }
 .song-card.loading .song-play::after, .song-row.loading .song-play::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
   border: 2px solid transparent; border-top-color: var(--orange2); animation: songspin .8s linear infinite; }
 @keyframes songspin { to { transform: rotate(360deg); } }
+
+/* Share-my-profile link */
+.share-card { text-align: center; padding: 6px 2px 2px; }
+.share-av { display: flex; justify-content: center; margin-top: 8px; }
+.share-av .av { width: 112px; height: 112px; box-shadow: 0 0 0 3px var(--orange), 0 0 26px rgba(255,92,0,.45); }
+.share-url { padding: 12px 14px; border-radius: 14px; background: #111; border: 1px solid rgba(255,92,0,.35); color: #ffb07a;
+  font: 600 13px/1.4 ui-monospace, Menlo, monospace; word-break: break-all; }

@@ -1328,8 +1328,30 @@
     if (ws) { try { ws.close(); } catch (_) {} ws = null; }
     render();
   }
+  async function loadShareFromUrl() {
+    const m = (location.pathname || "").match(/^\/u\/([A-Za-z0-9_]{3,20})\/?$/);
+    if (!m) return false;
+    const token = new URLSearchParams(location.search).get("k") || "";
+    history.replaceState({}, "", "/");
+    try {
+      const data = await api("/api/share/" + encodeURIComponent(m[1]) + "?k=" + encodeURIComponent(token), { timeout: 20000 });
+      state.pendingShare = { profile: data.profile, token, following: data.following, isMe: data.isMe };
+      return data.signedIn ? "signed-in" : "signed-out";
+    } catch (e) {
+      state.pendingShare = null;
+      state.err = e.message || "This profile link isn't working anymore.";
+      return "invalid";
+    }
+  }
   async function boot() {
     loadAuthConfig();
+    const share = await loadShareFromUrl();
+    if (share === "signed-out" || share === "invalid") {
+      let meOk = false;
+      if (share === "invalid") { try { const me0 = await api("/api/me", { timeout: 20000 }); applyMe(me0); meOk = true; } catch (_) {} }
+      if (!meOk) { state.view = "shareLanding"; render(); return; }
+      toast(state.err || "That profile link isn't working anymore.", "err"); state.err = "";
+    }
     const claimToken = (function () {
       const path = location.pathname || "";
       const m = path.match(/^\/claim\/([^/]+)\/?$/);
@@ -2072,6 +2094,33 @@
   function skeletonPosts(n) {
     return Array.from({ length: n || 3 }, () => `<div class="post skeleton" aria-hidden="true"><div class="post-hd"><span class="sk sk-av"></span><span class="sk sk-line"></span></div><div class="sk sk-photo"></div><div class="sk sk-line" style="margin:12px 14px;width:60%"></div></div>`).join("");
   }
+  async function shareProfileUrl(url) {
+    try {
+      if (navigator.share) { await navigator.share({ title: "Follow me on Kandi", text: "Here's my Kandi profile — tap to follow me.", url }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    let copied = false;
+    try { await navigator.clipboard.writeText(url); copied = true; } catch (_) {}
+    state.overlay = { type: "shareShow", url, copied, returnTo: state.overlay };
+    render();
+  }
+  function shareCardHtml(sc, signedIn) {
+    const p = sc.profile || {};
+    let actions;
+    if (sc.isMe) actions = `<p class="muted" style="margin-top:14px">This is your own share link. Send it to people you want to follow you.</p><button class="btn ghost" style="margin-top:10px" data-act="share-close">Close</button>`;
+    else if (!signedIn) actions = `<button class="btn primary" style="margin-top:16px" data-act="share-signup">Create an account to follow</button><button class="btn ghost" style="margin-top:8px" data-act="share-login">I already have an account</button>`;
+    else if (sc.following) actions = `<div class="notice ok" style="margin-top:14px">You're following ${esc(p.name || "them")}.</div><button class="btn primary" style="margin-top:10px" data-act="share-view-profile">View profile</button><button class="btn ghost" style="margin-top:8px" data-act="share-close">Done</button>`;
+    else actions = `<button class="btn primary" style="margin-top:16px" data-act="share-follow">Follow ${esc(p.name || "")}</button><button class="btn ghost" style="margin-top:8px" data-act="share-close">Not now</button>`;
+    return `<div class="share-card">
+      <div class="share-av">${personAvatar(p, "av prof-av")}</div>
+      <div class="nm" style="font-size:24px;font-weight:800;margin-top:12px">${esc(p.name || "")}${p.age ? ", " + esc(p.age) : ""}</div>
+      <div class="muted">@${esc(p.username || "")}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
+      <div style="margin-top:8px;display:flex;justify-content:center">${genreRow(p, { compact: true, max: 3, tappable: false })}</div>
+      ${p.favoriteSong ? `<div style="margin-top:14px;text-align:left">${songCard(p.favoriteSong, "sh" + p.id, { compact: true })}</div>` : ""}
+      <p class="tiny" style="margin-top:12px">${esc(p.name || "They")} shared this link with you.</p>
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      ${actions}
+    </div>`;
+  }
   async function shareLink(path, title) {
     const url = location.origin + path;
     try {
@@ -2217,6 +2266,15 @@
       </label>
       ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
       <button class="btn primary" data-act="claim-finish" style="margin-top:16px">Save and enter Kandi</button>
+    </div></div>`;
+  }
+
+  function viewShareLanding() {
+    return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      ${state.pendingShare ? shareCardHtml(state.pendingShare, false) : `<p class="sub" style="margin-top:18px">${esc(state.err || "This profile link isn't working anymore.")}</p><button class="btn primary" style="margin-top:16px" data-act="show-login">Go to Kandi</button>`}
+      <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
     </div></div>`;
   }
 
@@ -2799,11 +2857,10 @@
     const ev = p.event
       ? `<button type="button" class="chip soft event-tag" data-act="event" data-id="${esc(p.event.id)}">${esc(p.event.emoji || "")} ${esc(p.event.name)}</button>`
       : "";
-    const followBtn = p.author.id !== (state.me && state.me.id) && !p.author.following
-      ? `<button class="btn sm ghost" data-act="follow" data-id="${p.author.id}">Follow</button>`
-      : (p.author.id !== (state.me && state.me.id)
-        ? `<button class="btn sm ghost" data-act="unfollow" data-id="${p.author.id}">Following</button>`
-        : "");
+    const isMine = p.author.id === (state.me && state.me.id);
+    const followBtn = isMine ? "" : (p.author.following
+      ? `<button class="btn sm ghost" data-act="unfollow" data-id="${p.author.id}">Following</button>`
+      : (p.author.canFollow ? `<button class="btn sm ghost" data-act="follow" data-id="${p.author.id}">Follow</button>` : ""));
     const more = p.author.id === (state.me && state.me.id)
       ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete" aria-label="Delete">✕</button>`
       : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report" aria-label="Report">⋯</button>`;
@@ -2859,7 +2916,10 @@
     let html = `<div class="label">Account</div><div class="set-group">
         ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
         ${row("preview-profile", "Preview my profile", "See what other ravers see")}
-        ${row("share-profile", "Share my profile", "", `data-id="${p.id}"`)}
+        ${row("share-profile", "Share my profile", "Send your link — it's how people follow you without matching first", `data-id="${p.id}"`)}
+        <div class="set-row static"><div class="grow"><div>Allow follows from my share link</div><div class="tiny">Off: your link stops letting new people follow you. Matches can still follow.</div></div>
+          <button type="button" class="toggle${p.allowLinkFollows !== false ? " on" : ""}" data-act="toggle-share-follow" aria-pressed="${p.allowLinkFollows !== false ? "true" : "false"}" aria-label="Allow follows from my share link"><i></i></button></div>
+        ${row("share-reset", "Reset my share link", "Old links you've sent stop working")}
         <div class="set-row static"><div class="grow"><div>Username</div><div class="tiny">@${esc(p.username || "")}</div></div></div>
         ${row("open-email", p.email ? "Email" : "Add your email", p.email ? esc(p.email) + (p.emailVerified ? " · Verified" : (p.emailVerificationOn ? " · Not verified yet" : "")) : "Used for account recovery and password resets")}
       </div>
@@ -3481,7 +3541,7 @@
       const u = data.user;
       const followBtn = u.isMe ? "" : (u.following
         ? `<button type="button" class="btn sm ghost" data-act="unfollow" data-id="${u.id}">Following</button>`
-        : `<button type="button" class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
+        : (u.canFollow ? `<button type="button" class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>` : ""));
       const extra = u.isMe
         ? ""
         : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
@@ -3493,6 +3553,18 @@
         </div></div>`;
     }
 
+    if (o.type === "shareCard" && state.pendingShare) {
+      return `<div class="sheet-bg" data-act="share-close"><div class="sheet" data-stop="1"><div class="grab"></div>${shareCardHtml(state.pendingShare, true)}</div></div>`;
+    }
+    if (o.type === "shareShow") {
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">Share my profile</h2>
+        <p class="muted" style="margin-top:6px">Anyone with this link can see a small preview of you and follow you. ${o.copied ? "It's copied — paste it anywhere." : "Press and hold to copy it."}</p>
+        <div class="share-url" style="margin-top:12px;user-select:all;-webkit-user-select:all">${esc(o.url || "")}</div>
+        <button class="btn primary" style="margin-top:14px;width:100%" data-act="share-copy">Copy link</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="share-reset">Reset link (old links stop working)</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Done</button></div></div>`;
+    }
     if (o.type === "email") {
       const me = state.me || {};
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
@@ -3970,6 +4042,7 @@
   let renderFailures = 0;
   // Never leave the screen stuck: if drawing fails, drop whatever sheet or overlay was open and draw again.
   function render() {
+    if (state.view === "app" && state.pendingShare && !state.pendingShare.shown && !state.overlay) { state.pendingShare.shown = true; state.overlay = { type: "shareCard" }; }
     try {
       renderScreen();
       renderFailures = 0;
@@ -4003,6 +4076,7 @@
     else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
     else if (state.view === "verify") html = viewVerify();
+    else if (state.view === "shareLanding") html = viewShareLanding();
     else if (state.view === "onboard") html = viewOnboard();
     else {
       let body = "";
@@ -4143,7 +4217,55 @@
         render(); return;
       }
       if (act === "share-post") { await shareLink("/?post=" + id, "A post on Kandi"); return; }
-      if (act === "share-profile") { await shareLink("/?u=" + id, "A raver on Kandi"); return; }
+      if (act === "share-profile") {
+        if (state.me && String(id || state.me.id) === String(state.me.id)) {
+          const data = await api("/api/me/share-link");
+          await shareProfileUrl(data.url);
+          return;
+        }
+        await shareLink("/?u=" + id, "A raver on Kandi"); return;
+      }
+      if (act === "share-reset") {
+        state.overlay = { type: "confirm", title: "Reset your share link?", body: "Links you've already sent stop working. People who already follow you stay.", okLabel: "Reset link", okAct: "share-reset-ok", returnTo: state.overlay };
+        render(); return;
+      }
+      if (act === "share-reset-ok") {
+        const data = await api("/api/me/share-link/reset", { method: "POST", body: {} });
+        toast("New link ready. Old links no longer work.");
+        if (state.overlay && state.overlay.type === "shareShow") state.overlay.url = data.url;
+        render(); return;
+      }
+      if (act === "toggle-share-follow") {
+        const on = !(state.me && state.me.allowLinkFollows !== false);
+        const data = await api("/api/me/share-settings", { method: "PUT", body: { allowLinkFollows: on } });
+        if (state.me) state.me.allowLinkFollows = data.allowLinkFollows;
+        render(); return;
+      }
+      if (act === "share-copy") {
+        const url = (state.overlay && state.overlay.url) || "";
+        try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch (_) { toast("Press and hold the link to copy it."); }
+        return;
+      }
+      if (act === "share-follow") {
+        const sc = state.pendingShare;
+        if (!sc || !sc.profile) { state.overlay = null; render(); return; }
+        const data = await api("/api/users/" + sc.profile.id + "/follow", { method: "POST", body: { k: sc.token } });
+        sc.following = Boolean(data.following);
+        toast("You're following " + (sc.profile.name || "them") + ".");
+        render(); return;
+      }
+      if (act === "share-close") { state.pendingShare = null; state.overlay = null; render(); return; }
+      if (act === "share-view-profile") {
+        const pid = state.pendingShare && state.pendingShare.profile && state.pendingShare.profile.id;
+        state.pendingShare = null; state.overlay = null;
+        if (pid) { await handle("open-profile", { getAttribute: (k) => (k === "data-id" ? String(pid) : null) }); return; }
+        render(); return;
+      }
+      if (act === "share-login" || act === "share-signup") {
+        state.view = "auth"; state.err = ""; state.info = "Log in or create an account to follow " + ((state.pendingShare && state.pendingShare.profile && state.pendingShare.profile.name) || "them") + ".";
+        state.overlay = act === "share-signup" ? { type: "signup" } : null;
+        render(); return;
+      }
       if (act === "hard-reload") { hardReload(); return; }
       if (act === "retry-boot") { state.view = "boot"; state.err = ""; render(); await boot(); return; }
       if (act === "dismiss-ios-tip") { localStorage.setItem("kandi-hide-ios-tip", "1"); render(); return; }
@@ -4366,7 +4488,7 @@
         state.info = data.sent ? "Saved. We sent a confirmation link to " + email + "." : "Email saved.";
         render(); return;
       }
-      if (act === "show-login") { state.overlay = null; state.info = ""; render(); return; }
+      if (act === "show-login") { state.overlay = null; state.info = ""; if (state.view === "shareLanding") state.view = "auth"; render(); return; }
       if (act === "toggle-agree-terms") {
         state.drafts.agreeTerms = !state.drafts.agreeTerms;
         state.err = "";
@@ -4644,11 +4766,12 @@
       if (act === "follow" || act === "unfollow") {
         const method = act === "follow" ? "POST" : "DELETE";
         const data = await api("/api/users/" + id + "/follow", { method, body: {} });
-        (state.homePosts || []).forEach((p) => { if (String(p.author.id) === String(id)) p.author.following = data.following; });
+        (state.homePosts || []).forEach((p) => { if (String(p.author.id) === String(id)) { p.author.following = data.following; if (!data.following) p.author.canFollow = Boolean(state.profile && state.profile.user && String(state.profile.user.id) === String(id) && state.profile.user.matched); } });
         (state.topRavers || []).forEach((p) => { if (String(p.id) === String(id)) p.following = data.following; });
         if (state.profile && state.profile.user && String(state.profile.user.id) === String(id)) {
           state.profile.user.following = data.following;
           state.profile.user.followerCount = data.followerCount;
+          state.profile.user.canFollow = !data.following && Boolean(state.profile.user.matched);
         }
         render(); return;
       }
@@ -5403,7 +5526,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",

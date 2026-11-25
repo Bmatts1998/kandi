@@ -545,15 +545,21 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
     const id = Number(req.params.id);
     const mem = await memberRow(id, req.user.id);
     if (!mem) return res.status(403).json({ error: "Join this crew before you tag friends." });
+    // No open people search: you can only tag people you're already connected with
+    // (matches, people you follow, people who follow you). q just filters that list.
     const q = String(req.query.q || "").trim().toLowerCase();
-    if (q.length < 1) return res.json({ people: [] });
     const blocked = await blockedSet(req.user.id);
-    const rows = await db().prepare(`
+    const me = Number(req.user.id);
+    const rows = (await db().prepare(`
       SELECT id, username, name, age, photos FROM users
-      WHERE id!=?
-        AND (lower(username) LIKE ? OR lower(name) LIKE ?)
+      WHERE id!=? AND id IN (
+        SELECT b_id FROM matches WHERE a_id=?
+        UNION SELECT a_id FROM matches WHERE b_id=?
+        UNION SELECT following_id FROM follows WHERE follower_id=?
+        UNION SELECT follower_id FROM follows WHERE following_id=?
+      )
       ORDER BY lower(name)
-    `).all(req.user.id, "%" + q + "%", "%" + q + "%");
+    `).all(me, me, me, me, me)).filter((u) => !q || String(u.username || "").toLowerCase().includes(q) || String(u.name || "").toLowerCase().includes(q));
     const memberIds = new Set((await db().prepare(`SELECT user_id FROM crew_members WHERE crew_id=?`).all(id)).map((r) => Number(r.user_id)));
     const pending = await db().prepare(`SELECT user_id, kind FROM crew_requests WHERE crew_id=?`).all(id);
     const pendingBy = new Map(pending.map((r) => [Number(r.user_id), r.kind]));
