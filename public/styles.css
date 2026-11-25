@@ -422,3 +422,61 @@
     .slot-x { min-width: 32px; min-height: 32px; }
     .slot-tools button { min-width: 34px; min-height: 34px; }
     p.tiny a, .event-detail-row a { display: inline-block; padding: 8px 2px; }
+
+
+    /* Reserved space for a story ring on profile avatars (drawn by another worker). */
+    .avatar-ring {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-radius: 50%;
+      padding: 5px;
+      border: 3px solid transparent;
+      box-sizing: border-box;
+    }
+    .avatar-ring-lg { width: 128px; height: 128px; }
+    .avatar-ring-lg .av, .avatar-ring-lg .prof-av { width: 112px; height: 112px; }
+    .avatar-ring-sm { width: 58px; height: 58px; padding: 3px; border-width: 2px; }
+    .prof-crew:empty { display: none; }
+    .prof-crew { margin: 12px 0; }
+    .prof-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .edit-preview-actions { display: flex; gap: 8px; margin-top: 22px; }
+    .edit-preview-actions .btn { flex: 1; }
+    .edit-preview-note { margin: 0 0 12px; color: var(--muted); }
+    .prof-bio { margin: 10px 0 8px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
+    .prof-chips { margin: 8px 0 10px; }
+    .prof-facts { display: grid; gap: 10px; margin: 8px 0 14px; }
+    .prof-fact .label { margin: 0 0 2px; }
+    .prof-fact-val { font-size: 15px; line-height: 1.4; }
+    .photo-strip { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0 12px; padding-bottom: 4px; }
+    .photo-strip-item { flex: 0 0 96px; width: 96px; height: 128px; border-radius: 12px; background: #141414 center/cover no-repeat; display: grid; place-items: center; font-size: 28px; }
+    .posts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 8px; }
+    .posts-heading .label { font-size: 15px; }
+    .post-view-toggle { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .post-view-toggle button { width: 44px; height: 40px; border-radius: 0; font-size: 16px; color: var(--muted); background: #111; }
+    .post-view-toggle button.on { color: #fff; background: rgba(255,92,0,.2); box-shadow: inset 0 0 0 1px rgba(255,92,0,.55); }
+    .profile-feed { margin: 0 -14px; }
+    .profile-feed .post { border-top: 1px solid var(--line); }
+    .post-grid .grid-tile { aspect-ratio: 1; background: #111 center/cover no-repeat; position: relative; width: 100%; border: 0; color: inherit; }
+    .grid-play { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,.62); color: #fff; font-size: 9px; display: grid; place-items: center; }
+    .post-video-wrap { position: relative; background: #000; }
+    .post-video-wrap video { width: 100%; max-height: 70vh; display: block; background: #000; }
+    .post-photos { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+    .post-photos .post-photo { flex: 0 0 100%; scroll-snap-align: start; aspect-ratio: 1; }
+    .post-photo.post-text { display: grid; place-items: center; padding: 24px; aspect-ratio: auto; min-height: 160px; }
+    .post-text-inner { font-size: 20px; font-weight: 700; line-height: 1.4; padding: 12px; text-align: center; }
+    .height-row { gap: 8px; align-items: center; }
+    .height-row select, .height-row input { flex: 1; min-width: 0; }
+    .composer-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .composer-preview-wrap { margin: 12px 0; }
+    .composer-thumbs { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
+    .composer-thumb { position: relative; flex: 0 0 96px; width: 96px; height: 96px; border-radius: 12px; background: #111 center/cover no-repeat; }
+    .composer-video { width: 100%; border-radius: 16px; background: #000; max-height: 50vh; display: block; margin-bottom: 8px; }
+    .prof-tunes { margin: 18px 0 8px; }
+    .tune-card { margin: 10px 0 14px; }
+    .tune-frame { width: 100%; border: 0; border-radius: 14px; background: #111; display: block; }
+    .tune-open { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; }
+    .tunes-jump { margin: 4px 0 10px; }
+    button.event-tag { cursor: pointer; }

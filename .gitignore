@@ -15,3 +15,9 @@ uploads/*
 *.p12
 *.mobileprovision
 private_keys/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

@@ -1,7 +1,51 @@
 "use strict";
 
-const { normalizePhoto } = require("./photo");
+const crypto = require("crypto");
+const { normalizePhoto, sniffImageMime } = require("./photo");
 const { listUpcomingForProfile } = require("./meetup");
+
+const MAX_POST_PHOTOS = 10;
+
+function sniffVideoMime(buf, name, typ) {
+  typ = String(typ || "").toLowerCase();
+  name = String(name || "").toLowerCase();
+  if (typ.startsWith("video/")) return typ === "video/quicktime" ? "video/quicktime" : typ;
+  if (buf && buf.length >= 12 && buf.slice(4, 8).toString("ascii") === "ftyp") {
+    const brand = buf.slice(8, 12).toString("ascii");
+    if (brand.startsWith("qt") || brand === "moov") return "video/quicktime";
+    return "video/mp4";
+  }
+  if (name.endsWith(".mov") || name.endsWith(".qt")) return "video/quicktime";
+  if (name.endsWith(".webm")) return "video/webm";
+  if (name.endsWith(".mp4") || name.endsWith(".m4v")) return "video/mp4";
+  return null;
+}
+
+function parseIds(raw) {
+  try {
+    const list = typeof raw === "string" ? JSON.parse(raw || "[]") : raw || [];
+    return Array.isArray(list) ? list.map(String).filter((x) => x && /^[\w.-]+$/.test(x)) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function parsePhotoIds(row) {
+  let ids = parseIds(row.photo_ids);
+  if (!ids.length) {
+    ids = (row.photo_id ? [String(row.photo_id)] : []).concat(parseIds(row.extra_photos));
+  }
+  if (row.photo_id && !ids.includes(String(row.photo_id))) ids.unshift(String(row.photo_id));
+  return [...new Set(ids.filter(Boolean))];
+}
+
+function postMediaIds(post) {
+  const ids = parsePhotoIds(post);
+  if (post.photo_id) ids.push(String(post.photo_id));
+  if (post.video_id) ids.push(String(post.video_id));
+  if (post.poster_id) ids.push(String(post.poster_id));
+  return [...new Set(ids.filter(Boolean))];
+}
 
 function weekAgoIso() {
   return new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
@@ -31,25 +75,16 @@ function firstAvatar(photosJson) {
   }
 }
 
-function parseIds(raw) {
-  try {
-    const list = typeof raw === "string" ? JSON.parse(raw || "[]") : raw || [];
-    return Array.isArray(list) ? list.filter((x) => typeof x === "string" && /^[\w.-]+$/.test(x)) : [];
-  } catch (_) {
-    return [];
-  }
-}
-
-const MAX_POST_PHOTOS = 10;
-
-function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
+function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blockedSet, maxVideoBytes }) {
   function db() {
     return getDb();
   }
+  const postUpload = uploadPost || upload;
+  const videoCap = maxVideoBytes || 50 * 1024 * 1024;
 
   async function formatPost(row, meId, likedSet) {
     const ev = row.event_id
-      ? await db().prepare(`SELECT id, name, emoji, city FROM events WHERE id=?`).get(row.event_id)
+      ? await db().prepare(`SELECT id, name, emoji, city, venue, date_label, ticket_url, ticket_seller, address, time_tba, starts_at FROM events WHERE id=?`).get(row.event_id)
       : null;
     const liked = likedSet
       ? likedSet.has(Number(row.id))
@@ -57,12 +92,32 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
     const following = Number(row.user_id) === Number(meId)
       ? false
       : Boolean(await db().prepare(`SELECT follower_id FROM follows WHERE follower_id=? AND following_id=?`).get(meId, row.user_id));
+    const photoIds = parsePhotoIds(row);
+    const photoUrls = photoIds.map((id) => "/uploads/" + id);
+    const posterUrl = row.poster_id ? "/uploads/" + row.poster_id : null;
+    const videoUrl = row.video_id ? "/uploads/" + row.video_id : null;
     return {
       id: Number(row.id),
       caption: row.caption || "",
-      photoUrl: row.photo_id ? "/uploads/" + row.photo_id : null,
-      photoUrls: (row.photo_id ? [row.photo_id] : []).concat(parseIds(row.extra_photos)).map((pid) => "/uploads/" + pid),
-      event: ev ? { id: ev.id, name: ev.name, emoji: ev.emoji, city: ev.city } : null,
+      photoUrl: photoUrls[0] || posterUrl || null,
+      photoUrls,
+      videoUrl,
+      posterUrl,
+      event: ev ? {
+        id: ev.id,
+        name: ev.name,
+        emoji: ev.emoji,
+        city: ev.city,
+        venue: ev.venue,
+        date: ev.date_label,
+        ticketUrl: ev.ticket_url || "",
+        ticketSeller: ev.ticket_seller || "",
+        address: ev.address || "",
+        timeTba: Boolean(Number(ev.time_tba)),
+        startsAt: ev.starts_at || "",
+        icsUrl: "/api/events/" + encodeURIComponent(ev.id) + ".ics",
+        mapsUrl: ev.address ? ("https://maps.apple.com/?q=" + encodeURIComponent((ev.venue ? ev.venue + ", " : "") + ev.address)) : "",
+      } : null,
       createdAt: row.created_at,
       likeCount: Number(row.like_count != null ? row.like_count : row.likeCount) || 0,
       commentCount: Number(row.comment_count != null ? row.comment_count : row.commentCount) || 0,
@@ -76,6 +131,25 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
         following,
       },
     };
+  }
+
+  async function deleteOwnedFile(fileId, userId) {
+    if (!fileId) return;
+    const used = await db().prepare(
+      `SELECT id FROM posts WHERE photo_id=? OR video_id=? OR poster_id=? OR (photo_ids IS NOT NULL AND photo_ids LIKE ?) LIMIT 1`
+    ).get(fileId, fileId, fileId, "%" + fileId + "%");
+    if (used) return;
+    const row = await db().prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
+    if (!row || Number(row.user_id) !== Number(userId)) return;
+    await db().prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
+  }
+
+  async function storeBuffer(userId, buffer, mime, ext) {
+    const fileId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
+    await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
+      fileId, userId, mime, buffer.toString("base64")
+    );
+    return fileId;
   }
 
   async function attachCounts(rows) {
@@ -181,59 +255,97 @@ function installFeed({ app, getDb, auth, upload, publicUser, blockedSet }) {
   });
 
   app.post("/api/posts", auth, (req, res) => {
-    upload.array("photo", MAX_POST_PHOTOS)(req, res, async (err) => {
+    const fields = postUpload.fields([
+      { name: "photo", maxCount: MAX_POST_PHOTOS },
+      { name: "photos", maxCount: MAX_POST_PHOTOS },
+      { name: "video", maxCount: 1 },
+      { name: "poster", maxCount: 1 },
+    ]);
+    fields(req, res, async (err) => {
       try {
         if (err) {
           const msg = err.code === "LIMIT_FILE_SIZE"
-            ? "That file is over 30 MB, which is too big to send. Try another photo from your camera roll."
-            : err.code === "LIMIT_UNEXPECTED_FILE" ? `You can add up to ${MAX_POST_PHOTOS} photos per post.`
+            ? "That file is over 50 MB, which is too big to send. Try a shorter clip or another photo."
+            : err.code === "LIMIT_UNEXPECTED_FILE" ? ("You can add up to " + MAX_POST_PHOTOS + " photos per post.")
             : (err.message || "Upload failed");
           return res.status(400).json({ error: msg });
         }
-        const files = Array.isArray(req.files) ? req.files : [];
-        req.file = files[0];
         const caption = String((req.body && req.body.caption) || "").trim().slice(0, 2000);
         const eventId = String((req.body && req.body.eventId) || "").trim() || null;
-        if (!caption && !req.file) return res.status(400).json({ error: "Add a photo or a caption." });
+        const files = req.files || {};
+        const imageFiles = [...(files.photos || []), ...(files.photo || [])].slice(0, MAX_POST_PHOTOS);
+        const videoFile = (files.video && files.video[0]) || null;
+        const posterFile = (files.poster && files.poster[0]) || null;
+        if (!caption && !imageFiles.length && !videoFile) return res.status(400).json({ error: "Add a photo, a short video, a caption, or tag a rave." });
         if (eventId) {
           const ev = await db().prepare(`SELECT id FROM events WHERE id=?`).get(eventId);
           if (!ev) return res.status(400).json({ error: "Unknown event." });
         }
-        const ids = [];
-        for (const f of files) {
-          let normalized;
-          try {
-            normalized = await normalizePhoto(f.buffer);
-          } catch (normErr) {
-            return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process one of those photos." });
+        let videoId = null;
+        let posterId = null;
+        const photoIds = [];
+        if (videoFile) {
+          if (videoFile.size > videoCap) {
+            return res.status(400).json({ error: "That video is over 50 MB. Try a shorter clip." });
           }
-          const pid = `${Date.now()}-${require("crypto").randomBytes(6).toString("hex")}${normalized.ext}`;
-          await db().prepare(`INSERT INTO photo_files (id, user_id, mime, data) VALUES (?,?,?,?)`).run(
-            pid, req.user.id, normalized.mime, normalized.buffer.toString("base64")
-          );
-          ids.push(pid);
+          const mime = sniffVideoMime(videoFile.buffer, videoFile.originalname, videoFile.mimetype)
+            || (sniffImageMime(videoFile.buffer) ? null : "video/mp4");
+          if (!mime || !String(mime).startsWith("video/")) {
+            return res.status(400).json({ error: "Please choose a short video (.mov or .mp4) or a photo." });
+          }
+          const ext = mime === "video/quicktime" ? ".mov" : (mime === "video/webm" ? ".webm" : ".mp4");
+          videoId = await storeBuffer(req.user.id, videoFile.buffer, mime, ext);
+          if (posterFile) {
+            try {
+              const normalized = await normalizePhoto(posterFile.buffer);
+              posterId = await storeBuffer(req.user.id, normalized.buffer, normalized.mime, normalized.ext);
+            } catch (_) { /* poster is optional */ }
+          }
+        } else {
+          for (const file of imageFiles) {
+            try {
+              const normalized = await normalizePhoto(file.buffer);
+              photoIds.push(await storeBuffer(req.user.id, normalized.buffer, normalized.mime, normalized.ext));
+            } catch (normErr) {
+              return res.status(normErr.status || 400).json({ error: normErr.message || "Couldn't process one of those photos." });
+            }
+          }
         }
-        const photoId = ids[0] || null;
+        const photoId = photoIds[0] || null;
         const createdAt = new Date().toISOString();
         const info = await db().prepare(
-          `INSERT INTO posts (user_id, caption, photo_id, event_id, created_at, extra_photos) VALUES (?,?,?,?,?,?)`
-        ).run(req.user.id, caption, photoId, eventId, createdAt, JSON.stringify(ids.slice(1)));
+          `INSERT INTO posts (user_id, caption, photo_id, event_id, created_at, video_id, poster_id, photo_ids, extra_photos) VALUES (?,?,?,?,?,?,?,?,?)`
+        ).run(req.user.id, caption, photoId, eventId, createdAt, videoId, posterId, JSON.stringify(photoIds), JSON.stringify(photoIds.slice(1)));
         const row = await db().prepare(`${authorJoin} WHERE p.id=?`).get(Number(info.lastInsertRowid));
         const [post] = await shapePosts([row], req.user.id);
         res.json({ post });
       } catch (e) {
-        res.status(500).json({ error: e.message || "Could not post." });
+        res.status(e.status || 500).json({ error: e.message || "Could not post." });
       }
     });
+  });
+
+  app.get("/api/posts/:id", auth, async (req, res) => {
+    const id = Number(req.params.id);
+    const row = await db().prepare(`${authorJoin} WHERE p.id=?`).get(id);
+    if (!row) return res.status(404).json({ error: "Post not found." });
+    const blocked = await blockedSet(req.user.id);
+    if (blocked.has(Number(row.user_id))) return res.status(404).json({ error: "Post not found." });
+    const [post] = await shapePosts([row], req.user.id);
+    res.json({ post });
   });
 
   app.delete("/api/posts/:id", auth, async (req, res) => {
     const post = await db().prepare(`SELECT * FROM posts WHERE id=?`).get(Number(req.params.id));
     if (!post) return res.status(404).json({ error: "Post not found." });
     if (Number(post.user_id) !== Number(req.user.id)) return res.status(403).json({ error: "You can only delete your own posts." });
+    const media = postMediaIds(post);
     await db().prepare(`DELETE FROM post_likes WHERE post_id=?`).run(post.id);
     await db().prepare(`DELETE FROM comments WHERE post_id=?`).run(post.id);
     await db().prepare(`DELETE FROM posts WHERE id=?`).run(post.id);
+    for (const fileId of media) {
+      try { await deleteOwnedFile(fileId, req.user.id); } catch (_) { /* leftover media is ok */ }
+    }
     res.json({ ok: true });
   });
 

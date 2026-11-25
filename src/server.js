@@ -18,6 +18,49 @@ const {
   isAdult, loadGoingRows, shapeGoers, resolveEvent, setRsvp,
   listUpcomingForProfile, sharedShows, upcomingByUser, seedDemoMeetups, compactShow, truthy,
 } = require("./meetup");
+const { parseTunes, MAX_TUNES } = require("./tunes");
+
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_SECONDS = 60;
+
+function sniffVideoMime(buf, name, typ) {
+  typ = String(typ || "").toLowerCase();
+  name = String(name || "").toLowerCase();
+  if (typ.startsWith("video/")) return typ === "video/quicktime" ? "video/quicktime" : typ;
+  if (buf && buf.length >= 12 && buf.slice(4, 8).toString("ascii") === "ftyp") {
+    const brand = buf.slice(8, 12).toString("ascii");
+    if (brand.startsWith("qt") || brand === "moov") return "video/quicktime";
+    return "video/mp4";
+  }
+  if (name.endsWith(".mov") || name.endsWith(".qt")) return "video/quicktime";
+  if (name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".webm")) {
+    return name.endsWith(".webm") ? "video/webm" : "video/mp4";
+  }
+  return null;
+}
+
+function sendBuffer(req, res, buffer, mime) {
+  res.setHeader("Content-Type", mime || "application/octet-stream");
+  res.setHeader("Cache-Control", "public, max-age=604800");
+  res.setHeader("Accept-Ranges", "bytes");
+  const range = req.headers.range;
+  if (!range) {
+    res.setHeader("Content-Length", buffer.length);
+    return res.send(buffer);
+  }
+  const m = String(range).match(/bytes=(\d*)-(\d*)/);
+  if (!m) return res.status(416).end();
+  const start = m[1] ? Number(m[1]) : 0;
+  const end = m[2] ? Number(m[2]) : buffer.length - 1;
+  if (start >= buffer.length || end >= buffer.length || start > end) {
+    res.setHeader("Content-Range", "bytes */" + buffer.length);
+    return res.status(416).end();
+  }
+  res.status(206);
+  res.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + buffer.length);
+  res.setHeader("Content-Length", end - start + 1);
+  return res.send(buffer.subarray(start, end + 1));
+}
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
 
 const PORT = Number(process.env.PORT || 8787);
@@ -41,7 +84,27 @@ const upload = multer({
   },
 });
 
+const uploadPost = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_VIDEO_BYTES, files: 8 },
+  fileFilter: (_req, file, cb) => {
+    const typ = String(file.mimetype || "").toLowerCase();
+    const name = String(file.originalname || "").toLowerCase();
+    if (!typ || typ === "application/octet-stream" || typ.startsWith("image/") || typ.startsWith("video/")) return cb(null, true);
+    if (/\.(mov|mp4|m4v|qt|webm|jpg|jpeg|png|webp|gif|heic|heif|avif)$/.test(name)) return cb(null, true);
+    cb(new Error("Please choose a photo or a short video."));
+  },
+});
+
 const app = express();
+// Constrain iframes to official music players used by My Tunes (and this origin).
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "frame-src 'self' https://open.spotify.com https://w.soundcloud.com https://embed.music.apple.com"
+  );
+  next();
+});
 // Express 4 doesn't catch errors thrown by async handlers: a DB hiccup would leave the request hanging
 // forever and the app looking frozen. Wrap every handler so failures become a JSON error instead.
 for (const method of ["get", "post", "put", "delete", "patch"]) {
@@ -66,10 +129,10 @@ app.get("/uploads/:id", async (req, res, next) => {
     const row = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(req.params.id);
     if (row) {
       const raw = Buffer.from(row.data, "base64");
+      const mime = String(row.mime || "");
+      if (mime.startsWith("video/")) return sendBuffer(req, res, raw, mime);
       const served = await servePhoto(raw, row.mime);
-      res.setHeader("Content-Type", served.mime);
-      res.setHeader("Cache-Control", "public, max-age=604800");
-      return res.send(served.buffer);
+      return sendBuffer(req, res, served.buffer, served.mime);
     }
     next();
   } catch (err) { next(err); }
@@ -169,12 +232,19 @@ async function saveUserPhotos(userId, photos) {
 
 async function deletePhotoFileIfOwned(fileId, userId) {
   if (!fileId) return;
-  const used = await db.prepare(`SELECT id FROM posts WHERE photo_id=? LIMIT 1`).get(fileId);
+  const used = await db.prepare(
+    `SELECT id FROM posts WHERE photo_id=? OR video_id=? OR poster_id=? OR (photo_ids IS NOT NULL AND photo_ids LIKE ?) LIMIT 1`
+  ).get(fileId, fileId, fileId, "%" + fileId + "%");
   if (used) return;
   const row = await db.prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
   if (!row || Number(row.user_id) !== Number(userId)) return;
   await db.prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
   try { fs.unlinkSync(path.join(uploadDir, fileId)); } catch (_) { /* ephemeral disk is ok */ }
+}
+
+function parseJsonList(val, fallback) {
+  if (Array.isArray(val)) return val;
+  try { const v = JSON.parse(val || "[]"); return Array.isArray(v) ? v : fallback; } catch (_) { return fallback; }
 }
 
 function publicUser(u, extra) {
@@ -185,11 +255,25 @@ function publicUser(u, extra) {
     name: u.name,
     age: u.age == null || u.age === "" ? null : Number(u.age),
     bio: u.bio || "",
-    vibes: JSON.parse(u.vibes || "[]"),
-    looking: JSON.parse(u.looking || "[]"),
-    prompts: JSON.parse(u.prompts || "[]"),
-    photos: JSON.parse(u.photos || "[]"),
-    events: JSON.parse(u.events || "[]"),
+    vibes: parseJsonList(u.vibes, []),
+    looking: parseJsonList(u.looking, []),
+    prompts: parseJsonList(u.prompts, []),
+    photos: parseJsonList(u.photos, []),
+    events: parseJsonList(u.events, []),
+    gender: u.gender || "",
+    pronouns: u.pronouns || "",
+    interestedIn: parseJsonList(u.interested_in, []),
+    favoriteArtists: u.favorite_artists || "",
+    favoriteFestival: u.favorite_festival || "",
+    favoriteVenue: u.favorite_venue || "",
+    favoriteHangout: u.favorite_hangout || "",
+    kandiTrades: u.kandi_trades || "",
+    raveTotem: u.rave_totem || "",
+    yearsRaving: u.years_raving || "",
+    sex: u.sex || "",
+    heightIn: u.height_in == null || u.height_in === "" ? null : Number(u.height_in),
+    hobbies: parseJsonList(u.hobbies, []),
+    favoriteTunes: parseTunes(parseJsonList(u.favorite_tunes, [])).tunes,
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
@@ -327,6 +411,11 @@ app.get("/api/me", auth, async (req, res) => {
   });
 });
 
+function clipText(val, max, fallback) {
+  if (val == null) return fallback;
+  return String(val).trim().slice(0, max);
+}
+
 app.put("/api/me", auth, async (req, res) => {
   const body = req.body || {};
   const name = body.name != null ? String(body.name).trim() : req.user.name;
@@ -339,7 +428,48 @@ app.put("/api/me", auth, async (req, res) => {
   if (body.showUpcoming != null || body.show_upcoming != null) {
     showUpcoming = (body.showUpcoming ?? body.show_upcoming) ? 1 : 0;
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, show_upcoming=? WHERE id=?`).run(name, bio, vibes, looking, prompts, showUpcoming, req.user.id);
+  let age = req.user.age;
+  if (body.age != null && body.age !== "") {
+    age = Number(body.age);
+    if (!Number.isInteger(age) || age < 18 || age > 99) {
+      return res.status(400).json({ error: "Kandi is 18+. Enter an age between 18 and 99." });
+    }
+  }
+  const gender = body.gender != null ? clipText(body.gender, 40, "") : (req.user.gender || "");
+  const pronouns = body.pronouns != null ? clipText(body.pronouns, 40, "") : (req.user.pronouns || "");
+  const interestedIn = body.interestedIn != null ? JSON.stringify(body.interestedIn) : (req.user.interested_in || "[]");
+  const favoriteArtists = body.favoriteArtists != null ? clipText(body.favoriteArtists, 200, "") : (req.user.favorite_artists || "");
+  const favoriteFestival = body.favoriteFestival != null ? clipText(body.favoriteFestival, 120, "") : (req.user.favorite_festival || "");
+  const favoriteVenue = body.favoriteVenue != null ? clipText(body.favoriteVenue, 120, "") : (req.user.favorite_venue || "");
+  const favoriteHangout = body.favoriteHangout != null ? clipText(body.favoriteHangout, 120, "") : (req.user.favorite_hangout || "");
+  const kandiTrades = body.kandiTrades != null ? clipText(body.kandiTrades, 40, "") : (req.user.kandi_trades || "");
+  const raveTotem = body.raveTotem != null ? clipText(body.raveTotem, 160, "") : (req.user.rave_totem || "");
+  const yearsRaving = body.yearsRaving != null ? clipText(body.yearsRaving, 40, "") : (req.user.years_raving || "");
+  const sex = body.sex != null ? clipText(body.sex, 40, "") : (req.user.sex || "");
+  let heightIn = req.user.height_in == null || req.user.height_in === "" ? null : Number(req.user.height_in);
+  if (body.heightIn !== undefined) {
+    if (body.heightIn == null || body.heightIn === "") heightIn = null;
+    else {
+      heightIn = Number(body.heightIn);
+      if (!Number.isInteger(heightIn) || heightIn < 48 || heightIn > 96) {
+        return res.status(400).json({ error: "Height should be between 4 ft 0 in and 8 ft 0 in." });
+      }
+    }
+  }
+  const hobbies = body.hobbies != null ? JSON.stringify(
+    (Array.isArray(body.hobbies) ? body.hobbies : []).map((h) => String(h).trim()).filter(Boolean).slice(0, 20)
+  ) : (req.user.hobbies || "[]");
+  let favoriteTunes = req.user.favorite_tunes || "[]";
+  if (body.favoriteTunes != null || body.tunes != null) {
+    const parsed = parseTunes(body.favoriteTunes != null ? body.favoriteTunes : body.tunes);
+    if (parsed.error) {
+      return res.status(400).json({ error: "Each My Tunes link needs to be a Spotify, SoundCloud, or Apple Music track, playlist, or album." });
+    }
+    favoriteTunes = JSON.stringify(parsed.tunes.slice(0, MAX_TUNES));
+  }
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, req.user.id
+  );
   const user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   const upcoming = await listUpcomingForProfile(db, user, user);
   res.json({ user: publicUser(user, { upcomingShows: upcoming.shows }) });
@@ -436,7 +566,11 @@ app.get("/api/discover", auth, async (req, res) => {
   );
   const genre = String(req.query.genre || "all");
   const event = String(req.query.event || "all");
+  const gender = String(req.query.gender || "all");
+  const ageMin = Number(req.query.ageMin);
+  const ageMax = Number(req.query.ageMax);
   // Genre filters stay Kandi+. "Going to the same show" is a core, free connecting filter.
+  // Age range and gender are also free Discover filters.
   if (genre !== "all" && !isPlus(req.user.subscription)) {
     return res.status(402).json({ error: "Advanced filters are a Kandi+ feature.", code: "plus_required", reason: "filters" });
   }
@@ -465,6 +599,12 @@ app.get("/api/discover", auth, async (req, res) => {
       const theirs = showsByUser.get(Number(p.id)) || [];
       return theirs.some((e) => e.id === event || e.event_key === event) || (p.events || []).includes(event);
     });
+  }
+  if (gender !== "all") people = people.filter((p) => p.gender === gender);
+  const lo = Number.isFinite(ageMin) ? ageMin : 18;
+  const hi = Number.isFinite(ageMax) ? ageMax : 99;
+  if (lo > 18 || hi < 99) {
+    people = people.filter((p) => p.age != null && p.age >= lo && p.age <= hi);
   }
   people.sort((a, b) => {
     const ds = (b.sharedEvents || []).length - (a.sharedEvents || []).length;
@@ -924,8 +1064,10 @@ installFeed({
   getDb: () => db,
   auth,
   upload,
+  uploadPost,
   publicUser,
   blockedSet,
+  maxVideoBytes: MAX_VIDEO_BYTES,
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));

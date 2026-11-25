@@ -10,6 +10,93 @@ const { seedDemoMeetups } = require("./meetup");
 
 const DEMO_PASSWORD = "plur-demo";
 
+const DETAILS = {
+  nova: {
+    gender: "woman", pronouns: "she/her", interestedIn: ["men"],
+    favoriteArtists: "Charlotte de Witte, AMELIE LENS",
+    favoriteFestival: "Movement", favoriteVenue: "Hart Plaza",
+    favoriteHangout: "Afters warehouse, no photos",
+    kandiTrades: "sometimes", raveTotem: "A tiny moon on a stick", yearsRaving: "8",
+    sex: "female", heightIn: 66, hobbies: ["dancing", "photography", "vinyl", "afters"],
+  },
+  hex: {
+    gender: "man", pronouns: "he/him", interestedIn: ["everyone"],
+    favoriteArtists: "Excision, Subtronics",
+    favoriteFestival: "Lost Lands", favoriteVenue: "Legend Valley",
+    favoriteHangout: "The pit, obviously",
+    kandiTrades: "yes", raveTotem: "On totem duty — look for the lightning bolt", yearsRaving: "6",
+    sex: "male", heightIn: 71, hobbies: ["DJing", "producing", "kandi making", "gaming"],
+  },
+  luna: {
+    gender: "woman", pronouns: "she/they", interestedIn: ["women", "nonbinary"],
+    favoriteArtists: "Above & Beyond, Lane 8",
+    favoriteFestival: "Electric Forest", favoriteVenue: "The Canopy",
+    favoriteHangout: "Under the canopy at Forest",
+    kandiTrades: "yes", raveTotem: "A butterfly with LEDs", yearsRaving: "10",
+    sex: "female", heightIn: 65, hobbies: ["yoga", "kandi making", "hiking", "art"],
+  },
+  riot: {
+    gender: "nonbinary", pronouns: "they/them", interestedIn: ["everyone"],
+    favoriteArtists: "LSDream, GRiZ",
+    favoriteFestival: "Bass Canyon", favoriteVenue: "The Gorge",
+    favoriteHangout: "Golden hour at the rail",
+    kandiTrades: "sometimes", raveTotem: "A duck. Still standing.", yearsRaving: "5",
+    sex: "female", heightIn: 67, hobbies: ["skating", "totems", "camping", "fashion"],
+    lookingExtra: ["crew"],
+  },
+  vesper: {
+    gender: "woman", pronouns: "she/her", interestedIn: ["men"],
+    favoriteArtists: "Four Tet, Peggy Gou",
+    favoriteFestival: "CRSSD Festival", favoriteVenue: "Waterfront Park",
+    favoriteHangout: "The waterfront after the last set",
+    kandiTrades: "yes", raveTotem: "", yearsRaving: "7",
+    sex: "female", heightIn: 64, hobbies: ["kandi making", "thrifting", "photography", "dancing"],
+  },
+  sol: {
+    gender: "man", pronouns: "he/him", interestedIn: ["women"],
+    favoriteArtists: "Armin van Buuren, Rezz",
+    favoriteFestival: "EDC Las Vegas", favoriteVenue: "Kinetic Field",
+    favoriteHangout: "Under the big owl",
+    kandiTrades: "yes", raveTotem: "A sun on a pole, can't miss it", yearsRaving: "6",
+    sex: "male", heightIn: 70, hobbies: ["festivals", "fashion", "gym", "travel"],
+  },
+  ember: {
+    gender: "woman", pronouns: "she/her", interestedIn: ["men", "women"],
+    favoriteArtists: "I Hate Models, Dax J",
+    favoriteFestival: "Movement", favoriteVenue: "Whatever warehouse is running afters",
+    favoriteHangout: "Cement floors and strobes",
+    kandiTrades: "no", raveTotem: "", yearsRaving: "12",
+    sex: "female", heightIn: 68, hobbies: ["afters", "vinyl", "producing", "tattooing"],
+  },
+  pixel: {
+    gender: "nonbinary", pronouns: "they/them", interestedIn: ["everyone"],
+    favoriteArtists: "Fred again.., ISOKNOCK",
+    favoriteFestival: "Electric Forest", favoriteVenue: "Wherever I get lost",
+    favoriteHangout: "The LED jacket meetup",
+    kandiTrades: "sometimes", raveTotem: "A pixel heart", yearsRaving: "3",
+    sex: "intersex", heightIn: 69, hobbies: ["gaming", "LED fashion", "art", "producing"],
+    lookingExtra: ["crew"],
+  },
+  jade: {
+    gender: "woman", pronouns: "she/they", interestedIn: ["everyone"],
+    favoriteArtists: "Skrillex, Dom Dolla",
+    favoriteFestival: "EDC Las Vegas", favoriteVenue: "Circuit Grounds",
+    favoriteHangout: "Crew camp, faces not included",
+    kandiTrades: "yes", raveTotem: "A rainbow totem", yearsRaving: "9",
+    sex: "female", heightIn: 63, hobbies: ["kandi making", "festivals", "dancing", "animals"],
+    lookingExtra: ["crew"],
+  },
+  orion: {
+    gender: "man", pronouns: "he/him", interestedIn: ["women"],
+    favoriteArtists: "Tale Of Us, Stephan Bodzin",
+    favoriteFestival: "Movement", favoriteVenue: "The afters, closing hours",
+    favoriteHangout: "A late-night walk when the lights come up",
+    kandiTrades: "sometimes", raveTotem: "", yearsRaving: "14",
+    sex: "male", heightIn: 73, hobbies: ["vinyl", "late walks", "producing", "travel"],
+  },
+};
+
+
 const EVENTS = [
   { id: "crssd", name: "CRSSD Festival", city: "San Diego", date_label: "Mar 6-7, 2027", venue: "Waterfront Park", genres: ["house", "techno"], emoji: "🌊", color: "linear-gradient(135deg,#0d6e8a,#2ef0ff)" },
   { id: "movement", name: "Movement", city: "Detroit", date_label: "May 23-25, 2027", venue: "Hart Plaza", genres: ["techno", "house"], emoji: "🖤", color: "linear-gradient(135deg,#1a1030,#b44aff)" },
@@ -74,7 +161,7 @@ async function seed(existingDb) {
   // Real SLC events are loaded by scripts/import-events.js. Never re-insert the demo festivals.
   await db.prepare(`DELETE FROM events WHERE is_example=1`).run();
 
-  const userIns = await db.prepare(`INSERT INTO users (username,password_hash,name,age,vibes,looking,prompts,photos,events,is_demo) VALUES (?,?,?,?,?,?,?,?,?,1)`);
+  const userIns = await db.prepare(`INSERT INTO users (username,password_hash,name,age,vibes,looking,prompts,photos,events,is_demo,gender,pronouns,interested_in,favorite_artists,favorite_festival,favorite_venue,favorite_hangout,kandi_trades,rave_totem,years_raving,sex,height_in,hobbies) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const find = await db.prepare(`SELECT id FROM users WHERE username=?`);
   // Incoming likes toward later real signups are created after a real user exists.
   // Demo users like each other in a few cases so the feed feels alive once you sign up
@@ -83,20 +170,27 @@ async function seed(existingDb) {
 
   const ids = {};
   for (const u of USERS) {
+    const d = DETAILS[u.username] || {};
+    const looking = Array.from(new Set([...(u.looking || []), ...(d.lookingExtra || [])]));
+    const photos = JSON.stringify(u.gradients.map((g, i) => ({ type: "gradient", gradient: g, emoji: u.emoji, caption: u.photoCaps[i] || "" })));
     const existing = await find.get(u.username);
     let id;
     if (existing) {
       id = existing.id;
-      await db.prepare(`UPDATE users SET name=?, age=?, vibes=?, looking=?, prompts=?, photos=?, events=?, is_demo=1, password_hash=? WHERE id=?`)
-        .run(u.name, u.age, JSON.stringify(u.vibes), JSON.stringify(u.looking), JSON.stringify(u.prompts),
-          JSON.stringify(u.gradients.map((g, i) => ({ type: "gradient", gradient: g, emoji: u.emoji, caption: u.photoCaps[i] || "" }))),
-          JSON.stringify(u.events), hash, id);
+      await db.prepare(`UPDATE users SET name=?, age=?, vibes=?, looking=?, prompts=?, photos=?, events=?, is_demo=1, password_hash=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=? WHERE id=?`)
+        .run(u.name, u.age, JSON.stringify(u.vibes), JSON.stringify(looking), JSON.stringify(u.prompts),
+          photos, JSON.stringify(u.events), hash, d.gender || "", d.pronouns || "",
+          JSON.stringify(d.interestedIn || []), d.favoriteArtists || "", d.favoriteFestival || "",
+          d.favoriteVenue || "", d.favoriteHangout || "", d.kandiTrades || "", d.raveTotem || "", d.yearsRaving || "", d.sex || "", d.heightIn != null ? d.heightIn : null, JSON.stringify(d.hobbies || []), id);
     } else {
       const info = await userIns.run(
         u.username, hash, u.name, u.age,
-        JSON.stringify(u.vibes), JSON.stringify(u.looking), JSON.stringify(u.prompts),
-        JSON.stringify(u.gradients.map((g, i) => ({ type: "gradient", gradient: g, emoji: u.emoji, caption: u.photoCaps[i] || "" }))),
-        JSON.stringify(u.events)
+        JSON.stringify(u.vibes), JSON.stringify(looking), JSON.stringify(u.prompts),
+        photos, JSON.stringify(u.events),
+        d.gender || "", d.pronouns || "", JSON.stringify(d.interestedIn || []),
+        d.favoriteArtists || "", d.favoriteFestival || "", d.favoriteVenue || "", d.favoriteHangout || "",
+        d.kandiTrades || "", d.raveTotem || "", d.yearsRaving || "",
+        d.sex || "", d.heightIn != null ? d.heightIn : null, JSON.stringify(d.hobbies || [])
       );
       id = Number(info.lastInsertRowid);
     }

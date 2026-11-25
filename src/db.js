@@ -22,6 +22,20 @@ const SQLITE_SCHEMA = `
       events TEXT DEFAULT '[]',
       is_demo INTEGER DEFAULT 0,
       subscription TEXT DEFAULT NULL,
+      gender TEXT DEFAULT '',
+      pronouns TEXT DEFAULT '',
+      interested_in TEXT DEFAULT '[]',
+      favorite_artists TEXT DEFAULT '',
+      favorite_festival TEXT DEFAULT '',
+      favorite_venue TEXT DEFAULT '',
+      favorite_hangout TEXT DEFAULT '',
+      kandi_trades TEXT DEFAULT '',
+      rave_totem TEXT DEFAULT '',
+      years_raving TEXT DEFAULT '',
+      sex TEXT DEFAULT '',
+      height_in INTEGER,
+      hobbies TEXT DEFAULT '[]',
+      favorite_tunes TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS sessions (
@@ -171,6 +185,9 @@ const SQLITE_SCHEMA = `
       photo_id TEXT,
       event_id TEXT,
       created_at TEXT DEFAULT (datetime('now')),
+      video_id TEXT,
+      poster_id TEXT,
+      photo_ids TEXT DEFAULT '[]',
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS post_likes (
@@ -218,6 +235,20 @@ const PG_SCHEMA = `
       events TEXT DEFAULT '[]',
       is_demo INTEGER DEFAULT 0,
       subscription TEXT DEFAULT NULL,
+      gender TEXT DEFAULT '',
+      pronouns TEXT DEFAULT '',
+      interested_in TEXT DEFAULT '[]',
+      favorite_artists TEXT DEFAULT '',
+      favorite_festival TEXT DEFAULT '',
+      favorite_venue TEXT DEFAULT '',
+      favorite_hangout TEXT DEFAULT '',
+      kandi_trades TEXT DEFAULT '',
+      rave_totem TEXT DEFAULT '',
+      years_raving TEXT DEFAULT '',
+      sex TEXT DEFAULT '',
+      height_in INTEGER,
+      hobbies TEXT DEFAULT '[]',
+      favorite_tunes TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (NOW()::text)
     );
     CREATE TABLE IF NOT EXISTS sessions (
@@ -351,7 +382,10 @@ const PG_SCHEMA = `
       caption TEXT DEFAULT '',
       photo_id TEXT,
       event_id TEXT,
-      created_at TEXT DEFAULT (NOW()::text)
+      created_at TEXT DEFAULT (NOW()::text),
+      video_id TEXT,
+      poster_id TEXT,
+      photo_ids TEXT DEFAULT '[]'
     );
     CREATE TABLE IF NOT EXISTS post_likes (
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -537,6 +571,26 @@ async function migrate(db) {
   if (db.driver === "postgres") {
     await db.exec("ALTER TABLE users ALTER COLUMN age DROP NOT NULL");
     await db.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile INTEGER DEFAULT 0");
+
+    const userDetailCols = [
+      ["gender", "TEXT DEFAULT ''"],
+      ["pronouns", "TEXT DEFAULT ''"],
+      ["interested_in", "TEXT DEFAULT '[]'"],
+      ["favorite_artists", "TEXT DEFAULT ''"],
+      ["favorite_festival", "TEXT DEFAULT ''"],
+      ["favorite_venue", "TEXT DEFAULT ''"],
+      ["favorite_hangout", "TEXT DEFAULT ''"],
+      ["kandi_trades", "TEXT DEFAULT ''"],
+      ["rave_totem", "TEXT DEFAULT ''"],
+      ["years_raving", "TEXT DEFAULT ''"],
+      ["sex", "TEXT DEFAULT ''"],
+      ["height_in", "INTEGER"],
+      ["hobbies", "TEXT DEFAULT '[]'"],
+      ["favorite_tunes", "TEXT DEFAULT '[]'"],
+    ];
+    for (const [col, typ] of userDetailCols) {
+      await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
     await db.exec("ALTER TABLE reports ADD COLUMN IF NOT EXISTS post_id INTEGER");
     await db.exec("ALTER TABLE posts ADD COLUMN IF NOT EXISTS extra_photos TEXT DEFAULT '[]'");
     for (const [col, typ] of eventCols) {
@@ -553,8 +607,31 @@ async function migrate(db) {
     await db.exec("ALTER TABLE events ADD COLUMN IF NOT EXISTS event_key TEXT DEFAULT ''");
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_events_event_key ON events(event_key)"); } catch (err) { console.error("idx_events_event_key:", err.message || err); }
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_event_going_key ON event_going(event_key)"); } catch (err) { console.error("idx_event_going_key:", err.message || err); }
+    await db.exec("ALTER TABLE posts ADD COLUMN IF NOT EXISTS video_id TEXT");
+    await db.exec("ALTER TABLE posts ADD COLUMN IF NOT EXISTS poster_id TEXT");
+    await db.exec("ALTER TABLE posts ADD COLUMN IF NOT EXISTS photo_ids TEXT DEFAULT '[]'");
   } else {
     try { await db.exec("ALTER TABLE users ADD COLUMN needs_profile INTEGER DEFAULT 0"); } catch (_) {}
+
+    const userDetailCols = [
+      ["gender", "TEXT DEFAULT ''"],
+      ["pronouns", "TEXT DEFAULT ''"],
+      ["interested_in", "TEXT DEFAULT '[]'"],
+      ["favorite_artists", "TEXT DEFAULT ''"],
+      ["favorite_festival", "TEXT DEFAULT ''"],
+      ["favorite_venue", "TEXT DEFAULT ''"],
+      ["favorite_hangout", "TEXT DEFAULT ''"],
+      ["kandi_trades", "TEXT DEFAULT ''"],
+      ["rave_totem", "TEXT DEFAULT ''"],
+      ["years_raving", "TEXT DEFAULT ''"],
+      ["sex", "TEXT DEFAULT ''"],
+      ["height_in", "INTEGER"],
+      ["hobbies", "TEXT DEFAULT '[]'"],
+      ["favorite_tunes", "TEXT DEFAULT '[]'"],
+    ];
+    for (const [col, typ] of userDetailCols) {
+      try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
     try { await db.exec("ALTER TABLE reports ADD COLUMN post_id INTEGER"); } catch (_) {}
     try { await db.exec("ALTER TABLE posts ADD COLUMN extra_photos TEXT DEFAULT '[]'"); } catch (_) {}
     for (const [col, typ] of eventCols) {
@@ -574,6 +651,9 @@ async function migrate(db) {
     }
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_events_event_key ON events(event_key)"); } catch (_) {}
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_event_going_key ON event_going(event_key)"); } catch (_) {}
+    for (const [col, typ] of [["video_id", "TEXT"], ["poster_id", "TEXT"], ["photo_ids", "TEXT DEFAULT '[]'"]]) {
+      try { await db.exec(`ALTER TABLE posts ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
   }
   try {
     const { backfillEventKeys } = require("./meetup");

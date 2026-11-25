@@ -1,13 +1,45 @@
 /* Kandi v1 client */
 (function () {
   const DAILY = 8;
-  const VIBES = ["house", "techno", "dubstep", "trance", "bass", "drum & bass", "hardstyle", "disco"];
+  const VIBES = ["house", "techno", "dubstep", "bass", "trance", "drum & bass", "hardstyle", "EDM", "hip-hop", "disco", "garage", "trap"];
+  const VIBE_LABEL = { "drum & bass": "DnB", "hip-hop": "Hip-hop" };
   const LOOKING = [
-    { id: "dance", label: "Dance partner" },
+    { id: "date", label: "Dates" },
     { id: "friends", label: "Friends" },
-    { id: "date", label: "Date" },
-    { id: "hookup", label: "Hookup" },
+    { id: "crew", label: "Rave crew" },
+    { id: "hookup", label: "Hookups" },
+    { id: "dance", label: "Dance partner" },
   ];
+  const GENDERS = [
+    { id: "woman", label: "Woman" },
+    { id: "man", label: "Man" },
+    { id: "nonbinary", label: "Nonbinary" },
+    { id: "trans", label: "Trans" },
+    { id: "agender", label: "Agender" },
+    { id: "other", label: "Other" },
+  ];
+  const PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns", "ask me"];
+  const INTERESTED_IN = [
+    { id: "women", label: "Women" },
+    { id: "men", label: "Men" },
+    { id: "nonbinary", label: "Nonbinary people" },
+    { id: "everyone", label: "Everyone" },
+  ];
+  const KANDI_TRADES = [
+    { id: "yes", label: "Always trading" },
+    { id: "sometimes", label: "Sometimes" },
+    { id: "no", label: "Not really" },
+  ];
+  const SEXES = [
+    { id: "female", label: "Female" },
+    { id: "male", label: "Male" },
+    { id: "intersex", label: "Intersex" },
+  ];
+  const HOBBIES = ["dancing", "DJing", "producing", "kandi making", "photography", "festivals", "afters", "vinyl", "fashion", "thrifting", "hiking", "camping", "yoga", "gym", "skating", "art", "gaming", "travel", "animals", "tattooing"];
+  const MAX_TUNES = 5;
+  const MAX_POST_PHOTOS = 10;
+  const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+  const MAX_VIDEO_SECONDS = 60;
   const SPOTS = ["Left of main stage", "Right of main stage", "Water station", "Merch booth", "Back of the floor", "Totem / meeting flag", "Rideshare / exit"];
   const PROMPT_BANK = [
     { id: "goto", q: "My go-to set is..." },
@@ -22,6 +54,452 @@
   const BEADS = ["#ff5c00", "#ff8a1a", "#ffc14d", "#ff3b00", "#ffb020", "#ff7a4a", "#ffffff", "#ffd4b0"];
   const LOOKING_LABEL = Object.fromEntries(LOOKING.map((x) => [x.id, x.label]));
 
+  const GENDER_LABEL = Object.fromEntries(GENDERS.map((x) => [x.id, x.label]));
+  const INTERESTED_LABEL = Object.fromEntries(INTERESTED_IN.map((x) => [x.id, x.label]));
+  const KANDI_TRADES_LABEL = Object.fromEntries(KANDI_TRADES.map((x) => [x.id, x.label]));
+  const SEX_LABEL = Object.fromEntries(SEXES.map((x) => [x.id, x.label]));
+  function vibeLabel(v) { return VIBE_LABEL[v] || v; }
+  function lookingLabel(id) { return LOOKING_LABEL[id] || id; }
+  function genderLabel(id) { return GENDER_LABEL[id] || id; }
+  function sexLabel(id) { return SEX_LABEL[id] || id; }
+  function formatHeight(inches) {
+    if (inches == null || inches === "") return "";
+    const n = Number(inches);
+    if (!Number.isFinite(n)) return "";
+    const ft = Math.floor(n / 12);
+    const inn = Math.round(n % 12);
+    return ft + "\u2032" + inn + "\u2033";
+  }
+  function heightParts(inches) {
+    if (inches == null || inches === "") return { ft: "", inn: "" };
+    const n = Number(inches);
+    if (!Number.isFinite(n)) return { ft: "", inn: "" };
+    return { ft: String(Math.floor(n / 12)), inn: String(Math.round(n % 12)) };
+  }
+
+  function parseTuneUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return null;
+    let u;
+    try { u = new URL(s); } catch (_) { return null; }
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (u.protocol === "http:") u.protocol = "https:";
+    const host = String(u.hostname || "").toLowerCase().replace(/^www\./, "");
+    if (host === "open.spotify.com" || host === "play.spotify.com") {
+      const path = u.pathname.replace(/\/+$/, "");
+      const m = path.match(/^(?:\/embed)?(?:\/intl-[a-z0-9-]+)?\/(track|playlist|album)\/([A-Za-z0-9]+)(?:\/.*)?$/i);
+      if (!m) return null;
+      return { url: "https://open.spotify.com/" + m[1].toLowerCase() + "/" + m[2], embedUrl: "https://open.spotify.com/embed/" + m[1].toLowerCase() + "/" + m[2] + "?theme=0", source: "spotify", kind: m[1].toLowerCase() };
+    }
+    if (host === "w.soundcloud.com") {
+      return parseTuneUrl(u.searchParams.get("url") || "");
+    }
+    if (host === "soundcloud.com" || host === "m.soundcloud.com") {
+      const parts = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+      if (parts.length < 2) return null;
+      const page = "https://soundcloud.com/" + parts.join("/");
+      const params = new URLSearchParams({ url: page, color: "#ff5c00", auto_play: "false", hide_related: "true", show_comments: "false", show_user: "true", show_reposts: "false", show_teaser: "false", visual: "false" });
+      return { url: page, embedUrl: "https://w.soundcloud.com/player/?" + params.toString(), source: "soundcloud", kind: parts[1] === "sets" ? "playlist" : "track" };
+    }
+    if (host === "music.apple.com" || host === "embed.music.apple.com" || host === "itunes.apple.com") {
+      const path = u.pathname.replace(/\/+$/, "");
+      const m = path.match(/^\/([a-z]{2})\/(song|album|playlist)\/([^/]+)(?:\/([^/]+))?$/i);
+      if (!m) return null;
+      const rest = m[4] ? m[3] + "/" + m[4] : m[3];
+      const songQuery = u.searchParams.get("i");
+      const q = songQuery ? ("?i=" + encodeURIComponent(songQuery)) : "";
+      const kind = m[2].toLowerCase();
+      return { url: "https://music.apple.com/" + m[1].toLowerCase() + "/" + kind + "/" + rest + q, embedUrl: "https://embed.music.apple.com/" + m[1].toLowerCase() + "/" + kind + "/" + rest + q, source: "apple", kind: songQuery ? "song" : kind };
+    }
+    return null;
+  }
+  function parseTuneList(arr) {
+    const out = [];
+    for (const item of (arr || [])) {
+      const raw = typeof item === "string" ? item : (item && (item.url || item.embedUrl) || "");
+      if (!String(raw).trim()) continue;
+      const parsed = parseTuneUrl(typeof item === "string" ? item : raw);
+      if (!parsed) return { error: true, tunes: out };
+      if (!out.some((t) => t.url === parsed.url)) out.push(parsed);
+      if (out.length >= MAX_TUNES) break;
+    }
+    return { error: false, tunes: out };
+  }
+  function tuneFrameHeight(tune) {
+    if (!tune) return 152;
+    if (tune.source === "spotify" && (tune.kind === "playlist" || tune.kind === "album")) return 352;
+    if (tune.source === "apple" && (tune.kind === "playlist" || tune.kind === "album")) return 450;
+    if (tune.source === "soundcloud") return 166;
+    return 152;
+  }
+  function tuneSourceLabel(src) {
+    return src === "spotify" ? "Spotify" : src === "soundcloud" ? "SoundCloud" : src === "apple" ? "Apple Music" : "Open in app";
+  }
+  function profileTunes(tunes) {
+    const list = (tunes || []).filter((t) => t && t.embedUrl);
+    if (!list.length) return "";
+    return `<section class="prof-tunes"><div class="label">My Tunes</div>` + list.map((t) => {
+      const h = tuneFrameHeight(t);
+      return `<div class="tune-card">
+        <iframe class="tune-frame" src="${esc(t.embedUrl)}" title="My Tunes player" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" style="height:${h}px"></iframe>
+        <a class="tune-open" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Open in ${esc(tuneSourceLabel(t.source))}</a>
+      </div>`;
+    }).join("") + `</section>`;
+  }
+  function profileCrewSlot() {
+    // Reserved for rave groups / friend tagging (another worker). Keep this hook so Crew can land here without a layout rewrite.
+    return `<section class="prof-crew" data-crew-slot></section>`;
+  }
+
+  function startEditDraft() {
+    const me = state.me || {};
+    const ht = heightParts(me.heightIn);
+    state.editDraft = {
+      gender: me.gender || "",
+      pronouns: me.pronouns || "",
+      sex: me.sex || "",
+      interestedIn: (me.interestedIn || []).slice(),
+      vibes: (me.vibes || []).slice(),
+      looking: (me.looking || []).slice(),
+      hobbies: (me.hobbies || []).slice(),
+      kandiTrades: me.kandiTrades || "",
+    };
+    state.drafts.editName = me.name || "";
+    state.drafts.editBio = me.bio || "";
+    state.drafts.editAge = me.age != null ? String(me.age) : "";
+    state.drafts.editHeightFt = ht.ft;
+    state.drafts.editHeightIn = ht.inn;
+    state.drafts.editFavoriteArtists = me.favoriteArtists || "";
+    state.drafts.editFavoriteFestival = me.favoriteFestival || "";
+    state.drafts.editFavoriteVenue = me.favoriteVenue || "";
+    state.drafts.editFavoriteHangout = me.favoriteHangout || "";
+    state.drafts.editRaveTotem = me.raveTotem || "";
+    state.drafts.editYearsRaving = me.yearsRaving || "";
+    state.drafts.editCustomHobby = "";
+    const tuneUrls = (me.favoriteTunes || []).map((x) => x.url || "");
+    for (let i = 0; i < MAX_TUNES; i++) state.drafts["editTune" + i] = tuneUrls[i] || "";
+  }
+
+  function collectEditFields() {
+    const d = state.editDraft || {};
+    const ageRaw = String(state.drafts.editAge || "").trim();
+    const age = ageRaw ? Number(ageRaw) : null;
+    if (ageRaw && (!Number.isInteger(age) || age < 18 || age > 99)) {
+      return { error: "Kandi is 18+. Enter an age between 18 and 99." };
+    }
+    const ft = String(state.drafts.editHeightFt || "").trim();
+    const inn = String(state.drafts.editHeightIn || "").trim();
+    let heightIn = null;
+    if (ft || inn) {
+      const ftN = Number(ft);
+      const inN = Number(inn || "0");
+      if (!Number.isInteger(ftN) || ftN < 4 || ftN > 7 || !Number.isInteger(inN) || inN < 0 || inN > 11) {
+        return { error: "Pick a height in feet and inches, or leave it blank." };
+      }
+      heightIn = ftN * 12 + inN;
+    }
+    const tuneRaw = [];
+    for (let i = 0; i < MAX_TUNES; i++) tuneRaw.push(state.drafts["editTune" + i] || "");
+    const parsedTunes = parseTuneList(tuneRaw);
+    if (parsedTunes.error) {
+      return { error: "Each My Tunes link needs to be a Spotify, SoundCloud, or Apple Music track, playlist, or album." };
+    }
+    const body = {
+      name: state.drafts.editName,
+      bio: state.drafts.editBio,
+      age,
+      gender: d.gender || "",
+      pronouns: d.pronouns || "",
+      sex: d.sex || "",
+      interestedIn: d.interestedIn || [],
+      vibes: d.vibes || [],
+      looking: d.looking || [],
+      hobbies: d.hobbies || [],
+      favoriteArtists: state.drafts.editFavoriteArtists || "",
+      favoriteFestival: state.drafts.editFavoriteFestival || "",
+      favoriteVenue: state.drafts.editFavoriteVenue || "",
+      favoriteHangout: state.drafts.editFavoriteHangout || "",
+      kandiTrades: d.kandiTrades || "",
+      raveTotem: state.drafts.editRaveTotem || "",
+      yearsRaving: state.drafts.editYearsRaving || "",
+      heightIn,
+      favoriteTunes: parsedTunes.tunes,
+    };
+    return { body, parsedTunes };
+  }
+
+  function draftPreviewUser() {
+    const collected = collectEditFields();
+    if (collected.error) return collected;
+    const me = state.me || {};
+    const soc = state.profile && state.profile.user && Number(state.profile.user.id) === Number(me.id) ? state.profile.user : me;
+    const b = collected.body;
+    const preview = Object.assign({}, me, b, {
+      name: String(b.name || "").trim() || me.name,
+      photos: me.photos || [],
+      username: me.username,
+      id: me.id,
+      followerCount: soc.followerCount,
+      followingCount: soc.followingCount,
+      upcomingShows: me.upcomingShows || soc.upcomingShows,
+      upcomingHidden: me.showUpcoming === false,
+      showUpcoming: me.showUpcoming,
+      favoriteTunes: b.favoriteTunes,
+    });
+    return { user: preview };
+  }
+
+  function clearComposerMedia() {
+    const media = state.composerMedia || {};
+    (media.previews || []).forEach((u) => {
+      if (u && String(u).startsWith("blob:")) { try { URL.revokeObjectURL(u); } catch (_) {} }
+    });
+    state.composerMedia = { photos: [], video: null, poster: null, previews: [] };
+    state.drafts.postFile = null;
+    state.drafts.postPreview = "";
+  }
+
+  function readVideoMeta(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error("Choose a short video."));
+      if (file.size > MAX_VIDEO_BYTES) return reject(new Error("That video is over 50 MB. Try a shorter clip."));
+      const url = URL.createObjectURL(file);
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.muted = true;
+      v.playsInline = true;
+      v.setAttribute("playsinline", "");
+      let done = false;
+      const finish = (err, meta) => {
+        if (done) return;
+        done = true;
+        if (err) {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+          reject(err);
+        } else {
+          resolve(meta);
+        }
+      };
+      const capture = () => {
+        const duration = v.duration;
+        if (Number.isFinite(duration) && duration > MAX_VIDEO_SECONDS + 0.5) {
+          finish(new Error("Videos can be up to 60 seconds."));
+          return;
+        }
+        try {
+          const canvas = document.createElement("canvas");
+          const w = v.videoWidth || 640;
+          const h = v.videoHeight || 360;
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(v, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            const preview = canvas.toDataURL("image/jpeg", 0.85);
+            try { URL.revokeObjectURL(url); } catch (_) {}
+            finish(null, { duration, poster: blob, preview });
+          }, "image/jpeg", 0.85);
+        } catch (_) {
+          try { URL.revokeObjectURL(url); } catch (e) {}
+          finish(null, { duration, poster: null, preview: "" });
+        }
+      };
+      v.onloadeddata = () => {
+        const t = Math.min(0.15, (v.duration && Number.isFinite(v.duration) ? v.duration : 1) / 4);
+        try { v.currentTime = t; } catch (_) { capture(); }
+      };
+      v.onseeked = capture;
+      v.onerror = () => finish(new Error("Couldn't read that video."));
+      setTimeout(() => { if (!done) finish(new Error("Couldn't read that video.")); }, 8000);
+      v.src = url;
+    });
+  }
+
+  function findPost(id) {
+    const lists = [state.homePosts || [], (state.profile && state.profile.posts) || [], state.openPost ? [state.openPost] : []];
+    for (const list of lists) {
+      const found = list.find((p) => String(p.id) === String(id));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function findEvent(id) {
+    const fromList = (state.events || []).find((x) => String(x.id) === String(id));
+    if (fromList) return fromList;
+    const lists = [state.homePosts || [], (state.profile && state.profile.posts) || [], state.openPost ? [state.openPost] : []];
+    for (const list of lists) {
+      for (const p of list) {
+        if (p.event && String(p.event.id) === String(id)) {
+          return Object.assign({
+            going: [],
+            color: "linear-gradient(135deg,#1a0a00,#ff5c00)",
+            imGoing: false,
+            category: "",
+            artists: [],
+            imageUrl: "",
+            ageLimit: "",
+            city: p.event.city || "",
+            venue: p.event.venue || "",
+          }, p.event);
+        }
+      }
+    }
+    return null;
+  }
+
+  function profilePhotoStrip(photos) {
+    const list = (photos || []).filter(Boolean);
+    if (!list.length) return "";
+    return `<div class="photo-strip" aria-label="Photos">` + list.map((ph) => {
+      if (ph.type === "file" && ph.url) return `<div class="photo-strip-item" style="background-image:url('${esc(mediaUrl(ph.url))}')"></div>`;
+      const bg = ph.gradient ? `background:${esc(ph.gradient)}` : "background:#141414";
+      return `<div class="photo-strip-item" style="${bg}"><span>${esc(ph.emoji || "")}</span></div>`;
+    }).join("") + `</div>`;
+  }
+
+  function profileFact(label, value) {
+    if (!value) return "";
+    return `<div class="prof-fact"><div class="label">${esc(label)}</div><div class="prof-fact-val">${esc(value)}</div></div>`;
+  }
+
+  function profileDetails(p, compact) {
+    if (!p) return "";
+    const chips = [];
+    if (p.age) chips.push(`<span class="chip soft">${esc(p.age)}</span>`);
+    if (p.gender) chips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
+    if (p.sex) chips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
+    if (p.pronouns) chips.push(`<span class="chip soft">${esc(p.pronouns)}</span>`);
+    const height = formatHeight(p.heightIn);
+    if (height) chips.push(`<span class="chip soft">${esc(height)}</span>`);
+    (p.vibes || []).forEach((v) => chips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
+    (p.hobbies || []).forEach((h) => chips.push(`<span class="chip soft">${esc(h)}</span>`));
+    const looking = (p.looking || []).map(lookingLabel).join(", ");
+    const interested = (p.interestedIn || []).map((id) => INTERESTED_LABEL[id] || id).join(", ");
+    const trades = p.kandiTrades ? (KANDI_TRADES_LABEL[p.kandiTrades] || p.kandiTrades) : "";
+    let html = "";
+    if (chips.length) html += `<div class="chips prof-chips">${chips.join("")}</div>`;
+    html += `<div class="prof-facts">`;
+    html += profileFact("Interested in", interested);
+    html += profileFact("Looking for", looking);
+    html += profileFact("Hobbies", (p.hobbies || []).join(", "));
+    html += profileFact("Favorite artists / DJs", p.favoriteArtists);
+    html += profileFact("Favorite festival or show", p.favoriteFestival);
+    html += profileFact("Favorite venue", p.favoriteVenue);
+    html += profileFact("Favorite hangout", p.favoriteHangout);
+    html += profileFact("Kandi trades", trades);
+    html += profileFact("Rave totem", p.raveTotem);
+    html += profileFact("Years raving", p.yearsRaving ? (String(p.yearsRaving).match(/year/i) ? p.yearsRaving : p.yearsRaving + " years") : "");
+    html += `</div>`;
+    if (!compact) {
+      (p.prompts || []).forEach((pr) => {
+        html += `<div class="prompt" style="padding-bottom:20px;margin-top:12px"><div class="q">${esc(pr.q)}</div><div class="a" style="font-size:18px">${esc(pr.a)}</div></div>`;
+      });
+    }
+    return html;
+  }
+
+  function gridTile(post) {
+    const play = post.videoUrl ? `<span class="grid-play" aria-hidden="true">▶</span>` : "";
+    const src = post.posterUrl || post.photoUrl || ((post.photoUrls || [])[0]);
+    if (src) {
+      return `<button type="button" class="grid-tile" style="background-image:url('${esc(mediaUrl(src))}')" data-act="open-post" data-id="${post.id}" aria-label="Open post">${play}</button>`;
+    }
+    const txt = post.caption || (post.event && post.event.name) || "Post";
+    return `<button type="button" class="grid-tile" data-act="open-post" data-id="${post.id}" aria-label="Open post"><span class="txt">${esc(String(txt).slice(0, 80))}</span></button>`;
+  }
+
+  function postGrid(posts, emptyText) {
+    if (!posts || !posts.length) return `<div class="empty">${emptyText}</div>`;
+    return `<div class="post-grid">` + posts.map(gridTile).join("") + `</div>`;
+  }
+
+  function storyRingWrap(inner, user, size) {
+    // Reserved for the stories worker (story ring on avatar). Space only — do not draw a ring here.
+    const id = user && user.id != null ? String(user.id) : "";
+    const sz = size || "lg";
+    return `<div class="avatar-ring avatar-ring-${sz}" data-story-ring data-user-id="${esc(id)}">${inner}</div>`;
+  }
+
+  function postsToolbar(posts) {
+    const view = state.profilePostView === "list" ? "list" : "grid";
+    const n = (posts || []).length;
+    const count = n ? (n === 1 ? "1 post" : n + " posts") : "No posts yet";
+    return `<div class="posts-toolbar">
+      <div class="posts-heading"><div class="label" style="margin:0">Posts</div><div class="tiny">${esc(count)}</div></div>
+      <div class="post-view-toggle" role="group" aria-label="Post layout">
+        <button type="button" class="${view === "grid" ? "on" : ""}" data-act="post-view" data-id="grid" aria-label="Grid view" aria-pressed="${view === "grid" ? "true" : "false"}">▦</button>
+        <button type="button" class="${view === "list" ? "on" : ""}" data-act="post-view" data-id="list" aria-label="List view" aria-pressed="${view === "list" ? "true" : "false"}">☰</button>
+      </div>
+    </div>`;
+  }
+
+  function profilePosts(posts, isMe) {
+    const list = posts || [];
+    const empty = isMe
+      ? "No posts yet. Tap New Post to share a photo, a video, or a rave you're going to — just like a regular feed post."
+      : "No posts yet.";
+    const toolbar = postsToolbar(list);
+    if (!list.length) return toolbar + `<div class="empty">${empty}</div>`;
+    if (state.profilePostView === "list") {
+      return toolbar + `<div class="profile-feed">` + list.map(postCard).join("") + `</div>`;
+    }
+    return toolbar + postGrid(list, empty);
+  }
+
+  function profilePreview(p, posts, opts) {
+    opts = opts || {};
+    const isMe = Boolean(opts.isMe);
+    const tab = state.profileTab || "posts";
+    const buttons = isMe
+      ? `<div class="prof-actions"><button type="button" class="btn sm primary" data-act="edit-profile">Edit Profile</button>
+          <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New Post</button></div>`
+      : "";
+    const soc = opts.counts || {};
+    const followerCount = soc.followerCount != null ? soc.followerCount : 0;
+    const followingCount = soc.followingCount != null ? soc.followingCount : 0;
+    const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
+    let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
+      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+      <div class="muted">@${esc(p.username)}${pronouns}</div>
+      ${buttons}
+    </div></div>`;
+    html += `<div class="counts">
+      <span><strong>${followerCount}</strong><span class="tiny">followers</span></span>
+      <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
+      <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
+    </div>`;
+    html += profileCrewSlot();
+    const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
+    html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
+    html += `<div class="seg event-cats profile-tabs">
+      <button type="button" class="${tab === "posts" ? "on" : ""}" data-act="profile-tab" data-id="posts">Posts</button>
+      <button type="button" class="${tab === "about" ? "on" : ""}" data-act="profile-tab" data-id="about">About</button>
+    </div>`;
+    if (tab === "about") {
+      html += profilePhotoStrip(p.photos);
+      if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
+      else if (isMe) html += `<p class="muted prof-bio">No bio yet. Tap Edit Profile to add one.</p>`;
+      html += profileDetails(p, false);
+      html += profileTunes(p.favoriteTunes);
+    } else {
+      if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
+      const topChips = [];
+      if (p.age) topChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
+      if (p.gender) topChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
+      if (p.sex) topChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
+      const height = formatHeight(p.heightIn);
+      if (height) topChips.push(`<span class="chip soft">${esc(height)}</span>`);
+      (p.vibes || []).slice(0, 4).forEach((v) => topChips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
+      (p.hobbies || []).slice(0, 3).forEach((h) => topChips.push(`<span class="chip soft">${esc(h)}</span>`));
+      if (topChips.length) html += `<div class="chips prof-chips">${topChips.join("")}</div>`;
+      if ((p.favoriteTunes || []).length) {
+        html += `<button type="button" class="btn sm ghost tunes-jump" data-act="profile-tab" data-id="about">My Tunes</button>`;
+      }
+      html += profilePosts(posts, isMe);
+    }
+    return html;
+  }
+
   const state = {
     view: "boot",
     me: null,
@@ -31,6 +509,13 @@
     homePosts: [],
     topRavers: [],
     profile: null,
+    profileTab: "posts",
+    editDraft: null,
+    openPost: null,
+    overlayBack: null,
+    composerMedia: { photos: [], video: null, poster: null, previews: [] },
+    composerReturn: "home",
+    profilePostView: "grid",
     comments: [],
     commentPostId: null,
     heartBurst: null,
@@ -47,12 +532,12 @@
     chatWith: null,
     blocked: [],
     locationShare: null,
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", claimPreview: "" },
+    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "" },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
     onboardStep: 0,
-    filters: { event: "all", genre: "all" },
+    filters: { event: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
     billing: "monthly",
     pendingPlan: "plus",
     err: "",
@@ -461,9 +946,12 @@
     if (node) node.innerHTML = `<span class="spin"></span>Uploading photo${pct == null ? "" : " " + pct + "%"}…`;
   }
   let fileInputSeq = 0;
-  function hiddenFileInput(kind, label) {
+  function hiddenFileInput(kind, label, opts) {
+    opts = opts || {};
     const id = "kandi-file-" + kind + "-" + (++fileInputSeq);
-    const input = `<input id="${id}" class="file-sr" type="file" accept="image/*" data-act-file="${kind}" ${state.uploadingPhoto ? "disabled" : ""} aria-label="${esc(label)}" />`;
+    const accept = opts.accept || "image/*";
+    const multiple = opts.multiple ? " multiple" : "";
+    const input = `<input id="${id}" class="file-sr" type="file" accept="${esc(accept)}" data-act-file="${kind}"${multiple} ${state.uploadingPhoto ? "disabled" : ""} aria-label="${esc(label)}" />`;
     return { id, input };
   }
   function profileAvatarEditor(p) {
@@ -781,6 +1269,11 @@
     const q = new URLSearchParams();
     if (isPlus() && state.filters.genre !== "all") q.set("genre", state.filters.genre);
     if (state.filters.event && state.filters.event !== "all") q.set("event", state.filters.event);
+    if (state.filters.gender && state.filters.gender !== "all") q.set("gender", state.filters.gender);
+    const ageMin = Number(state.filters.ageMin);
+    const ageMax = Number(state.filters.ageMax);
+    if (Number.isFinite(ageMin) && ageMin > 18) q.set("ageMin", String(ageMin));
+    if (Number.isFinite(ageMax) && ageMax < 99) q.set("ageMax", String(ageMax));
     const data = await api("/api/discover?" + q.toString());
     state.feed = data.people;
     if (data.likesLeft != null) state.likesLeft = data.likesLeft;
@@ -977,8 +1470,17 @@
     if (p.photos[1]) parts.push(photoEl(p, 1, false));
     if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
     if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
-    parts.push(`<div class="meta-card"><div class="chips" style="margin-bottom:8px">${p.vibes.map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>
-      <div class="muted">Looking for ${p.looking.map((id) => LOOKING_LABEL[id] || id).join(", ")}</div>
+    const discoChips = [];
+    if (p.age) discoChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
+    if (p.gender) discoChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
+    if (p.sex) discoChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
+    const discoHeight = formatHeight(p.heightIn);
+    if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
+    (p.vibes || []).forEach((v) => discoChips.push(`<span class="chip soft">${esc(vibeLabel(v))}</span>`));
+    (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
+    parts.push(`<div class="meta-card"><div class="chips" style="margin-bottom:8px">${discoChips.join("")}</div>
+      <div class="muted">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ") || "—"}</div>
+      ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div></div>`);
     return header("Kandi", right) + `<div class="scroll">${sameBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
@@ -1115,10 +1617,29 @@
     return html;
   }
 
-  function postCard(p) {
+  function postMedia(p) {
     const burst = state.heartBurst === p.id ? `<div class="burst">♥</div>` : "";
-    const cap = p.caption ? `<div class="cap"><strong>${esc(p.author.name)}</strong>${esc(p.caption)}</div>` : "";
-    const ev = p.event ? `<span class="chip soft event-tag">${esc(p.event.emoji || "")} ${esc(p.event.name)}</span>` : "";
+    if (p.videoUrl) {
+      const poster = p.posterUrl || p.photoUrl;
+      return `<div class="post-video-wrap">
+        <video src="${esc(mediaUrl(p.videoUrl))}"${poster ? ` poster="${esc(mediaUrl(poster))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>
+        ${burst}
+      </div>`;
+    }
+    const urls = (p.photoUrls && p.photoUrls.length) ? p.photoUrls : (p.photoUrl ? [p.photoUrl] : []);
+    if (urls.length) return postGallery(p, burst);
+    if (p.caption) {
+      return `<div class="post-photo post-text" data-act="post-like-tap" data-id="${p.id}"><div class="post-text-inner">${esc(p.caption)}</div>${burst}</div>`;
+    }
+    return "";
+  }
+
+  function postCard(p) {
+    const hasVisual = Boolean(p.videoUrl || p.photoUrl || (p.photoUrls && p.photoUrls.length));
+    const cap = p.caption ? `<div class="cap"><strong>${esc(p.author.name)}</strong> ${esc(p.caption)}</div>` : "";
+    const ev = p.event
+      ? `<button type="button" class="chip soft event-tag" data-act="event" data-id="${esc(p.event.id)}">${esc(p.event.emoji || "")} ${esc(p.event.name)}</button>`
+      : "";
     const followBtn = p.author.id !== (state.me && state.me.id) && !p.author.following
       ? `<button class="btn sm ghost" data-act="follow" data-id="${p.author.id}">Follow</button>`
       : (p.author.id !== (state.me && state.me.id)
@@ -1127,24 +1648,21 @@
     const more = p.author.id === (state.me && state.me.id)
       ? `<button class="icon-btn" data-act="delete-post" data-id="${p.id}" title="Delete" aria-label="Delete">✕</button>`
       : `<button class="icon-btn" data-act="report-post" data-id="${p.id}" title="Report" aria-label="Report">⋯</button>`;
-    const photo = p.photoUrl
-      ? postGallery(p, burst)
-      : (p.caption ? `<div class="post-photo" style="display:grid;place-items:center;padding:24px;aspect-ratio:auto;min-height:160px" data-act="post-like-tap" data-id="${p.id}"><div style="font-size:20px;font-weight:700;line-height:1.4;padding:12px">${esc(p.caption)}</div>${burst}</div>` : "");
     return `<article class="post">
       <div class="post-hd">
-        <button data-act="open-profile" data-id="${p.author.id}">${avatarEl(p.author.avatar, "av", (p.author.name||"?")[0])}</button>
-        <button class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
+        <button type="button" data-act="open-profile" data-id="${p.author.id}">${avatarEl(p.author.avatar, "av", (p.author.name||"?")[0])}</button>
+        <button type="button" class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
         ${followBtn}${more}
       </div>
-      ${photo}
+      ${postMedia(p)}
       <div class="post-actions">
-        <button class="${p.liked ? "loved" : ""}" data-act="toggle-post-like" data-id="${p.id}" aria-label="Like">♥</button>
-        <button data-act="open-comments" data-id="${p.id}" aria-label="Comments">💬</button>
+        <button type="button" class="${p.liked ? "loved" : ""}" data-act="toggle-post-like" data-id="${p.id}" aria-label="Like">♥</button>
+        <button type="button" data-act="open-comments" data-id="${p.id}" aria-label="Comments">💬</button>
         <span class="spacer"></span>
       </div>
       <div class="post-body">
         <div class="likes">${p.likeCount} like${p.likeCount === 1 ? "" : "s"} · ${p.commentCount} comment${p.commentCount === 1 ? "" : "s"}</div>
-        ${p.photoUrl ? cap : ""}
+        ${hasVisual || !p.caption ? cap : ""}
         ${ev}
       </div>
     </article>`;
@@ -1152,105 +1670,180 @@
 
   function viewYou() {
     const p = state.me;
+    const soc = state.profile && state.profile.user && state.profile.user.id === p.id ? state.profile : null;
+    const posts = (soc && soc.posts) || [];
+    const counts = soc && soc.user ? { followerCount: soc.user.followerCount, followingCount: soc.user.followingCount } : {};
+    let html = header("You", `<button type="button" class="btn sm ghost" data-act="settings">Settings</button>`);
+    html += `<div class="scroll pad">`;
+    html += profilePreview(p, posts, { isMe: true, counts });
+    html += `</div>`;
+    return html;
+  }
+
+  function settingsBody() {
+    const p = state.me || {};
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
-    let html = header("You", `<button class="btn sm ghost" data-act="edit-profile">Edit profile</button>`) + `<div class="scroll pad">`;
-    html += `<div class="prof-hero">${profileAvatarEditor(p)}<div class="grow"><div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
-      <div class="muted">@${esc(p.username)}</div>
-      <button class="btn sm ghost" style="margin-top:10px" data-act="edit-profile">Edit profile</button></div></div>`;
-    html += photoEditor(p.photos);
-    html += `<div class="chips" style="margin:12px 0">${p.vibes.map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>`;
-    html += `<div class="muted">Looking for ${p.looking.map((id) => LOOKING_LABEL[id] || id).join(", ")}</div>`;
-    const myShows = p.upcomingShows || (state.events || []).filter((e) => e.imGoing).map((e) => e);
-    html += upcomingBlock(myShows, { mine: true });
-    html += `<div class="rsvp-item" style="margin-top:8px"><div class="grow"><div class="rsvp-label">Show upcoming shows on my profile</div>
+    let html = `<div class="card" style="margin-top:8px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
+      <div class="tiny">${p.subscription ? "Free during the beta — no payment on file." : "Free to use. Kandi+ (free during the beta) adds unlimited likes and more."}</div></div>
+      ${p.subscription ? `<button type="button" class="btn sm ghost" data-act="cancel-sub">Turn off</button>` : `<button type="button" class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
+    </div>`;
+    html += `<div class="rsvp-item" style="margin-top:14px"><div class="grow"><div class="rsvp-label">Show upcoming shows on my profile</div>
       <div class="tiny">Turn this off if you want to keep your RSVPs off your public profile.</div></div>
       <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>`;
-    (p.prompts || []).forEach((pr) => {
-      html += `<div class="prompt" style="padding-bottom:20px;margin-top:12px"><div class="q">${esc(pr.q)}</div><div class="a" style="font-size:18px">${esc(pr.a)}</div></div>`;
-    });
-    const soc = state.profile && state.profile.user && state.profile.user.id === p.id ? state.profile : null;
-    if (soc) {
-      html += `<div class="counts">
-        <span><strong>${soc.user.followerCount || 0}</strong><span class="tiny">followers</span></span>
-        <span><strong>${soc.user.followingCount || 0}</strong><span class="tiny">following</span></span>
-        <span><strong>${(soc.posts || []).length}</strong><span class="tiny">posts</span></span>
-      </div>`;
-      if ((soc.posts || []).length) {
-        html += `<div class="label">Your posts</div><div class="post-grid">` + soc.posts.map((post) =>
-          post.photoUrl
-            ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}" aria-label="Your post${post.caption ? ": " + esc(post.caption.slice(0, 60)) : ""}"></button>`
-            : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
-        ).join("") + `</div>`;
-      }
-    }
-    html += `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div style="font-weight:800">${plan}</div>
-      <div class="tiny">${p.subscription ? "Free during the beta — no payment on file." : "Free to use. Kandi+ (free during the beta) adds unlimited likes and more."}</div></div>
-      ${p.subscription ? `<button class="btn sm ghost" data-act="cancel-sub">Turn off</button>` : `<button class="btn sm primary" data-act="paywall" data-reason="upgrade">See Kandi+</button>`}
-    </div></div>`;
     html += `<h3 style="margin:22px 0 10px;font-size:16px">Safety</h3>
       <div class="notice warn" style="margin-bottom:10px"><strong>Consent first.</strong> Ask, wait for a yes, and look out for each other. You never owe anyone a dance, a meetup, or a hookup.</div>`;
     if (state.locationShare) {
       html += `<div class="notice ok" style="margin-bottom:10px">Meetup note shared with ${esc(state.locationShare.with)}${state.locationShare.event ? " · " + esc(state.locationShare.event) : ""}. In-app only — no real location was sent.</div>`;
     } else {
-      html += `<button class="btn ghost" style="margin-bottom:10px" data-act="share-loc">Share a meetup note with a friend</button>`;
+      html += `<button type="button" class="btn ghost" style="margin-bottom:10px" data-act="share-loc">Share a meetup note with a friend</button>`;
     }
-    if (state.blocked.length) {
+    if ((state.blocked || []).length) {
       html += `<div class="label" style="margin-top:16px">Blocked</div>` + state.blocked.map((b) =>
-        `<div class="row" style="margin:6px 0"><div class="grow">${esc(b.name)}</div><button class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`
+        `<div class="row" style="margin:6px 0"><div class="grow">${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`
       ).join("");
     }
     html += iosTip();
-    html += `<button class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
-      <button class="btn danger" style="margin-top:8px;width:100%" data-act="delete-account">Delete account</button>
+    html += `<button type="button" class="btn ghost" style="margin-top:24px" data-act="logout">Log out</button>
+      <button type="button" class="btn danger" style="margin-top:8px;width:100%" data-act="delete-account">Delete account</button>
       <p class="tiny" style="text-align:center;margin-top:12px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a></p>
-      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1.1</p></div>`;
+      <p class="tiny" style="text-align:center;margin-top:8px">Kandi v1.1</p>`;
     return html;
   }
 
-  const MAX_POST_PHOTOS = 10;
-  function composerPhotos() {
-    const list = state.drafts.postFiles || [];
-    const picker = (label, big) => `<label class="${big ? "card photo-upload big-pick" : "pick-more"}">${label}
-      <input type="file" accept="image/*" multiple data-act-file="post-photo" aria-label="Add photos from camera or library" /></label>`;
-    if (!list.length) {
-      return picker(`<div style="font-size:30px">📷</div><div style="font-weight:700;margin-top:6px">Add photos</div><div class="tiny" style="margin-top:4px">Take a photo or pick up to ${MAX_POST_PHOTOS} from your library. Any size works.</div>`, true);
-    }
-    return `<div class="composer-strip">${list.map((f, i) => `<div class="composer-thumb" style="background-image:url('${esc(f.url)}')">
-        <button type="button" class="slot-x" data-act="remove-post-photo" data-id="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join("")}
-      ${list.length < MAX_POST_PHOTOS ? picker(`<span style="font-size:26px">＋</span><span class="tiny">Add</span>`, false) : ""}</div>
-      <p class="tiny" style="margin-top:6px">${list.length} photo${list.length === 1 ? "" : "s"} · swipe through them in the post</p>`;
-  }
   function clearPostFiles() {
     (state.drafts.postFiles || []).forEach((f) => { try { URL.revokeObjectURL(f.url); } catch (_) {} });
     state.drafts.postFiles = [];
   }
   function postGallery(p, burst) {
     const urls = (p.photoUrls && p.photoUrls.length) ? p.photoUrls : (p.photoUrl ? [p.photoUrl] : []);
+    if (!urls.length) return "";
     if (urls.length <= 1) {
-      return `<div class="post-photo" style="background-image:url('${esc(mediaUrl(urls[0]))}')" data-act="post-like-tap" data-id="${p.id}" role="img" aria-label="Photo by ${esc(p.author.name)}. Double-tap to like.">${burst}</div>`;
+      return `<div class="post-photo" style="background-image:url('${esc(mediaUrl(urls[0]))}')" data-act="post-like-tap" data-id="${p.id}" role="img" aria-label="Photo by ${esc(p.author.name)}. Double-tap to like.">${burst || ""}</div>`;
     }
     return `<div class="post-carousel-wrap"><div class="post-carousel" data-act="post-like-tap" data-id="${p.id}">
       ${urls.map((u, i) => `<div class="post-photo slide" style="background-image:url('${esc(mediaUrl(u))}')" role="img" aria-label="Photo ${i + 1} of ${urls.length} by ${esc(p.author.name)}"></div>`).join("")}
-      </div>${burst}<span class="carousel-count">1/${urls.length}</span></div>`;
+      </div>${burst || ""}<span class="carousel-count">1/${urls.length}</span></div>`;
+  }
+
+
+  function editChipRow(label, items, selected, act, single) {
+    const sel = selected == null ? "" : selected;
+    const isOn = (id) => single ? String(sel) === String(id) : (Array.isArray(sel) && sel.includes(id));
+    const chips = items.map((it) => {
+      const id = typeof it === "string" ? it : it.id;
+      const lab = typeof it === "string" ? it : it.label;
+      return `<button type="button" class="chip${isOn(id) ? " on" : ""}" data-act="${act}" data-id="${esc(id)}">${esc(lab)}</button>`;
+    }).join("");
+    return `<div class="label" style="margin-top:14px">${esc(label)}</div><div class="chips">${chips}</div>`;
+  }
+
+  function editProfileForm() {
+    const me = state.me || { photos: [] };
+    const d = state.editDraft || { gender: "", pronouns: "", sex: "", interestedIn: [], vibes: [], looking: [], hobbies: [], kandiTrades: "" };
+    const ft = state.drafts.editHeightFt || "";
+    const inn = state.drafts.editHeightIn || "";
+    const ftOpts = ["", "4", "5", "6", "7"].map((v) => `<option value="${v}"${ft === v ? " selected" : ""}>${v ? v + " ft" : "—"}</option>`).join("");
+    const inOpts = [""].concat(["0","1","2","3","4","5","6","7","8","9","10","11"]).map((v) => `<option value="${v}"${inn === v ? " selected" : ""}>${v === "" ? "—" : v + " in"}</option>`).join("");
+    const hobbySet = Array.from(new Set(HOBBIES.concat(d.hobbies || [])));
+    const customHobbies = (d.hobbies || []).filter((h) => !HOBBIES.includes(h));
+    let tunes = "";
+    for (let i = 0; i < MAX_TUNES; i++) {
+      tunes += `<input data-field="editTune${i}" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Paste a Spotify, SoundCloud, or Apple Music link" value="${esc(state.drafts["editTune" + i] || "")}" style="margin-top:8px" />`;
+    }
+    return `<div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
+      ${photoEditor(me.photos)}
+      <div class="label" style="margin-top:8px">Name</div>
+      <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
+      <div class="label" style="margin-top:12px">Age (18+)</div>
+      <input data-field="editAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Age" value="${esc(state.drafts.editAge || "")}" />
+      <div class="label" style="margin-top:12px">Bio</div>
+      <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
+      ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}
+      ${editChipRow("Pronouns", PRONOUNS.map((x) => ({ id: x, label: x })), d.pronouns, "edit-set-pronouns", true)}
+      ${editChipRow("Sex", SEXES, d.sex, "edit-set-sex", true)}
+      <div class="label" style="margin-top:14px">Height</div>
+      <div class="row height-row"><select data-field="editHeightFt" aria-label="Height in feet">${ftOpts}</select>
+        <select data-field="editHeightIn" aria-label="Height in inches">${inOpts}</select></div>
+      ${editChipRow("Interested in", INTERESTED_IN, d.interestedIn, "edit-toggle-interested", false)}
+      ${editChipRow("Music genres", VIBES.map((v) => ({ id: v, label: vibeLabel(v) })), d.vibes, "edit-toggle-vibe", false)}
+      ${editChipRow("Looking for", LOOKING, d.looking, "edit-toggle-look", false)}
+      <div class="label" style="margin-top:14px">Hobbies</div>
+      <div class="chips">${hobbySet.map((h) => `<button type="button" class="chip${(d.hobbies || []).includes(h) ? " on" : ""}" data-act="edit-toggle-hobby" data-id="${esc(h)}">${esc(h)}</button>`).join("")}</div>
+      <div class="row" style="margin-top:8px"><input data-field="editCustomHobby" placeholder="Add your own hobby" value="${esc(state.drafts.editCustomHobby || "")}" />
+        <button type="button" class="btn sm ghost" data-act="edit-add-hobby">Add</button></div>
+      ${customHobbies.length ? `<p class="tiny" style="margin-top:6px">Custom: ${customHobbies.map(esc).join(", ")}</p>` : ""}
+      <div class="label" style="margin-top:14px">Favorite artists / DJs</div>
+      <input data-field="editFavoriteArtists" placeholder="Who do you play on repeat?" value="${esc(state.drafts.editFavoriteArtists || "")}" />
+      <div class="label" style="margin-top:12px">Favorite festival or show</div>
+      <input data-field="editFavoriteFestival" placeholder="e.g. Das Energi, CRSSD" value="${esc(state.drafts.editFavoriteFestival || "")}" />
+      <div class="label" style="margin-top:12px">Favorite venue</div>
+      <input data-field="editFavoriteVenue" placeholder="e.g. The Great Saltair, Soundwell" value="${esc(state.drafts.editFavoriteVenue || "")}" />
+      <div class="label" style="margin-top:12px">Favorite hangout</div>
+      <input data-field="editFavoriteHangout" placeholder="Where do you post up?" value="${esc(state.drafts.editFavoriteHangout || "")}" />
+      ${editChipRow("Kandi trades", KANDI_TRADES, d.kandiTrades, "edit-set-trades", true)}
+      <div class="label" style="margin-top:12px">Rave totem</div>
+      <input data-field="editRaveTotem" placeholder="How do people find you in the crowd?" value="${esc(state.drafts.editRaveTotem || "")}" />
+      <div class="label" style="margin-top:12px">Years raving</div>
+      <input data-field="editYearsRaving" placeholder="e.g. 6" value="${esc(state.drafts.editYearsRaving || "")}" />
+      <div class="label" style="margin-top:18px">My Tunes</div>
+      <p class="tiny">Paste up to 5 links from Spotify, SoundCloud, or Apple Music — tracks, playlists, or albums. We'll show a player on your profile.</p>
+      ${tunes}
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      <div class="edit-preview-actions">
+        <button type="button" class="btn ghost" data-act="preview-profile">Preview</button>
+        <button type="button" class="btn primary" data-act="save-profile">Save</button>
+      </div>
+      <div style="height:24px"></div>`;
+  }
+
+  function composerMediaPreview() {
+    const media = state.composerMedia || { photos: [], video: null, previews: [] };
+    if (media.video) {
+      const src = (media.previews && media.previews[0]) || "";
+      const videoUrl = media.videoUrl || "";
+      return `<div class="composer-preview-wrap">
+        <video class="composer-video" ${videoUrl ? `src="${esc(videoUrl)}"` : ""} ${src ? `poster="${esc(src)}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>
+        <button type="button" class="btn sm ghost" data-act="clear-composer-media">Remove video</button>
+      </div>`;
+    }
+    if (media.photos && media.photos.length) {
+      return `<div class="composer-preview-wrap"><div class="composer-thumbs">` + media.photos.map((file, i) => {
+        const src = (media.previews && media.previews[i]) || "";
+        return `<div class="composer-thumb" style="background-image:url('${esc(src)}')"><button type="button" class="slot-x" data-act="remove-composer-photo" data-i="${i}" aria-label="Remove photo">×</button></div>`;
+      }).join("") + `</div>
+        <button type="button" class="btn sm ghost" data-act="clear-composer-media">Remove photos</button></div>`;
+    }
+    return `<p class="muted" style="margin-top:8px">Add photos or one short video (up to 60 seconds). Caption and a rave tag are optional — same as a regular feed post.</p>`;
+  }
+
+  function composerView() {
+    const evs = state.events || [];
+    const photo = hiddenFileInput("post-photos", "Add photos", { accept: "image/*", multiple: true });
+    const video = hiddenFileInput("post-video", "Add a short video", { accept: "video/*,video/mp4,video/quicktime,.mov,.mp4,.m4v" });
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:800">New post</span></div>
+      <div class="right"><button type="button" class="btn sm primary" data-act="submit-post">Post</button></div></div>
+      <div class="scroll pad">
+        <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:8px;min-height:96px">${esc(state.drafts.caption || "")}</textarea>
+        ${composerMediaPreview()}
+        <div class="composer-add">
+          ${photo.input}<label class="btn sm ghost" for="${photo.id}">Add photos</label>
+          ${video.input}<label class="btn sm ghost" for="${video.id}">Add video</label>
+        </div>
+        <div class="label" style="margin-top:16px">Tag a rave or concert (optional)</div>
+        <div class="chips"><button type="button" class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
+          ${evs.map((e) => `<button type="button" class="chip${state.drafts.postEvent === e.id ? " on" : ""}" data-act="post-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <div style="height:28px"></div>
+      </div></div>`;
   }
 
   function overlays() {
     const o = state.overlay;
     if (!o) return "";
     if (o.type === "composer") {
-      const evs = state.events || [];
-      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
-        <h2 class="h2">New post</h2>
-        <p class="muted" style="margin-top:6px">Share a photo, a caption, or both. Optional festival tag.</p>
-        ${composerPhotos()}
-        <textarea data-field="caption" placeholder="Write a caption..." style="margin-top:10px">${esc(state.drafts.caption || "")}</textarea>
-        <div class="label" style="margin-top:12px">Tag an event (optional)</div>
-        <div class="chips"><button class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
-          ${evs.map((e) => `<button class="chip${state.drafts.postEvent === e.id ? " on" : ""}" data-act="post-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>
-        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
-        <button class="btn primary" style="margin-top:16px" data-act="submit-post">Post</button>
-        <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+      return composerView();
     }
+
     if (o.type === "comments") {
       const comments = state.comments || [];
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
@@ -1274,49 +1867,53 @@
         <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
     }
     if (o.type === "editProfile") {
-      const me = state.me || { photos: [], name: "", bio: "" };
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Edit profile</span></div>
-        <div class="right"><button class="btn sm primary" data-act="save-profile">Save</button></div></div>
-        <div class="scroll pad">
-          <div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
-          ${photoEditor(me.photos)}
-          <div class="label" style="margin-top:8px">Name</div>
-          <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
-          <div class="label" style="margin-top:12px">Bio</div>
-          <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
-          ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
-        </div></div>`;
+      if (o.preview) {
+        const built = draftPreviewUser();
+        const me = state.me || {};
+        const soc = state.profile && state.profile.user && Number(state.profile.user.id) === Number(me.id) ? state.profile : null;
+        const posts = (soc && soc.posts) || [];
+        const counts = soc && soc.user ? { followerCount: soc.user.followerCount, followingCount: soc.user.followingCount } : {};
+        const view = built.user || Object.assign({}, me);
+        return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="btn sm ghost" data-act="edit-back">Back to editing</button></div>
+          <div class="right"><button type="button" class="btn sm primary" data-act="save-profile">Save</button></div></div>
+          <div class="scroll pad">
+            <p class="tiny edit-preview-note">This is how other people see your profile. Unsaved edits are included.</p>
+            ${built.error ? `<div class="err">${esc(built.error)}</div>` : profilePreview(view, posts, { isMe: false, asOthers: true, counts })}
+          </div></div>`;
+      }
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:800">Edit Profile</span></div>
+        <div class="right"><button type="button" class="btn sm ghost" data-act="preview-profile">Preview</button><button type="button" class="btn sm primary" data-act="save-profile">Save</button></div></div>
+        <div class="scroll pad">${editProfileForm()}</div></div>`;
     }
+    if (o.type === "settings") {
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Settings</span></div></div>
+        <div class="scroll pad">${settingsBody()}</div></div>`;
+    }
+    if (o.type === "post") {
+      const p = state.openPost || findPost(o.id);
+      if (!p) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this post.</div></div>`;
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">Post</span></div></div>
+        <div class="scroll">${postCard(p)}</div></div>`;
+    }
+
     if (o.type === "profile") {
       const data = state.profile;
-      if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
+      if (!data || !data.user) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this profile.</div></div>`;
       const u = data.user;
       const followBtn = u.isMe ? "" : (u.following
-        ? `<button class="btn sm ghost" data-act="unfollow" data-id="${u.id}">Following</button>`
-        : `<button class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
+        ? `<button type="button" class="btn sm ghost" data-act="unfollow" data-id="${u.id}">Following</button>`
+        : `<button type="button" class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>`);
+      const extra = u.isMe
+        ? ""
+        : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
-          <div class="profile-top">${personAvatar(u, "av lg")}<div class="grow">
-            <div style="font-weight:800;font-size:20px">${esc(u.name)}${u.age ? ", " + u.age : ""}</div>
-            <div class="muted">@${esc(u.username)}</div>
-          </div></div>
-          <div class="counts">
-            <span><strong>${u.followerCount || 0}</strong><span class="tiny">followers</span></span>
-            <span><strong>${u.followingCount || 0}</strong><span class="tiny">following</span></span>
-            <span><strong>${(data.posts || []).length}</strong><span class="tiny">posts</span></span>
-          </div>
-          <div class="chips">${(u.vibes || []).map((v) => `<span class="chip soft">${esc(v)}</span>`).join("")}</div>
-          ${upcomingBlock(u.upcomingShows || data.upcomingShows, { hidden: u.upcomingHidden || data.upcomingHidden, mine: u.isMe })}
-          ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}<button type="button" class="btn sm ghost" data-act="report" data-id="${u.id}">Report / block</button></div>` : ""}
-          ${(data.posts || []).length
-            ? `<div class="post-grid" style="margin-top:16px">` + data.posts.map((post) =>
-                post.photoUrl
-                  ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}"></button>`
-                  : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`
-              ).join("") + `</div>`
-            : `<div class="empty">No posts yet.</div>`}
+          ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount } })}
+          ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}</div>` : ""}
+          ${extra}
         </div></div>`;
     }
+
     if (o.type === "deleteAccount") {
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">Delete your account?</h2>
@@ -1392,19 +1989,30 @@
         <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
     }
     if (o.type === "filters") {
+      const f = state.filters || {};
+      const ageMin = f.ageMin != null ? f.ageMin : 18;
+      const ageMax = f.ageMax != null ? f.ageMax : 99;
+      const eventBlock = isPlus()
+        ? `<div class="label" style="margin-top:14px">Event</div><div class="chips">
+        <button type="button" class="chip${f.event === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
+        ${(state.events || []).map((e) => `<button type="button" class="chip${f.event === e.id ? " on" : ""}" data-act="set-event-filter" data-id="${e.id}">${esc(e.name)}</button>`).join("")}</div>`
+        : `<div class="label" style="margin-top:14px">Event</div><p class="tiny">Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button></p>`;
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2" style="font-size:22px">Filters</h2>
-        <p class="example" style="margin:8px 0">Kandi+ · advanced filters</p>
-        <div class="label">Genre</div><div class="chips"><button class="chip${state.filters.genre === "all" ? " on" : ""}" data-act="set-genre" data-id="all">All genres</button>
-        ${VIBES.map((g) => `<button class="chip${state.filters.genre === g ? " on" : ""}" data-act="set-genre" data-id="${g}">${g}</button>`).join("")}</div>
-        <div class="label" style="margin-top:14px">Event</div><div class="chips">
-        <button class="chip${state.filters.event === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
-        ${state.events.map((e) => `<button class="chip${state.filters.event === e.id ? " on" : ""}" data-act="set-event-filter" data-id="${e.id}">${esc(e.name)}</button>`).join("")}</div>
-        <button class="btn primary" style="margin-top:16px" data-act="apply-filters">Done</button></div></div>`;
+        <div class="label">Age range</div>
+        <div class="row height-row"><input data-field="filterAgeMin" type="number" min="18" max="99" inputmode="numeric" aria-label="Minimum age" value="${esc(String(ageMin))}" />
+          <span class="muted">to</span>
+          <input data-field="filterAgeMax" type="number" min="18" max="99" inputmode="numeric" aria-label="Maximum age" value="${esc(String(ageMax))}" /></div>
+        <div class="label" style="margin-top:14px">Gender</div><div class="chips"><button type="button" class="chip${(f.gender || "all") === "all" ? " on" : ""}" data-act="set-gender-filter" data-id="all">Everyone</button>
+        ${GENDERS.map((g) => `<button type="button" class="chip${f.gender === g.id ? " on" : ""}" data-act="set-gender-filter" data-id="${g.id}">${esc(g.label)}</button>`).join("")}</div>
+        <div class="label" style="margin-top:14px">Music genre</div><div class="chips"><button type="button" class="chip${(f.genre || "all") === "all" ? " on" : ""}" data-act="set-genre" data-id="all">All genres</button>
+        ${VIBES.map((g) => `<button type="button" class="chip${f.genre === g ? " on" : ""}" data-act="set-genre" data-id="${g}">${esc(vibeLabel(g))}</button>`).join("")}</div>
+        ${eventBlock}
+        <button type="button" class="btn primary" style="margin-top:16px" data-act="apply-filters">Done</button></div></div>`;
     }
     if (o.type === "event") {
-      const e = state.events.find((x) => x.id === o.id);
-      if (!e) return "";
+      const e = findEvent(o.id);
+      if (!e) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this event.</div></div>`;
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(e.name)}</span></div></div>
         <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
@@ -1426,8 +2034,8 @@
         ${(state.eventPosts && state.eventPosts.id === e.id)
           ? ((state.eventPosts.posts || []).length
             ? `<div class="post-grid" style="margin-bottom:16px">${state.eventPosts.posts.map((post) => post.photoUrl
-                ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-comments" data-id="${post.id}" aria-label="Photo by ${esc(post.author.name)}">${(post.photoUrls || []).length > 1 ? `<span class="multi">▣ ${post.photoUrls.length}</span>` : ""}</button>`
-                : `<button data-act="open-comments" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`).join("")}</div>`
+                ? `<button style="background-image:url('${esc(mediaUrl(post.photoUrl))}')" data-act="open-post" data-id="${post.id}" aria-label="Photo by ${esc(post.author.name)}">${(post.photoUrls || []).length > 1 ? `<span class="multi">▣ ${post.photoUrls.length}</span>` : ""}</button>`
+                : `<button data-act="open-post" data-id="${post.id}"><span class="txt">${esc((post.caption || "").slice(0, 80))}</span></button>`).join("")}</div>`
             : `<p class="tiny" style="margin-bottom:16px">No photos yet. Going? Be the first to share the vibe.</p>`)
           : `<p class="tiny" style="margin-bottom:16px"><span class="spin"></span> Loading photos…</p>`}
         <div class="label">Who's going (${e.goingCount != null ? e.goingCount : (e.going || []).length})</div>
@@ -1585,15 +2193,78 @@
       if (act === "dismiss-photo-nudge") { localStorage.setItem("kandi-hide-photo-nudge", "1"); render(); return; }
       if (act === "edit-profile") {
         state.err = "";
-        state.drafts.editName = state.me ? state.me.name : "";
-        state.drafts.editBio = state.me ? (state.me.bio || "") : "";
+        startEditDraft();
+        state.overlay = { type: "editProfile" };
+        render(); return;
+      }
+      if (act === "settings") { state.overlay = { type: "settings" }; render(); return; }
+      if (act === "profile-tab") { state.profileTab = id === "about" ? "about" : "posts"; render(); return; }
+      if (act === "post-view") { state.profilePostView = id === "list" ? "list" : "grid"; render(); return; }
+      if (act === "edit-set-gender") { state.editDraft = state.editDraft || {}; state.editDraft.gender = state.editDraft.gender === id ? "" : id; render(); return; }
+      if (act === "edit-set-pronouns") { state.editDraft = state.editDraft || {}; state.editDraft.pronouns = state.editDraft.pronouns === id ? "" : id; render(); return; }
+      if (act === "edit-set-sex") { state.editDraft = state.editDraft || {}; state.editDraft.sex = state.editDraft.sex === id ? "" : id; render(); return; }
+      if (act === "edit-set-trades") { state.editDraft = state.editDraft || {}; state.editDraft.kandiTrades = state.editDraft.kandiTrades === id ? "" : id; render(); return; }
+      if (act === "edit-toggle-vibe") {
+        state.editDraft = state.editDraft || { vibes: [] };
+        const cur = state.editDraft.vibes || [];
+        state.editDraft.vibes = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
+        render(); return;
+      }
+      if (act === "edit-toggle-look") {
+        state.editDraft = state.editDraft || { looking: [] };
+        const cur = state.editDraft.looking || [];
+        state.editDraft.looking = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
+        render(); return;
+      }
+      if (act === "edit-toggle-interested") {
+        state.editDraft = state.editDraft || { interestedIn: [] };
+        const cur = state.editDraft.interestedIn || [];
+        state.editDraft.interestedIn = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
+        render(); return;
+      }
+      if (act === "edit-toggle-hobby") {
+        state.editDraft = state.editDraft || { hobbies: [] };
+        const cur = state.editDraft.hobbies || [];
+        state.editDraft.hobbies = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
+        render(); return;
+      }
+      if (act === "edit-add-hobby") {
+        const raw = String(state.drafts.editCustomHobby || "").trim();
+        if (!raw) return;
+        state.editDraft = state.editDraft || { hobbies: [] };
+        const cur = state.editDraft.hobbies || [];
+        if (!cur.includes(raw) && cur.length < 20) state.editDraft.hobbies = cur.concat(raw);
+        state.drafts.editCustomHobby = "";
+        render(); return;
+      }
+      if (act === "preview-profile") {
+        const built = draftPreviewUser();
+        if (built.error) { state.err = built.error; render(); return; }
+        state.err = "";
+        state.profileTab = state.profileTab || "posts";
+        state.overlay = { type: "editProfile", preview: true };
+        render(); return;
+      }
+      if (act === "edit-back") {
+        state.err = "";
         state.overlay = { type: "editProfile" };
         render(); return;
       }
       if (act === "save-profile") {
-        const data = await api("/api/me", { method: "PUT", body: { name: state.drafts.editName, bio: state.drafts.editBio } });
+        const collected = collectEditFields();
+        if (collected.error) {
+          state.err = collected.error;
+          if (state.overlay && state.overlay.type === "editProfile" && state.overlay.preview) {
+            state.overlay = { type: "editProfile" };
+          }
+          render(); return;
+        }
+        const body = collected.body;
+        const data = await api("/api/me", { method: "PUT", body });
         state.me = data.user;
         state.overlay = null;
+        state.err = "";
+        if (state.me) await loadProfile(state.me.id);
         render(); return;
       }
       if (act === "del-photo") {
@@ -1701,9 +2372,24 @@
         return;
       }
       if (act === "close") {
-        const back = state.overlay && state.overlay.returnTo;
-        if (state.overlay && state.overlay.type === "composer") clearPostFiles();
-        state.overlay = back || null; render(); return;
+        if (state.overlay && state.overlay.type === "editProfile" && state.overlay.preview) {
+          state.overlay = { type: "editProfile" };
+          state.err = "";
+          render(); return;
+        }
+        const back = (state.overlay && state.overlay.returnTo) || state.overlayBack;
+        if (state.overlay && state.overlay.type === "composer") {
+          clearComposerMedia();
+          clearPostFiles();
+        }
+        state.overlayBack = null;
+        if (back && back !== state.overlay) {
+          state.overlay = back;
+          render(); return;
+        }
+        state.overlay = null;
+        state.openPost = null;
+        render(); return;
       }
 
       if (act === "feed-tab") {
@@ -1715,13 +2401,15 @@
       }
       if (act === "open-composer") {
         const fromEvent = el && el.getAttribute("data-event");
+        if (!state.events.length) await loadEvents();
+        state.err = "";
         state.drafts.caption = "";
         state.drafts.postEvent = fromEvent || "";
+        clearComposerMedia();
         clearPostFiles();
+        state.composerReturn = fromEvent ? "event" : ((id === "you" || state.tab === "you" || (state.overlay && state.overlay.type === "profile")) ? "you" : "home");
         state.overlay = { type: "composer", returnTo: fromEvent ? { type: "event", id: fromEvent } : null };
-        render();
-        if (!state.events.length) { await loadEvents(); render(); }
-        return;
+        render(); return;
       }
       if (act === "remove-post-photo") {
         const i = Number(id);
@@ -1730,42 +2418,91 @@
         render(); return;
       }
       if (act === "post-event") { state.drafts.postEvent = id || ""; render(); return; }
+      if (act === "clear-composer-media") { clearComposerMedia(); render(); return; }
+      if (act === "remove-composer-photo") {
+        const i = Number(el.getAttribute("data-i"));
+        const media = state.composerMedia || { photos: [], previews: [] };
+        if (Number.isInteger(i) && media.photos[i]) {
+          const prev = media.previews[i];
+          if (prev && String(prev).startsWith("blob:")) { try { URL.revokeObjectURL(prev); } catch (_) {} }
+          media.photos.splice(i, 1);
+          media.previews.splice(i, 1);
+          state.composerMedia = media;
+        }
+        render(); return;
+      }
       if (act === "submit-post") {
-        const files = state.drafts.postFiles || [];
-        if (!files.length && !(state.drafts.caption || "").trim()) throw new Error("Add a photo or write a caption.");
+        const media = state.composerMedia || { photos: [], video: null, poster: null };
+        const caption = state.drafts.caption || "";
+        const leftoverPhotos = (state.drafts.postFiles || []).map((f) => f.file).filter(Boolean);
+        const photos = (media.photos && media.photos.length) ? media.photos : leftoverPhotos;
+        if (!caption && !photos.length && !media.video && !state.drafts.postEvent) {
+          state.err = "Add a photo, a short video, a caption, or tag a rave.";
+          render(); return;
+        }
         const fd = new FormData();
-        fd.append("caption", state.drafts.caption || "");
+        fd.append("caption", caption);
         if (state.drafts.postEvent) fd.append("eventId", state.drafts.postEvent);
-        for (let i = 0; i < files.length; i++) {
-          if (files.length > 1) toast(`Preparing photo ${i + 1} of ${files.length}…`);
-          let photo = files[i].file;
-          try {
-            const compressed = await compressImage(photo);
-            if (compressed) photo = compressed;
-          } catch (_) { /* send the original; the server will normalize it */ }
-          fd.append("photo", photo, "photo-" + (i + 1) + ".jpg");
+        if (media.video) {
+          fd.append("video", media.video, media.video.name || "clip.mp4");
+          if (media.poster) fd.append("poster", media.poster, "poster.jpg");
+        } else {
+          const allPhotos = photos;
+          for (let i = 0; i < allPhotos.length; i++) {
+            if (allPhotos.length > 1) toast(`Preparing photo ${i + 1} of ${allPhotos.length}…`);
+            let photo = allPhotos[i];
+            try {
+              const compressed = await compressImage(photo);
+              if (compressed) photo = compressed;
+            } catch (_) { /* send the original; the server will normalize it */ }
+            fd.append("photos", photo, (photo && photo.name) || ("photo-" + (i + 1) + ".jpg"));
+          }
         }
         const created = await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
+        clearComposerMedia();
         clearPostFiles();
         const back = state.overlay && state.overlay.returnTo;
-        toast(files.length ? "Posted! 📸" : "Posted!");
+        toast((photos && photos.length) || media.video ? "Posted! 📸" : "Posted!");
+        state.err = "";
+        state.profileTab = "posts";
         if (back && back.type === "event") {
           state.overlay = back;
+          state.overlayBack = null;
           await loadEventPosts(back.id);
+          if (created && created.post) state.homePosts = [created.post].concat((state.homePosts || []).filter((x) => x.id !== created.post.id));
+          if (state.me) await loadProfile(state.me.id);
           render(); return;
         }
         state.overlay = null;
-        state.feedTab = "following";
-        state.tab = "home";
-        if (created && created.post) state.homePosts = [created.post].concat((state.homePosts || []).filter((x) => x.id !== created.post.id));
-        render();
+        state.overlayBack = null;
+        if (state.composerReturn === "you") {
+          state.tab = "you";
+        } else {
+          state.feedTab = "following";
+          state.tab = "home";
+          if (created && created.post) state.homePosts = [created.post].concat((state.homePosts || []).filter((x) => x.id !== created.post.id));
+        }
         await loadHome();
         if (created && created.post && !(state.homePosts || []).some((x) => x.id === created.post.id)) state.homePosts.unshift(created.post);
         if (state.me) await loadProfile(state.me.id);
         render(); return;
       }
+      if (act === "open-post") {
+        let post = findPost(id);
+        if (!post) {
+          const data = await api("/api/posts/" + id);
+          post = data.post;
+        }
+        if (!post) throw new Error("Couldn't load this post.");
+        state.openPost = post;
+        if (state.overlay) state.overlayBack = state.overlay;
+        state.overlay = { type: "post", id: post.id };
+        render(); return;
+      }
       if (act === "open-profile") {
         await loadProfile(id);
+        state.profileTab = "posts";
+        if (state.overlay && state.overlay.type !== "profile") state.overlayBack = state.overlay;
         state.overlay = { type: "profile" };
         render(); return;
       }
@@ -1781,25 +2518,26 @@
         render(); return;
       }
       if (act === "toggle-post-like") {
-        const post = (state.homePosts || []).find((x) => String(x.id) === String(id))
-          || ((state.profile && state.profile.posts) || []).find((x) => String(x.id) === String(id));
+        const post = findPost(id);
         const liked = post && post.liked;
         const data = await api("/api/posts/" + id + "/like", { method: liked ? "DELETE" : "POST", body: {} });
-        const apply = (p) => { if (String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
+        const apply = (p) => { if (p && String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
         (state.homePosts || []).forEach(apply);
         if (state.profile && state.profile.posts) state.profile.posts.forEach(apply);
+        if (state.openPost) apply(state.openPost);
         render(); return;
       }
       if (act === "post-like-tap") {
         const now = Date.now();
         const prev = state._lastTap || {};
         if (prev.id === String(id) && now - prev.at < 350) {
-          const post = (state.homePosts || []).find((x) => String(x.id) === String(id));
+          const post = findPost(id);
           if (!post || !post.liked) {
             const data = await api("/api/posts/" + id + "/like", { method: "POST", body: {} });
-            const apply = (p) => { if (String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
+            const apply = (p) => { if (p && String(p.id) === String(id)) { p.liked = data.liked; p.likeCount = data.likeCount; } };
             (state.homePosts || []).forEach(apply);
             if (state.profile && state.profile.posts) state.profile.posts.forEach(apply);
+            if (state.openPost) apply(state.openPost);
           }
           state.heartBurst = Number(id);
           render();
@@ -1814,7 +2552,8 @@
         state.commentPostId = Number(id);
         state.drafts.commentText = "";
         const prev = state.overlay;
-        state.overlay = { type: "comments", returnTo: prev && (prev.type === "event" || prev.type === "profile") ? prev : null };
+        if (prev && prev.type !== "comments") state.overlayBack = prev;
+        state.overlay = { type: "comments", returnTo: prev && (prev.type === "event" || prev.type === "profile" || prev.type === "post") ? prev : null };
         render(); return;
       }
       if (act === "send-comment") {
@@ -1840,6 +2579,13 @@
         await api("/api/posts/" + id, { method: "DELETE", body: {} });
         state.homePosts = (state.homePosts || []).filter((p) => String(p.id) !== String(id));
         if (state.profile && state.profile.posts) state.profile.posts = state.profile.posts.filter((p) => String(p.id) !== String(id));
+        if (state.openPost && String(state.openPost.id) === String(id)) {
+          state.openPost = null;
+          if (state.overlay && state.overlay.type === "post") {
+            state.overlay = state.overlayBack;
+            state.overlayBack = null;
+          }
+        }
         render(); return;
       }
       if (act === "report-post") {
@@ -1857,13 +2603,31 @@
       }
 
       if (act === "filters") {
-        if (!isPlus()) { state.overlay = { type: "paywall", reason: "filters" }; render(); return; }
+        state.drafts.filterAgeMin = String((state.filters && state.filters.ageMin) || 18);
+        state.drafts.filterAgeMax = String((state.filters && state.filters.ageMax) || 99);
         state.overlay = { type: "filters" }; render(); return;
       }
       if (act === "set-genre") { state.filters.genre = id; render(); return; }
-      if (act === "set-event-filter") { state.filters.event = id; render(); return; }
+      if (act === "set-gender-filter") { state.filters.gender = id || "all"; render(); return; }
+      if (act === "set-event-filter") {
+        if (!isPlus() && id && id !== "all") { state.overlay = { type: "paywall", reason: "filters" }; render(); return; }
+        state.filters.event = id; render(); return;
+      }
       if (act === "event-cat") { state.eventCategory = id || "all"; render(); return; }
-      if (act === "apply-filters") { state.overlay = null; await loadFeed(); render(); return; }
+      if (act === "apply-filters") {
+        const lo = Number(state.drafts.filterAgeMin);
+        const hi = Number(state.drafts.filterAgeMax);
+        state.filters.ageMin = Number.isFinite(lo) ? Math.max(18, Math.min(99, lo)) : 18;
+        state.filters.ageMax = Number.isFinite(hi) ? Math.max(18, Math.min(99, hi)) : 99;
+        if (state.filters.ageMin > state.filters.ageMax) {
+          const swap = state.filters.ageMin;
+          state.filters.ageMin = state.filters.ageMax;
+          state.filters.ageMax = swap;
+        }
+        state.overlay = null;
+        await loadFeed();
+        render(); return;
+      }
       if (act === "want-like") {
         if (!isPlus() && state.likesLeft === 0) { state.overlay = { type: "paywall", reason: "likes" }; render(); return; }
         state.drafts.comment = "";
@@ -1911,6 +2675,8 @@
       }
       if (act === "cancel-sub") { const data = await api("/api/subscribe/cancel", { method: "POST", body: {} }); state.me = data.user; render(); return; }
       if (act === "event") {
+        if (!state.events.length) await loadEvents();
+        if (state.overlay && state.overlay.type !== "event") state.overlayBack = state.overlay;
         state.overlay = { type: "event", id };
         render();
         await loadEventPosts(id);
@@ -2064,8 +2830,12 @@
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
   const INSTANT = new Set(["close", "show-signup", "show-login", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
-    "set-genre", "set-event-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
-    "edit-profile", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters"]);
+    "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
+    "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
+    "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
+    "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
+    "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
+    "preview-profile", "edit-back"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
@@ -2126,14 +2896,46 @@
   });
   async function onPickedFile(e) {
     const kind = e.target.getAttribute("data-act-file");
-    if (kind === "post-photo") {
-      const picked = Array.from((e.target.files) || []);
-      if (!picked.length) return;
-      const list = state.drafts.postFiles || (state.drafts.postFiles = []);
-      const room = MAX_POST_PHOTOS - list.length;
-      picked.slice(0, Math.max(0, room)).forEach((file) => list.push({ file, url: URL.createObjectURL(file) }));
-      if (picked.length > room) toast(`Up to ${MAX_POST_PHOTOS} photos per post — added the first ${Math.max(0, room)}.`, "warn");
+    if (kind === "post-photo" || kind === "post-photos") {
+      const files = Array.from((e.target.files || [])).filter(Boolean);
       e.target.value = "";
+      if (!files.length) return;
+      if (state.composerMedia && state.composerMedia.video) clearComposerMedia();
+      const next = (state.composerMedia && state.composerMedia.photos) ? state.composerMedia : { photos: [], video: null, poster: null, previews: [] };
+      const room = MAX_POST_PHOTOS - (next.photos || []).length;
+      const accepted = files.slice(0, Math.max(0, room));
+      for (const file of accepted) {
+        next.photos.push(file);
+        next.previews.push(URL.createObjectURL(file));
+      }
+      if (files.length > room) toast(`Up to ${MAX_POST_PHOTOS} photos per post — added the first ${Math.max(0, room)}.`, "warn");
+      next.video = null;
+      next.poster = null;
+      next.videoUrl = "";
+      state.composerMedia = next;
+      render();
+      return;
+    }
+    if (kind === "post-video") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const meta = await readVideoMeta(file);
+        clearComposerMedia();
+        const preview = meta.preview || (meta.poster ? URL.createObjectURL(meta.poster) : URL.createObjectURL(file));
+        state.composerMedia = {
+          photos: [],
+          video: file,
+          poster: meta.poster || null,
+          previews: [preview],
+          videoUrl: URL.createObjectURL(file),
+        };
+        state.err = "";
+      } catch (err) {
+        state.err = err.message || "Couldn't use that video.";
+        if (typeof toast === "function") toast(state.err, "err");
+      }
       render();
       return;
     }
