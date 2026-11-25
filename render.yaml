@@ -35,3 +35,9 @@ services:
         sync: false
       - key: KANDI_PUBLIC_URL
         sync: false
+      # Email confirmation + password reset (optional). Until one provider is set,
+      # sign-up still asks for email but nobody has to confirm it.
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

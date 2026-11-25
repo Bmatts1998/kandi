@@ -1019,6 +1019,38 @@ async function migrate(db) {
   }
   await migrateBilling(db);
   await migrateFounding(db);
+  await migrateEmail(db);
+}
+
+// Email + verification + password reset. Existing rows get email_verify_required=0,
+// so accounts made before this feature are never locked out.
+async function migrateEmail(db) {
+  const cols = [
+    ["email", "TEXT"],
+    ["email_verified_at", "TEXT"],
+    ["email_verify_required", "INTEGER DEFAULT 0"],
+    ["email_verify_token_hash", "TEXT"],
+    ["email_verify_expires_at", "TEXT"],
+    ["email_verify_sent_at", "TEXT"],
+    ["password_reset_token_hash", "TEXT"],
+    ["password_reset_expires_at", "TEXT"],
+  ];
+  if (db.driver === "postgres") {
+    for (const [col, typ] of cols) {
+      await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+  } else {
+    for (const [col, typ] of cols) {
+      try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+  }
+  for (const sql of [
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (lower(email)) WHERE email IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_users_email_verify_token ON users (email_verify_token_hash) WHERE email_verify_token_hash IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_users_password_reset_token ON users (password_reset_token_hash) WHERE password_reset_token_hash IS NOT NULL",
+  ]) {
+    try { await db.exec(sql); } catch (err) { console.error("email index:", err.message || err); }
+  }
 }
 
 async function migrateFounding(db) {

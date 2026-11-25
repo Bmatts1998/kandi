@@ -35,6 +35,7 @@ const { catalog: genreCatalog, normalizeGenreIds, publicGenres, sharedGenreIds, 
 const billing = require("./stripe-billing");
 const founding = require("./founding");
 const iap = require("./iap");
+const mailer = require("./email");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -163,7 +164,7 @@ app.get("/api/genres/:id", auth, async (req, res) => {
   const rows = await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id);
   const people = [];
   for (const u of rows) {
-    if (!isAdult(u) || blocked.has(Number(u.id))) continue;
+    if (!isAdult(u) || mailer.isLocked(u) || blocked.has(Number(u.id))) continue;
     const vibes = normalizeGenreIds(parseJsonList(u.vibes, []));
     if (!vibes.includes(genre.id)) continue;
     people.push(publicUser(u, {
@@ -230,10 +231,25 @@ async function getUserFromReq(req) {
   return row || null;
 }
 
+// While an account is waiting on email confirmation, only these routes work.
+function allowedWhileUnverified(req) {
+  const p = String(req.originalUrl || req.url || "").split("?")[0];
+  const m = req.method;
+  if (m === "GET" && p === "/api/me") return true;
+  if (m === "POST" && p === "/api/logout") return true;
+  if (m === "DELETE" && p === "/api/account") return true;
+  if (p.startsWith("/api/email/")) return true;
+  if (m === "POST" && p === "/api/me/email") return true;
+  return false;
+}
+
 async function auth(req, res, next) {
   try {
     const user = await getUserFromReq(req);
     if (!user) return res.status(401).json({ error: "Sign in required" });
+    if (mailer.isLocked(user) && !allowedWhileUnverified(req)) {
+      return res.status(403).json({ error: "Confirm your email to start using Kandi.", code: "email_unverified" });
+    }
     req.user = await expireComplimentaryIfNeeded(user);
     engagement.recordActivity(user.id).catch(() => {});
     next();
@@ -371,8 +387,19 @@ async function expireComplimentaryIfNeeded(user) {
   return user;
 }
 
+// Only ever sent to the account owner — never part of publicUser.
+function selfEmailExtra(user) {
+  return {
+    email: user.email || "",
+    emailVerified: Boolean(user.email_verified_at),
+    emailLocked: mailer.isLocked(user),
+    emailVerificationOn: mailer.verificationActive(),
+  };
+}
+
 function selfBillingExtra(user, req) {
   return {
+    ...selfEmailExtra(user),
     dateOfBirth: user.date_of_birth || "",
     plusUntil: user.plus_until || null,
     complimentaryActive: founding.hasActiveComp(user),
@@ -417,6 +444,9 @@ app.post("/api/signup", async (req, res) => {
   const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
   const age = Number(req.body.age);
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return res.status(400).json({ error: "Username must be 3–20 letters, numbers, or underscores." });
+  const emailCheck = mailer.validateEmail(req.body.email);
+  if (emailCheck.error) return res.status(400).json({ error: emailCheck.error, field: "email" });
+  const email = emailCheck.value;
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (name.length < 2) return res.status(400).json({ error: "Please enter your name." });
   if (name.length > 40) return res.status(400).json({ error: "Keep your name to 40 characters or fewer." });
@@ -432,13 +462,25 @@ app.post("/api/signup", async (req, res) => {
   const homeLocation = clipText(req.body.homeLocation || req.body.home_location || "", 80, "");
   const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
+  if (await emailTaken(email)) return res.status(409).json({ error: "That email is already on a Kandi account. Log in instead, or use a different email.", field: "email" });
   const hash = bcrypt.hashSync(password, 10);
-  const info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location) VALUES (?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null);
+  const mustVerify = mailer.verificationActive() ? 1 : 0;
+  let info;
+  try {
+    info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location,email,email_verify_required) VALUES (?,?,?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null, email, mustVerify);
+  } catch (err) {
+    if (/unique|duplicate/i.test(String(err && err.message))) return res.status(409).json({ error: "That username or email is already taken." });
+    throw err;
+  }
   const token = crypto.randomBytes(24).toString("hex");
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, Number(info.lastInsertRowid));
   setSessionCookie(res, token, req);
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(Number(info.lastInsertRowid));
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on signup failed:", err && err.message); }
+  let emailSent = false;
+  if (mustVerify) {
+    try { emailSent = (await sendVerification(user, req)).sent; } catch (err) { console.error("Verification email on signup failed:", err && err.message); }
+  }
   user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
   const demos = await db.prepare(`SELECT id FROM users WHERE is_demo=1 AND id != ? LIMIT 2`).all(user.id);
   for (const d of demos) {
@@ -447,7 +489,7 @@ app.post("/api/signup", async (req, res) => {
         .run(d.id, user.id, "photo", "0", "Welcome to the floor.");
     } catch (_) { /* already liked */ }
   }
-  res.json({ user: publicUser(user) });
+  res.json({ user: publicUser(user, selfEmailExtra(user)), emailSent });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -464,7 +506,7 @@ app.post("/api/login", async (req, res) => {
   const token = crypto.randomBytes(24).toString("hex");
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, user.id);
   setSessionCookie(res, token, req);
-  res.json({ user: publicUser(user), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
+  res.json({ user: publicUser(user, selfEmailExtra(user)), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
 });
 
 app.post("/api/logout", auth, async (req, res) => {
@@ -745,7 +787,7 @@ app.get("/api/discover", auth, async (req, res) => {
     return theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id)).map((e) => compactShow(e));
   }
   let rows = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
-    .filter((u) => isAdult(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id));
+    .filter((u) => isAdult(u) && !mailer.isLocked(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id));
   const myGenres = normalizeGenreIds(parseJsonList(req.user.vibes, []));
   const sharedMap = new Map();
   const genreMap = new Map();
@@ -1269,6 +1311,153 @@ app.post("/api/claim", async (req, res) => {
   });
 });
 
+// ---- email verification + password reset ----
+async function emailTaken(email, exceptUserId) {
+  const row = await db.prepare(`SELECT id FROM users WHERE lower(email)=?`).get(mailer.normalizeEmail(email));
+  return Boolean(row && Number(row.id) !== Number(exceptUserId || 0));
+}
+
+async function sendVerification(user, req) {
+  if (!user || !user.email) return { sent: false };
+  const { token, hash } = mailer.newToken();
+  const expires = new Date(Date.now() + mailer.VERIFY_TTL_MS).toISOString();
+  await db.prepare(`UPDATE users SET email_verify_token_hash=?, email_verify_expires_at=?, email_verify_sent_at=? WHERE id=?`)
+    .run(hash, expires, new Date().toISOString(), user.id);
+  const url = mailer.publicBase(req) + "/verify-email?token=" + token;
+  const msg = mailer.verifyMessage({ name: user.name, url });
+  return mailer.sendMail({ to: user.email, ...msg, tag: "verify-email" });
+}
+
+function sendLimit(user) {
+  const last = user.email_verify_sent_at ? Date.parse(user.email_verify_sent_at) : 0;
+  if (last && Date.now() - last < mailer.RESEND_COOLDOWN_MS) {
+    return { ok: false, retryInMs: mailer.RESEND_COOLDOWN_MS - (Date.now() - last) };
+  }
+  return mailer.rateLimit("verify:" + user.id, mailer.MAX_SENDS_PER_HOUR, 3600000);
+}
+
+function waitMsg(ms) {
+  const s = Math.max(1, Math.ceil(ms / 1000));
+  return s >= 90 ? `Too many emails. Try again in about ${Math.ceil(s / 60)} minutes.` : `Hang on ${s} seconds before sending another email.`;
+}
+
+app.get("/api/auth/config", (_req, res) => {
+  const st = mailer.status();
+  res.json({ emailRequired: true, emailVerification: st.verificationActive, passwordReset: st.canSend });
+});
+
+// Resend the confirmation email, optionally fixing a typo in the address first.
+app.post("/api/email/resend", auth, async (req, res) => {
+  let user = req.user;
+  if (!mailer.canSend()) return res.status(503).json({ error: "Email isn't set up yet. Try again later." });
+  if (user.email_verified_at) return res.json({ ok: true, alreadyVerified: true, user: publicUser(user, selfEmailExtra(user)) });
+  if (req.body && req.body.email != null && mailer.normalizeEmail(req.body.email) !== mailer.normalizeEmail(user.email)) {
+    const check = mailer.validateEmail(req.body.email);
+    if (check.error) return res.status(400).json({ error: check.error, field: "email" });
+    if (await emailTaken(check.value, user.id)) return res.status(409).json({ error: "That email is already on another Kandi account.", field: "email" });
+    await db.prepare(`UPDATE users SET email=?, email_verified_at=NULL WHERE id=?`).run(check.value, user.id);
+    user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
+  }
+  if (!user.email) return res.status(400).json({ error: "Add your email address first.", field: "email" });
+  const lim = sendLimit(user);
+  if (!lim.ok) return res.status(429).json({ error: waitMsg(lim.retryInMs), retryInMs: lim.retryInMs });
+  try {
+    await sendVerification(user, req);
+  } catch (err) {
+    console.error("Verification resend failed:", err && err.message);
+    return res.status(502).json({ error: "We couldn't send the email right now. Try again in a minute." });
+  }
+  user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
+  res.json({ ok: true, sentTo: user.email, user: publicUser(user, selfEmailExtra(user)) });
+});
+
+// Existing accounts can add or change their email from Settings.
+app.post("/api/me/email", auth, async (req, res) => {
+  const check = mailer.validateEmail(req.body && req.body.email);
+  if (check.error) return res.status(400).json({ error: check.error, field: "email" });
+  let user = req.user;
+  const same = mailer.normalizeEmail(user.email) === check.value;
+  if (same && user.email_verified_at) return res.json({ ok: true, user: publicUser(user, selfEmailExtra(user)) });
+  if (!same) {
+    if (await emailTaken(check.value, user.id)) return res.status(409).json({ error: "That email is already on another Kandi account.", field: "email" });
+    await db.prepare(`UPDATE users SET email=?, email_verified_at=NULL, email_verify_token_hash=NULL, email_verify_expires_at=NULL WHERE id=?`).run(check.value, user.id);
+    user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
+  }
+  let sent = false;
+  if (mailer.canSend()) {
+    const lim = sendLimit(user);
+    if (lim.ok) {
+      try { sent = (await sendVerification(user, req)).sent; } catch (err) { console.error("Verification email failed:", err && err.message); }
+    } else if (same) {
+      return res.status(429).json({ error: waitMsg(lim.retryInMs), retryInMs: lim.retryInMs });
+    }
+  }
+  user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
+  res.json({ ok: true, sent, user: publicUser(user, selfEmailExtra(user)) });
+});
+
+// The link in the email lands on /verify-email, which POSTs the token here.
+// No session needed: Mail usually opens Safari, which has its own cookies.
+app.post("/api/email/verify", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: "That confirmation link isn't valid." });
+  const ip = String(req.ip || "");
+  if (!mailer.rateLimit("verify-ip:" + ip, 30, 3600000).ok) return res.status(429).json({ error: "Too many tries. Try again later." });
+  const user = await db.prepare(`SELECT * FROM users WHERE email_verify_token_hash=?`).get(mailer.hashToken(token));
+  if (!user) return res.status(404).json({ error: "That confirmation link was already used or has been replaced by a newer one. If you're not confirmed yet, open Kandi and tap Resend." });
+  if (!user.email_verify_expires_at || Date.parse(user.email_verify_expires_at) < Date.now()) {
+    return res.status(410).json({ error: "That confirmation link expired. Open Kandi and tap Resend to get a new one." });
+  }
+  await db.prepare(`UPDATE users SET email_verified_at=?, email_verify_token_hash=NULL, email_verify_expires_at=NULL WHERE id=?`)
+    .run(new Date().toISOString(), user.id);
+  let fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id);
+  try { await founding.claimFounding(db, fresh); } catch (err) { console.error("Founding claim on verify failed:", err && err.message); }
+  res.json({ ok: true, username: fresh.username, name: fresh.name });
+});
+
+app.post("/api/password/forgot", async (req, res) => {
+  const generic = { ok: true, message: "If that matches a Kandi account with an email, a reset link is on its way." };
+  if (!mailer.canSend()) return res.status(503).json({ error: "Password reset by email isn't available yet. Contact support from the Support page." });
+  const raw = String((req.body && (req.body.email || req.body.username || req.body.login)) || "").trim().toLowerCase();
+  if (!raw) return res.status(400).json({ error: "Enter your email or username." });
+  const ip = String(req.ip || "");
+  if (!mailer.rateLimit("forgot-ip:" + ip, 10, 3600000).ok) return res.status(429).json({ error: "Too many requests. Try again later." });
+  if (!mailer.rateLimit("forgot:" + raw, 3, 3600000).ok) return res.json(generic);
+  const user = raw.includes("@")
+    ? await db.prepare(`SELECT * FROM users WHERE lower(email)=?`).get(raw)
+    : await db.prepare(`SELECT * FROM users WHERE lower(username)=?`).get(raw);
+  if (!user || !user.email || Number(user.is_demo)) return res.json(generic);
+  const { token, hash } = mailer.newToken();
+  const expires = new Date(Date.now() + mailer.RESET_TTL_MS).toISOString();
+  await db.prepare(`UPDATE users SET password_reset_token_hash=?, password_reset_expires_at=? WHERE id=?`).run(hash, expires, user.id);
+  const url = mailer.publicBase(req) + "/reset-password?token=" + token;
+  try {
+    await mailer.sendMail({ to: user.email, ...mailer.resetMessage({ name: user.name, username: user.username, url }), tag: "password-reset" });
+  } catch (err) {
+    console.error("Password reset email failed:", err && err.message);
+  }
+  res.json(generic);
+});
+
+app.post("/api/password/reset", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  const password = String((req.body && req.body.password) || "");
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: "That reset link isn't valid." });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  const ip = String(req.ip || "");
+  if (!mailer.rateLimit("reset-ip:" + ip, 20, 3600000).ok) return res.status(429).json({ error: "Too many tries. Try again later." });
+  const user = await db.prepare(`SELECT * FROM users WHERE password_reset_token_hash=?`).get(mailer.hashToken(token));
+  if (!user || !user.password_reset_expires_at || Date.parse(user.password_reset_expires_at) < Date.now()) {
+    return res.status(410).json({ error: "That reset link expired or was already used. Ask for a new one from the login screen." });
+  }
+  const hash = bcrypt.hashSync(password, 10);
+  // Clicking the emailed link proves they own the address, so it also counts as confirming it.
+  await db.prepare(`UPDATE users SET password_hash=?, password_reset_token_hash=NULL, password_reset_expires_at=NULL, email_verified_at=COALESCE(email_verified_at, ?), email_verify_token_hash=NULL WHERE id=?`)
+    .run(hash, new Date().toISOString(), user.id);
+  await db.prepare(`DELETE FROM sessions WHERE user_id=?`).run(user.id);
+  res.json({ ok: true, username: user.username });
+});
+
 installFeed({
   app,
   getDb: () => db,
@@ -1343,6 +1532,14 @@ app.get(["/terms", "/terms.html"], (_req, res) => {
 app.get(["/support", "/support.html"], (_req, res) => {
   res.sendFile(path.join(root, "public", "support.html"));
 });
+app.get(["/verify-email", "/verify-email.html"], (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(root, "public", "verify-email.html"));
+});
+app.get(["/reset-password", "/reset-password.html"], (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(root, "public", "reset-password.html"));
+});
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/ws")) return next();
@@ -1365,6 +1562,10 @@ wss.on("connection", (ws, req) => {
     const user = await getUserFromReq(req);
     if (!user) {
       ws.close(4001, "auth");
+      return;
+    }
+    if (mailer.isLocked(user)) {
+      ws.close(4003, "email_unverified");
       return;
     }
     if (!sockets.has(user.id)) sockets.set(user.id, new Set());

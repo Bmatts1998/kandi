@@ -725,7 +725,7 @@
     crewBadges: {},
     profileCrews: [],
     crewPeople: [],
-    drafts: { user: "", pass: "", name: "", age: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
+    drafts: { user: "", pass: "", name: "", age: "", email: "", forgotLogin: "", verifyEmail: "", setEmail: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -958,6 +958,11 @@
           const err = new Error(data.error || (res.status >= 500 ? "Something went wrong on our side. Try again." : res.statusText || "Request failed"));
           err.status = res.status;
           err.data = data;
+          if (res.status === 403 && data && data.code === "email_unverified" && state.me && state.view !== "verify") {
+            state.me.emailLocked = true;
+            state.view = "verify"; state.overlay = null; state.err = "";
+            render();
+          }
           if (res.status === 401 && state.view === "app" && !/^\/api\/(login|signup|claim)/.test(path)) {
             state.me = null; state.view = "auth"; state.overlay = null;
             state.err = "Your session ended. Log in again.";
@@ -995,7 +1000,7 @@
     return Promise.resolve(promise).then(() => render()).catch(() => {});
   }
   function connectWs() {
-    if (!state.me) return;
+    if (!state.me || state.me.emailLocked) return;
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     clearTimeout(wsTimer);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1128,12 +1133,24 @@
     }
   }, 5000);
   document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.view === "verify" && state.me) { handle("verify-check", null, { quiet: true }); return; }
     if (document.hidden || !state.me || state.view !== "app") return;
     connectWs();
     quiet(Promise.all([loadInbound(), loadMatches(), loadNotifs()]));
   });
 
+  function loadAuthConfig() {
+    return api("/api/auth/config", { timeout: 20000 }).then((cfg) => { state.authConfig = cfg || {}; if (state.view === "auth") render(); }).catch(() => {});
+  }
+  // Signed in but still waiting on the confirmation email: only the "check your email" screen.
+  function enterVerify() {
+    state.view = "verify"; state.overlay = null; state.err = ""; state.info = "";
+    state.drafts.verifyEmail = (state.me && state.me.email) || "";
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+    render();
+  }
   async function boot() {
+    loadAuthConfig();
     const claimToken = (function () {
       const path = location.pathname || "";
       const m = path.match(/^\/claim\/([^/]+)\/?$/);
@@ -1174,6 +1191,7 @@
     }
     clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
     applyMe(me);
+    if (state.me && state.me.emailLocked) { enterVerify(); return; }
     state.view = needsOnboard(state.me) ? "onboard" : "app";
     if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
     connectWs();
@@ -2023,8 +2041,44 @@
     </div></div>`;
   }
 
+  function viewVerify() {
+    const me = state.me || {};
+    return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      <h2 class="h2" style="margin-top:18px">Check your email</h2>
+      <p class="sub">We sent a confirmation link to <strong>${esc(me.email || "your email")}</strong>. Tap it to activate your account, then come back here.</p>
+      <p class="tiny" style="margin-top:6px">Don't see it? Check spam or promotions. The link expires in 24 hours.</p>
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
+      <button class="btn primary" data-act="verify-check" style="margin-top:18px">I confirmed it</button>
+      <button class="btn ghost" data-act="verify-resend" style="margin-top:8px">Resend email</button>
+      <details style="margin-top:16px;text-align:left">
+        <summary class="tiny" style="cursor:pointer">Wrong email?</summary>
+        <input data-field="verifyEmail" type="email" aria-label="Email" placeholder="Email" value="${esc(state.drafts.verifyEmail || "")}" style="margin-top:8px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" inputmode="email" />
+        <button class="btn ghost" data-act="verify-change-email" style="margin-top:8px">Send to this email instead</button>
+      </details>
+      <button class="btn ghost" data-act="logout" style="margin-top:16px">Log out</button>
+      <p class="tiny" style="margin-top:16px">@${esc(me.username || "")} · <a href="/support" style="color:var(--muted)">Support</a></p>
+    </div></div>`;
+  }
+
   function viewAuth() {
-    const mode = state.overlay && state.overlay.type === "signup" ? "signup" : "login";
+    const mode = state.overlay && state.overlay.type === "signup" ? "signup" : (state.overlay && state.overlay.type === "forgot" ? "forgot" : "login");
+    const cfg = state.authConfig || {};
+    if (mode === "forgot") {
+      return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      <h2 class="h2" style="margin-top:18px">Forgot your password?</h2>
+      <p class="sub">Enter the email or username on your account and we'll email you a link to choose a new one.</p>
+      <input id="f-forgot" data-field="forgotLogin" type="email" aria-label="Email or username" placeholder="Email or username" value="${esc(state.drafts.forgotLogin || "")}" style="margin-top:20px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" />
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
+      <button class="btn primary" data-act="forgot-send" style="margin-top:16px">Email me a reset link</button>
+      <button class="btn ghost" data-act="show-login" style="margin-top:8px">Back to log in</button>
+    </div></div>`;
+    }
     return `<div class="screen splash top-pad"><div class="inner auth-card">
       ${beads(8, "lg")}
       <h1 class="wordmark grad">Kandi</h1>
@@ -2033,6 +2087,7 @@
       ${mode === "signup" ? `
         <input id="f-name" data-field="name" aria-label="Name" autocomplete="given-name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
         <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
+        <input id="f-email" data-field="email" type="email" aria-label="Email" placeholder="Email" value="${esc(state.drafts.email || "")}" style="margin-top:8px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" inputmode="email" />
         <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="new-password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
         <label class="agree-row">
@@ -2049,6 +2104,7 @@
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
+        ${cfg.passwordReset ? `<button class="btn ghost" data-act="show-forgot" style="margin-top:8px">Forgot password?</button>` : ""}
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
         ${isNativeIos() ? "" : `<p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>`}
         <p class="tiny" style="margin-top:${isNativeIos() ? 16 : 10}px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
@@ -2625,6 +2681,7 @@
         ${row("preview-profile", "Preview my profile", "See what other ravers see")}
         ${row("share-profile", "Share my profile", "", `data-id="${p.id}"`)}
         <div class="set-row static"><div class="grow"><div>Username</div><div class="tiny">@${esc(p.username || "")}</div></div></div>
+        ${row("open-email", p.email ? "Email" : "Add your email", p.email ? esc(p.email) + (p.emailVerified ? " · Verified" : (p.emailVerificationOn ? " · Not verified yet" : "")) : "Used for account recovery and password resets")}
       </div>
       ${plusRow ? `<div class="label">Subscription</div><div class="set-group">
         ${plusRow}
@@ -3255,6 +3312,18 @@
         </div></div>`;
     }
 
+    if (o.type === "email") {
+      const me = state.me || {};
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
+        <h2 class="h2">${me.email ? "Your email" : "Add your email"}</h2>
+        <p class="muted" style="margin-top:8px">We use it to confirm it's you and to reset your password. It's never shown on your profile.</p>
+        ${me.email ? `<p class="tiny" style="margin-top:8px">Current: ${esc(me.email)}${me.emailVerified ? " · Verified" : (me.emailVerificationOn ? " · Not verified yet" : "")}</p>` : ""}
+        <input data-field="setEmail" type="email" placeholder="you@example.com" value="${esc(state.drafts.setEmail || "")}" style="margin-top:16px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" inputmode="email" />
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
+        <button class="btn primary" style="margin-top:16px;width:100%" data-act="save-email">${me.email && !me.emailVerified && me.emailVerificationOn && (state.drafts.setEmail || "").trim().toLowerCase() === String(me.email).toLowerCase() ? "Resend confirmation" : "Save email"}</button>
+        <button class="btn ghost" style="margin-top:8px" data-act="close">Done</button></div></div>`;
+    }
     if (o.type === "deleteAccount") {
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2">Delete your account?</h2>
@@ -3750,6 +3819,7 @@
       <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="retry-boot">Try again</button></div></div>`;
     else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
+    else if (state.view === "verify") html = viewVerify();
     else if (state.view === "onboard") html = viewOnboard();
     else {
       let body = "";
@@ -3804,7 +3874,7 @@
   let lastRenderKey = "";
   const busyActs = new Set();
 
-  async function handle(act, el) {
+  async function handle(act, el, extra) {
     const id = el && el.getAttribute("data-id");
     try {
       state.err = "";
@@ -4040,6 +4110,55 @@
         render(); return;
       }
       if (act === "show-signup") { state.overlay = { type: "signup" }; state.info = ""; render(); return; }
+      if (act === "show-forgot") { state.overlay = { type: "forgot" }; state.info = ""; state.err = ""; state.drafts.forgotLogin = state.drafts.forgotLogin || state.drafts.user || ""; render(); return; }
+      if (act === "forgot-send") {
+        const login = (state.drafts.forgotLogin || "").trim();
+        if (!login) { state.err = "Enter your email or username."; render(); return; }
+        const data = await api("/api/password/forgot", { method: "POST", body: { login } });
+        state.err = ""; state.info = data.message || "If that matches an account, a reset link is on its way.";
+        render(); return;
+      }
+      if (act === "verify-check") {
+        const quietCheck = extra && extra.quiet;
+        let me;
+        try { me = await api("/api/me", { timeout: 20000 }); } catch (e) { if (quietCheck) return; throw e; }
+        applyMe(me);
+        if (state.me && state.me.emailLocked) {
+          if (!quietCheck) { state.info = ""; state.err = "Not confirmed yet. Tap the link in the email we sent, then try again."; render(); }
+          return;
+        }
+        state.err = ""; state.info = "";
+        state.view = needsOnboard(state.me) ? "onboard" : "app";
+        if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
+        state.tab = "home";
+        connectWs();
+        render();
+        if (state.view === "onboard") await loadEvents(); else await refreshAll();
+        render(); return;
+      }
+      if (act === "verify-resend" || act === "verify-change-email") {
+        const body = act === "verify-change-email" ? { email: (state.drafts.verifyEmail || "").trim() } : {};
+        const data = await api("/api/email/resend", { method: "POST", body });
+        if (data.user) state.me = data.user;
+        if (data.alreadyVerified) { await handle("verify-check", null); return; }
+        state.err = ""; state.info = "Sent! Check " + (data.sentTo || (state.me && state.me.email) || "your inbox") + ".";
+        render(); return;
+      }
+      if (act === "open-email") {
+        state.err = ""; state.info = "";
+        state.drafts.setEmail = (state.me && state.me.email) || "";
+        state.overlay = { type: "email", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : null };
+        render(); return;
+      }
+      if (act === "save-email") {
+        const email = (state.drafts.setEmail || "").trim();
+        if (!email) { state.err = "Enter your email address."; render(); return; }
+        const data = await api("/api/me/email", { method: "POST", body: { email } });
+        if (data.user) state.me = Object.assign({}, state.me, data.user);
+        state.err = "";
+        state.info = data.sent ? "Saved. We sent a confirmation link to " + email + "." : "Email saved.";
+        render(); return;
+      }
       if (act === "show-login") { state.overlay = null; state.info = ""; render(); return; }
       if (act === "toggle-agree-terms") {
         state.drafts.agreeTerms = !state.drafts.agreeTerms;
@@ -4051,8 +4170,15 @@
           state.err = "Please agree to the Terms of Use and Privacy Policy to create an account.";
           render(); return;
         }
-        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), acceptedTerms: true } });
+        if (!(state.drafts.email || "").trim()) { state.err = "Enter your email address."; render(); return; }
+        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true } });
         applyMe({ user: data.user, likesLeft: DAILY });
+        state.drafts.pass = "";
+        if (state.me && state.me.emailLocked) {
+          enterVerify();
+          if (data.emailSent === false) { state.err = "We couldn't send the email just now. Tap Resend email."; render(); }
+          return;
+        }
         state.view = "onboard"; state.onboardStep = 0; state.overlay = null;
         connectWs();
         await loadEvents();
@@ -4062,6 +4188,7 @@
         const data = await api("/api/login", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass } });
         applyMe(data);
         state.drafts.pass = "";
+        if (state.me && state.me.emailLocked) { enterVerify(); return; }
         state.view = needsOnboard(state.me) ? "onboard" : "app";
         if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
         state.overlay = null; state.tab = "home";
@@ -5069,7 +5196,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "show-signup", "show-login", "show-forgot", "open-email", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
@@ -5204,6 +5331,10 @@
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "crewSearch") {
       e.preventDefault();
       handle("search-people", e.target);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "forgotLogin") {
+      e.preventDefault();
+      handle("forgot-send", e.target);
     }
     if (e.key === "Enter" && (e.target.getAttribute("data-field") === "pass" || e.target.getAttribute("data-field") === "user")) {
       e.preventDefault();

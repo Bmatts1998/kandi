@@ -144,6 +144,8 @@ async function claimFounding(db, user, opts = {}) {
     return { ok: true, already: true, foundingNumber: Number(user.founding_number), plusUntil: user.plus_until };
   }
   if (Number(user.is_demo)) return { ok: false, reason: "demo" };
+  // Founding spots go to verified sign-ups: wait until the email is confirmed.
+  if (require("./email").isLocked(user, env)) return { ok: false, reason: "unverified" };
   if (!isAdultDob(user.date_of_birth || user.dateOfBirth, now)) return { ok: false, reason: "dob" };
   if (!isSlcMetro(user.home_location || user.homeLocation)) return { ok: false, reason: "location" };
 

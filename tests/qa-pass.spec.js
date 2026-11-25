@@ -7,7 +7,7 @@ const os = require("os");
 const { test, expect } = require("@playwright/test");
 
 async function signup(page, username, name) {
-  const res = await page.request.post("/api/signup", { data: { username, password: "qa-pass-1234", name, age: 25, acceptedTerms: true } });
+  const res = await page.request.post("/api/signup", { data: { username, email: username + "@example.com", password: "qa-pass-1234", name, age: 25, acceptedTerms: true } });
   expect(res.ok()).toBeTruthy();
   const put = await page.request.put("/api/me", { data: { vibes: ["dubstep"], looking: ["dates"], prompts: [{ id: "p1", q: "My go-to set is...", a: "x".repeat(500) }] } });
   expect(put.ok()).toBeTruthy();
