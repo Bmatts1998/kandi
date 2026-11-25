@@ -5,7 +5,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const dataDir = path.join(root, "data");
-const dbPath = path.join(dataDir, "kandi.sqlite");
+const dbPath = process.env.KANDI_SQLITE_PATH || path.join(dataDir, "kandi.sqlite");
 
 const SQLITE_SCHEMA = `
     CREATE TABLE IF NOT EXISTS users (
@@ -906,6 +906,54 @@ async function migrate(db) {
     await backfillEventKeys(db);
   } catch (err) {
     console.error("event_key backfill failed:", err.message || err);
+  }
+  await migrateEngagement(db);
+}
+
+async function migrateEngagement(db) {
+  const userCols = [
+    ["engagement_score", "DOUBLE PRECISION DEFAULT 0"],
+    ["engagement_hidden", "INTEGER DEFAULT 0"],
+    ["engagement_updated_at", "TEXT"],
+    ["last_active_at", "TEXT"],
+    ["active_raver", "INTEGER DEFAULT 0"],
+    ["raver_badge", "TEXT DEFAULT ''"],
+  ];
+  const sqliteUserCols = [
+    ["engagement_score", "REAL DEFAULT 0"],
+    ["engagement_hidden", "INTEGER DEFAULT 0"],
+    ["engagement_updated_at", "TEXT"],
+    ["last_active_at", "TEXT"],
+    ["active_raver", "INTEGER DEFAULT 0"],
+    ["raver_badge", "TEXT DEFAULT ''"],
+  ];
+  if (db.driver === "postgres") {
+    for (const [col, typ] of userCols) {
+      await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+    }
+    await db.exec("ALTER TABLE event_going ADD COLUMN IF NOT EXISTS created_at TEXT DEFAULT (NOW()::text)");
+    await db.exec(`CREATE TABLE IF NOT EXISTS user_activity_days (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      PRIMARY KEY (user_id, day)
+    )`);
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_users_engagement ON users(engagement_score DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_post_likes_created ON post_likes(created_at)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_comments_user_created ON comments(user_id, created_at)");
+  } else {
+    for (const [col, typ] of sqliteUserCols) {
+      try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}
+    }
+    try { await db.exec("ALTER TABLE event_going ADD COLUMN created_at TEXT DEFAULT (datetime('now'))"); } catch (_) {}
+    await db.exec(`CREATE TABLE IF NOT EXISTS user_activity_days (
+      user_id INTEGER NOT NULL,
+      day TEXT NOT NULL,
+      PRIMARY KEY (user_id, day),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_users_engagement ON users(engagement_score DESC)"); } catch (_) {}
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_post_likes_created ON post_likes(created_at)"); } catch (_) {}
+    try { await db.exec("CREATE INDEX IF NOT EXISTS idx_comments_user_created ON comments(user_id, created_at)"); } catch (_) {}
   }
 }
 

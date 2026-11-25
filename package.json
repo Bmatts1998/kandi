@@ -9,7 +9,8 @@
     "seed": "node src/seed.js",
     "dev": "node --watch src/server.js",
     "import-events": "node scripts/import-events.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:engagement": "node scripts/test-engagement.js"
   },
   "engines": {
     "node": ">=22"

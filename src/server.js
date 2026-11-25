@@ -64,6 +64,8 @@ function sendBuffer(req, res, buffer, mime) {
   return res.send(buffer.subarray(start, end + 1));
 }
 const { buildIcs, googleCalendarUrl, icsFilename } = require("./event-calendar");
+const { createEngagement, compareDiscover, compareGoers, badgePublic, badgeGuide } = require("./engagement");
+const { createDemoChat } = require("./demo-chat");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -75,6 +77,13 @@ const uploadDir = path.join(root, "uploads");
 fs.mkdirSync(uploadDir, { recursive: true });
 
 let db;
+const engagement = {
+  recordActivity: async () => {},
+  scheduleRefresh() {},
+  refreshNow: async () => {},
+  startPeriodicRefresh() {},
+};
+let demoChat = { maybeReply() {} };
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -157,6 +166,7 @@ function sendIndex(res) {
 }
 app.get(["/", "/index.html"], (_req, res) => sendIndex(res));
 app.get("/api/version", (_req, res) => { noStore(res); res.json({ build: BUILD }); });
+app.get("/api/badges", (_req, res) => { noStore(res); res.json(badgeGuide()); });
 app.use(express.static(path.join(root, "public"), {
   index: false,
   setHeaders(res, filePath) {
@@ -206,6 +216,7 @@ async function auth(req, res, next) {
     const user = await getUserFromReq(req);
     if (!user) return res.status(401).json({ error: "Sign in required" });
     req.user = user;
+    engagement.recordActivity(user.id).catch(() => {});
     next();
   } catch (err) { next(err); }
 }
@@ -285,6 +296,8 @@ function publicUser(u, extra) {
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
     subscription: u.subscription || null,
     createdAt: u.created_at,
+    raverBadge: badgePublic(u.raver_badge),
+    activeRaver: Boolean(badgePublic(u.raver_badge)),
     ...(extra || {}),
   };
 }
@@ -391,6 +404,7 @@ app.delete("/api/account", auth, async (req, res) => {
   await db.prepare(`DELETE FROM event_going WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM like_days WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM rewind_days WHERE user_id=?`).run(id);
+  await db.prepare(`DELETE FROM user_activity_days WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM location_shares WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM comments WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM post_likes WHERE user_id=?`).run(id);
@@ -414,6 +428,7 @@ app.get("/api/me", auth, async (req, res) => {
     live: live ? { on: true, eventId: live.event_id, meetupSpot: live.meetup_spot } : { on: false },
     locationShare: share ? { with: share.share_with, event: share.event_label, at: share.created_at } : null,
     upcomingShows: upcoming.shows,
+    badges: badgeGuide(),
   });
 });
 
@@ -588,15 +603,18 @@ app.get("/api/discover", auth, async (req, res) => {
     const theirs = showsByUser.get(Number(uid)) || [];
     return theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id)).map((e) => compactShow(e));
   }
-  let people = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
-    .filter((u) => isAdult(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id))
-    .map((u) => {
-      const shared = sharedFor(u.id);
-      return publicUser(u, {
-        sharedEvents: shared,
-        sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
-      });
+  let rows = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
+    .filter((u) => isAdult(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id));
+  const sharedMap = new Map();
+  for (const u of rows) sharedMap.set(Number(u.id), sharedFor(u.id).length);
+  rows.sort((a, b) => compareDiscover(a, b, sharedMap));
+  let people = rows.map((u) => {
+    const shared = sharedFor(u.id);
+    return publicUser(u, {
+      sharedEvents: shared,
+      sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
     });
+  });
   if (genre !== "all") people = people.filter((p) => p.vibes.includes(genre));
   if (event === "same") {
     people = people.filter((p) => (p.sharedEvents || []).length);
@@ -612,11 +630,6 @@ app.get("/api/discover", auth, async (req, res) => {
   if (lo > 18 || hi < 99) {
     people = people.filter((p) => p.age != null && p.age >= lo && p.age <= hi);
   }
-  people.sort((a, b) => {
-    const ds = (b.sharedEvents || []).length - (a.sharedEvents || []).length;
-    if (ds) return ds;
-    return String(a.name || "").localeCompare(String(b.name || ""));
-  });
   res.json({
     people,
     likesLeft: isPlus(req.user.subscription) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
@@ -653,6 +666,7 @@ app.post("/api/like", auth, async (req, res) => {
   const match = await maybeMatch(req.user.id, toId);
   if (match) broadcastToUser(toId, { type: "match", user: publicUser(req.user), matchId: match.id });
   else broadcastToUser(toId, { type: "like", from: publicUser(req.user), targetType, targetId, comment });
+  engagement.scheduleRefresh();
   res.json({
     ok: true,
     matched: Boolean(match),
@@ -798,6 +812,8 @@ app.post("/api/chats/:userId", auth, async (req, res) => {
   const info = await db.prepare(`INSERT INTO messages (match_id, from_id, text) VALUES (?,?,?)`).run(match.id, req.user.id, text);
   const msg = await db.prepare(`SELECT id, from_id as fromId, text, created_at as at FROM messages WHERE id=?`).get(Number(info.lastInsertRowid));
   broadcastToUser(otherId, { type: "message", matchId: match.id, message: msg, from: publicUser(req.user) });
+  const other = await db.prepare(`SELECT * FROM users WHERE id=?`).get(otherId);
+  demoChat.maybeReply({ matchId: match.id, fromUser: req.user, toUser: other });
   res.json({ message: msg });
 });
 
@@ -855,9 +871,12 @@ app.get("/api/events", auth, async (req, res) => {
     const going = shapeGoers(goingRows, e, req.user, blocked, publicUser);
     const open = going.filter((u) => u.openToMeet);
     const mine = going.find((u) => Number(u.id) === Number(req.user.id));
-    if (req.user.subscription === "vip") {
-      going.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
-    }
+    const scoreById = new Map(goingRows.map((u) => [Number(u.id), Number(u.engagement_score) || 0]));
+    going.sort((x, y) => compareGoers(
+      { ...x, engagement_score: scoreById.get(Number(x.id)) || 0 },
+      { ...y, engagement_score: scoreById.get(Number(y.id)) || 0 },
+      { vipFirst: req.user.subscription === "vip" }
+    ));
     events.push({
       ...publicEventFields(e),
       isExample: false,
@@ -897,6 +916,7 @@ app.post("/api/events/:id/going", auth, async (req, res) => {
   }
   const going = Boolean(req.body.going);
   const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false });
+  engagement.scheduleRefresh();
   res.json({ ok: true, ...result });
 });
 
@@ -909,6 +929,7 @@ app.post("/api/events/:id/meet", auth, async (req, res) => {
   const open = Boolean(req.body.open ?? req.body.openToMeet);
   const note = req.body.note != null ? String(req.body.note).slice(0, 80) : undefined;
   const result = await setRsvp(db, req.user, ev, { going: true, openToMeet: open, meetNote: note });
+  engagement.scheduleRefresh();
   res.json({ ok: true, ...result });
 });
 
@@ -923,6 +944,7 @@ app.post("/api/live", auth, async (req, res) => {
   const ev = await resolveEvent(db, eventId);
   if (!ev) return res.status(400).json({ error: "Pick an event first." });
   await setRsvp(db, req.user, ev, { going: true });
+  engagement.scheduleRefresh();
   await db.prepare(`INSERT INTO live (user_id, event_id, meetup_spot, updated_at) VALUES (?,?,?,datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET event_id=excluded.event_id, meetup_spot=excluded.meetup_spot, updated_at=datetime('now')`).run(req.user.id, eventId, meetupSpot);
   res.json({ live: { on: true, eventId, meetupSpot } });
@@ -941,8 +963,8 @@ app.get("/api/live", auth, async (req, res) => {
     WHERE g.event_id=? AND u.id != ?
   `).all(eid, req.user.id))
     .filter((u) => !blocked.has(Number(u.id)))
+    .sort((a, b) => compareGoers(a, b, { vipFirst: req.user.subscription === "vip" }))
     .map((u) => publicUser(u, { meetupSpot: u.meetup_spot || null, live: Boolean(u.live_uid) }));
-  if (req.user.subscription === "vip") nearby.sort((x, y) => Number(y.subscription === "vip") - Number(x.subscription === "vip"));
   res.json({ live: mine ? { on: true, eventId: mine.event_id, meetupSpot: mine.meetup_spot } : { on: false }, nearby });
 });
 
@@ -1074,6 +1096,7 @@ installFeed({
   publicUser,
   blockedSet,
   maxVideoBytes: MAX_VIDEO_BYTES,
+  engagement,
 });
 
 const sockets = new Map(); // userId -> Set of ws
@@ -1187,6 +1210,15 @@ async function boot() {
       }
     }
   }
+  Object.assign(engagement, createEngagement(() => db));
+  demoChat = createDemoChat({ getDb: () => db, publicUser, broadcastToUser });
+  try {
+    await engagement.refreshNow();
+    console.log("Engagement scores refreshed.");
+  } catch (err) {
+    console.error("Engagement refresh on boot failed:", err.message || err);
+  }
+  engagement.startPeriodicRefresh();
   server.listen(PORT, HOST, () => {
     console.log(`Kandi v1 listening on http://${HOST}:${PORT}`);
   });

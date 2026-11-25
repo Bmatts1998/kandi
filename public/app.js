@@ -483,7 +483,7 @@
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
     const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
     let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
-      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}${personBadge(p)}</div>
       <div class="muted">@${esc(p.username)}${pronouns}</div>
       ${buttons}
     </div></div>`;
@@ -575,10 +575,19 @@
     pendingPlan: "plus",
     err: "",
     info: "",
+    badges: null,
+    badgeSheet: null,
   };
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function personBadge(person) {
+    const b = person && person.raverBadge;
+    if (!b || !b.id) return "";
+    const name = esc(b.name || "");
+    const id = esc(b.id);
+    return ` <button type="button" class="raver-badge ${id}" data-act="badge-info" data-id="${id}" title="${name}" aria-label="${name} badge. How to earn badges."><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${name}</span></button>`;
   }
   function formatUpdatedAgo(iso) {
     if (!iso) return "";
@@ -679,7 +688,7 @@
     return `<div class="goer card">
       <button type="button" class="goer-main" data-act="open-profile" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${note}</div>
+        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${personBadge(p)}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${note}</div>
       </button>
       <div class="goer-actions">${goerActions(p)}</div>
     </div>`;
@@ -930,6 +939,7 @@
     state.likesLeft = data.likesLeft == null ? null : data.likesLeft;
     if (data.live) state.live = data.live;
     if (data.locationShare !== undefined) state.locationShare = data.locationShare;
+    if (data.badges) state.badges = data.badges;
   }
   function needsOnboard(u) {
     return !u || !u.age || u.needsProfile || !u.vibes.length || !u.looking.length || !u.prompts.length;
@@ -1475,12 +1485,12 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}${personBadge(p)}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
-      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}${personBadge(p)}</div>${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
       <button class="heart-fab${liked ? " loved" : ""}" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
@@ -1656,7 +1666,7 @@
       const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : "a photo";
       return `<div class="card" style="margin-bottom:10px"><div class="row">
         ${personAvatar(p, "av md")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}</div>
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}, ${p.age}${personBadge(p)}</div>
           <div class="muted">Liked ${esc(detail)}</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -1718,7 +1728,7 @@
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:800">${esc(p.name)}</div>
+        <div class="grow"><div style="font-weight:800">${esc(p.name)}${personBadge(p)}</div>
         <div class="muted">${esc(last ? last.text : "You matched. Say hi.")}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
@@ -1979,7 +1989,7 @@
     if (!following && (state.topRavers || []).length) {
       html += `<div class="label" style="padding:0 14px 8px">Top ravers</div><div class="stories">`;
       html += state.topRavers.map((p) =>
-        `<button class="story" data-act="open-profile" data-id="${p.id}">${avatarEl(p.avatar, "av", (p.name||"?")[0])}<div class="nm">${esc(p.name)}</div></button>`
+        `<button class="story" data-act="open-profile" data-id="${p.id}">${avatarEl(p.avatar, "av", (p.name||"?")[0])}<div class="nm">${esc(p.name)}${personBadge(p)}</div></button>`
       ).join("");
       html += `</div>`;
     }
@@ -2033,7 +2043,7 @@
     return `<article class="post">
       <div class="post-hd">
         <button type="button" data-act="open-profile" data-id="${p.author.id}">${avatarEl(p.author.avatar, "av", (p.author.name||"?")[0])}</button>
-        <button type="button" class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
+        <button type="button" class="who" data-act="open-profile" data-id="${p.author.id}"><div class="nm">${esc(p.author.name)}${personBadge(p.author)}</div><div class="un">@${esc(p.author.username)} · ${esc(timeAgo(p.createdAt))}</div></button>
         ${followBtn}${more}
       </div>
       ${postMedia(p)}
@@ -2235,7 +2245,7 @@
         <h2 class="h2">Comments</h2>
         <div style="margin-top:12px">${comments.length ? comments.map((c) => `<div class="row" style="margin-bottom:12px;align-items:flex-start">
           ${avatarEl(c.author && c.author.avatar, "av", ((c.author && c.author.name) || "?")[0])}
-          <div class="grow"><div><strong>${esc(c.author.name)}</strong> <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
+          <div class="grow"><div><strong>${esc(c.author.name)}</strong>${personBadge(c.author)} <span class="tiny">${esc(timeAgo(c.createdAt))}</span></div>
           <div>${esc(c.text)}</div></div>
           ${c.mine ? `<button class="tiny" data-act="delete-comment" data-id="${c.id}">Delete</button>` : ""}
         </div>`).join("") : `<div class="muted">No comments yet. Be the first.</div>`}</div>
@@ -2291,7 +2301,7 @@
       const extra = u.isMe
         ? ""
         : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
-      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:800">${esc(u.name)}${personBadge(u)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
           ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount } })}
           ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}</div>` : ""}
@@ -2426,8 +2436,7 @@
         <div class="label">Who's going (${e.goingCount != null ? e.goingCount : (e.going || []).length})</div>
         ${(e.going || []).length ? e.going.map((p) => goerRow(p)).join("") : `<p class="tiny">No one has marked this show yet. Be the first.</p>`}
         ${(e.openToMeet || []).length ? `<div class="label" style="margin-top:16px">Open to meet (${e.openCount != null ? e.openCount : e.openToMeet.length})</div>` + e.openToMeet.map((p) => goerRow(p)).join("") : ""}
-        <button type="button" class="btn primary" style="margin-top:8px" data-act="open-live" data-id="${e.id}">Open at-the-show live mode</button></div></div>`;
-    }
+        <button type="button" class="btn primary" style="margin-top:8px" data-act="open-live" data-id="${e.id}">Open at-the-show live mode</button></div></div>`;    }
     if (o.type === "live") {
       const options = state.events.filter((e) => e.imGoing).length ? state.events.filter((e) => e.imGoing) : state.events;
       const eid = state.live.eventId || (options[0] && options[0].id);
@@ -2444,7 +2453,7 @@
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
             ${personAvatar(p, "av sm")}
-            <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}</div>
+            <div class="grow"><div style="font-weight:700">${esc(p.name)}, ${p.age}${personBadge(p)}</div>
             <div class="tiny">${esc(p.meetupSpot || "At this event")} · ${p.vibes.slice(0, 2).join(", ")}</div></div></button>`).join("")}
         `}</div></div>`;
     }
@@ -2453,7 +2462,7 @@
       if (!p) return "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
-        <div class="chat-head">${personAvatar(p, "av chat")}<div><div class="nm">${esc(p.name)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : ""}</div></div></div>
+        <div class="chat-head">${personAvatar(p, "av chat")}<div><div class="nm">${esc(p.name)}${personBadge(p)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : ""}</div></div></div>
         <div class="right"><button class="icon-btn" data-act="report" data-id="${p.id}" title="Report or block" aria-label="Report or block">⚑</button></div></div>
         ${bothGoingLine(state.chatShared, state.chatMeetPlan)}
         ${state.chatShared && state.chatShared.length ? `<div style="padding:0 16px 8px"><button type="button" class="btn sm ghost" data-act="pick-meet" data-id="${p.id}">${state.chatMeetPlan && (state.chatMeetPlan.spot || state.chatMeetPlan.time) ? "Edit meet spot" : "Pick a meet spot"}</button></div>` : ""}
@@ -2659,6 +2668,27 @@
     return "";
   }
 
+  function viewBadgeSheet() {
+    if (!state.badgeSheet) return "";
+    const guide = (state.badges && state.badges.badges) || [];
+    const focus = String(state.badgeSheet || "");
+    const items = guide.length ? guide : [
+      { id: "bass", name: "Bass", tagline: "The floor already knows your name.", how: "Top about 5% of active ravers, ranked by recent posts, likes, comments, shows, and followers." },
+      { id: "banger", name: "Banger", tagline: "You're in the mix.", how: "About the next 20% of active ravers (the top 25% overall) by recent engagement and followers." },
+      { id: "bopper", name: "Bopper", tagline: "You're showing up.", how: "Any raver who's been active recently. Post, like, comment, RSVP to shows, and keep coming back to climb." },
+    ];
+    return `<div class="sheet-bg" data-act="close-badge"><div class="sheet badge-sheet" data-stop="1"><div class="grab"></div>
+      <h2 class="h2" style="font-size:22px">Raver badges</h2>
+      <p class="sub">Badges come from how active you've been over the last 14 days, plus how many people follow you. Names may change; the idea stays the same.</p>
+      ${items.map((b) => `<button type="button" class="badge-explain${focus === b.id ? " on" : ""}" data-act="badge-info" data-id="${esc(b.id)}">
+        <div class="row" style="align-items:center;gap:10px"><span class="raver-badge ${esc(b.id)}"><span class="rb-ic" aria-hidden="true"></span><span class="rb-nm">${esc(b.name)}</span></span>
+          <div class="grow"><div style="font-weight:800">${esc(b.name)}</div><div class="tiny">${esc(b.tagline || "")}</div></div></div>
+        <p class="muted" style="margin-top:8px">${esc(b.how || "")}</p>
+      </button>`).join("")}
+      <button class="btn primary" style="margin-top:16px" data-act="close-badge">Got it</button>
+    </div></div>`;
+  }
+
   function render() {
     const root = document.getElementById("app");
     let html = "";
@@ -2678,11 +2708,11 @@
       else if (state.tab === "matches") body = viewMatches();
       else body = viewYou();
       const storyOpen = Boolean(state.storyViewer);
-      html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}">${body}${tabbar()}${overlays()}</div>`;
+      html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}">${body}${tabbar()}${overlays()}${viewBadgeSheet()}</div>`;
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
-    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
+    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + (state.badgeSheet || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
     const scrollers = Array.from(root.querySelectorAll(".scroll, .overlay, .sheet"));
     const saved = lastRenderKey === key ? scrollers.map((n) => n.scrollTop) : null;
     const active = document.activeElement;
@@ -2738,6 +2768,15 @@
         render(); return;
       }
       if (act === "dismiss-photo-nudge") { localStorage.setItem("kandi-hide-photo-nudge", "1"); render(); return; }
+      if (act === "badge-info") {
+        if (!state.badges) {
+          try { state.badges = await api("/api/badges"); } catch (_) {}
+        }
+        state.badgeSheet = id || "all";
+        render(); return;
+      }
+      if (act === "close-badge") { state.badgeSheet = null; render(); return; }
+
       if (act === "edit-profile") {
         state.err = "";
         startEditDraft();
@@ -3697,7 +3736,8 @@
     "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
     "preview-profile", "edit-back",
     "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers",
-    "create-group", "pick-crew-emoji", "crew-join-mode", "edit-group", "invite-open", "close-invite"]);
+    "create-group", "pick-crew-emoji", "crew-join-mode", "edit-group", "invite-open", "close-invite",
+    "badge-info", "close-badge"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
