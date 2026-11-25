@@ -1745,7 +1745,7 @@
           } catch (_) { /* send the original; the server will normalize it */ }
           fd.append("photo", photo, "photo-" + (i + 1) + ".jpg");
         }
-        await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
+        const created = await api("/api/posts", { method: "POST", body: fd, timeout: 120000 });
         clearPostFiles();
         const back = state.overlay && state.overlay.returnTo;
         toast(files.length ? "Posted! 📸" : "Posted!");
@@ -1757,8 +1757,10 @@
         state.overlay = null;
         state.feedTab = "following";
         state.tab = "home";
+        if (created && created.post) state.homePosts = [created.post].concat((state.homePosts || []).filter((x) => x.id !== created.post.id));
         render();
         await loadHome();
+        if (created && created.post && !(state.homePosts || []).some((x) => x.id === created.post.id)) state.homePosts.unshift(created.post);
         if (state.me) await loadProfile(state.me.id);
         render(); return;
       }
