@@ -92,6 +92,26 @@ describe("follow rules", () => {
     assert.equal((await b.c("POST", `/api/users/${a.id}/follow`, {})).status, 403);
   });
 
+  test("unmatch removes follows both ways, including share-link follows", async () => {
+    const a = await signup("fu_amy");
+    const b = await signup("fu_bo");
+    // Bo follows Amy via her share link first, then they match and Amy follows back.
+    const k = new URL((await a.c("GET", "/api/me/share-link")).data.url).searchParams.get("k");
+    assert.equal((await b.c("POST", `/api/users/${a.id}/follow`, { k })).status, 200);
+    await a.c("POST", "/api/like", { userId: b.id, targetType: "photo", targetId: "0" });
+    await b.c("POST", "/api/like", { userId: a.id, targetType: "photo", targetId: "0" });
+    assert.equal((await a.c("POST", `/api/users/${b.id}/follow`, {})).status, 200);
+    let r = await a.c("GET", `/api/users/${a.id}`);
+    assert.equal(r.data.user.followerCount, 1);
+    assert.equal(r.data.user.followingCount, 1);
+    assert.equal((await a.c("POST", `/api/matches/${b.id}/unmatch`, {})).status, 200);
+    r = await a.c("GET", `/api/users/${a.id}`);
+    assert.equal(r.data.user.followerCount, 0);
+    assert.equal(r.data.user.followingCount, 0);
+    // No match any more, so a plain follow is refused again.
+    assert.equal((await a.c("POST", `/api/users/${b.id}/follow`, {})).status, 403);
+  });
+
   test("crew tagging can't search strangers by name", async () => {
     const a = await signup("fc_owner");
     const g = await a.c("POST", "/api/groups", { name: "Test Crew", emoji: "🧡", joinMode: "public" });
