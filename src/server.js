@@ -919,7 +919,7 @@ app.get("/api/discover", auth, async (req, res) => {
       .flatMap((r) => [Number(r.a_id), Number(r.b_id)])
   );
   const genre = String(req.query.genre || "all");
-  const event = String(req.query.event || "all");
+  let event = String(req.query.event || "all");
   const gender = String(req.query.gender || "all");
   const mode = resolveMode(req.user, req.query.mode || req.query.meet);
   const ageMin = Number(req.query.ageMin);
@@ -959,12 +959,16 @@ app.get("/api/discover", auth, async (req, res) => {
     });
   });
   if (genreId) people = people.filter((p) => p.vibes.includes(genreId));
+  // Event-specific filters stay Kandi+, except "same show," which is free.
+  if (event !== "all" && event !== "same" && !isPlus(req.user)) event = "all";
   if (event === "same") {
     people = people.filter((p) => (p.sharedEvents || []).length);
   } else if (event !== "all") {
+    const ids = event.split(",").map((s) => s.trim()).filter(Boolean);
     people = people.filter((p) => {
       const theirs = showsByUser.get(Number(p.id)) || [];
-      return theirs.some((e) => e.id === event || e.event_key === event) || (p.events || []).includes(event);
+      return theirs.some((e) => ids.includes(String(e.id)) || ids.includes(String(e.event_key)))
+        || ids.some((id) => (p.events || []).map(String).includes(id));
     });
   }
   people = people.filter((p) => visibleInMode(req.user, { ...p, meet_intent: p.meetIntent, interested_in: p.interestedIn }, mode));

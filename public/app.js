@@ -542,23 +542,42 @@
     return e.timeTba ? "Time TBA" : (parts[1] || "").trim();
   }
   function showPickerMode(where) {
-    return (where === "post" || where === "story") ? where : "going";
+    if (where === "post" || where === "story" || where === "filter" || where === "live") return where;
+    return "going";
   }
   function taggedShowId(mode) {
     if (mode === "post") return String(state.drafts.postEvent || "");
     if (mode === "story") return String(state.drafts.storyEvent || "");
     return "";
   }
+  function parseEventFilter(val) {
+    const v = String(val || "all");
+    if (!v || v === "all") return { type: "all", ids: [] };
+    if (v === "same") return { type: "same", ids: [] };
+    return { type: "ids", ids: v.split(",").map((s) => s.trim()).filter(Boolean) };
+  }
+  function eventFilterValue(ids) {
+    const list = (ids || []).map(String).filter(Boolean);
+    return list.length ? list.join(",") : "all";
+  }
+  function filterShowIds() {
+    return parseEventFilter(state.filters && state.filters.event).ids;
+  }
   function showPickerField(where) {
     const mode = showPickerMode(where);
     const tagId = taggedShowId(mode);
-    const ids = new Set(mode === "going" ? goingIds() : (tagId ? [tagId] : []));
+    let idList;
+    if (mode === "going") idList = goingIds();
+    else if (mode === "filter") idList = filterShowIds();
+    else if (mode === "live") idList = state.live && state.live.eventId ? [String(state.live.eventId)] : [];
+    else idList = tagId ? [tagId] : [];
+    const ids = new Set(idList.map(String));
     const sel = pickableEvents().filter((e) => ids.has(String(e.id)));
     const n = sel.length;
     const loading = !state.eventsLoaded && !pickableEvents().length;
     let summary = "Loading shows…";
     if (!loading) {
-      if (mode === "going") summary = n ? n + (n === 1 ? " show" : " shows") + " picked" : "Choose shows";
+      if (mode === "going" || mode === "filter") summary = n ? n + (n === 1 ? " show" : " shows") + " picked" : (mode === "filter" ? "Choose shows" : "Choose shows");
       else summary = n ? eventChipLabel(sel[0]) : "Choose a show";
     }
     return `<div class="show-field" data-where="${esc(where || "")}">
@@ -590,8 +609,8 @@
     }).join("")}</div>`).join("");
     const n = sel.size;
     const mode = sp.mode || "going";
-    const title = mode === "going" ? "Shows I'm going to" : "Tag a rave or concert";
-    const multi = mode === "going";
+    const title = mode === "going" ? "Shows I'm going to" : (mode === "filter" ? "Filter by shows" : (mode === "live" ? "You're at" : "Tag a rave or concert"));
+    const multi = mode === "going" || mode === "filter";
     return `<div class="sheet-bg show-pick-bg"><div class="sheet show-pick" data-stop="1" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
       <div class="show-pick-head"><h2 class="h2">${esc(title)}</h2><button type="button" class="icon-btn" data-act="show-pick-cancel" aria-label="Close without saving">✕</button></div>
       <label class="show-search">${kIcon("search")}<input type="search" data-field="showPickQ" aria-label="Search shows" placeholder="Search shows, artists, venues" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(sp.q || "")}" /></label>
@@ -630,7 +649,7 @@
     const sp = state.showPicker;
     const b = document.querySelector("[data-act=show-pick-done]");
     if (!sp || !b) return;
-    if (sp.mode === "post" || sp.mode === "story") {
+    if (sp.mode === "post" || sp.mode === "story" || sp.mode === "live") {
       const ev = pickableEvents().find((e) => String(e.id) === String(sp.sel[0] || ""));
       b.textContent = ev ? "Done · " + ev.name : "Done";
       return;
@@ -3254,14 +3273,11 @@
   function viewDiscover() {
     const right = `<span class="pill">${isPlus() ? "Unlimited likes" : (state.likesLeft + " likes left")}</span>
       <button class="icon-btn" data-act="filters" title="Filters" aria-label="Filters">✺</button>`;
-    const myShows = (state.events || []).filter((e) => e.imGoing);
-    const sameOn = state.filters.event && state.filters.event !== "all";
+    const evf = parseEventFilter(state.filters && state.filters.event);
+    const sameOn = evf.type !== "all";
     let sameBar = `<div class="same-show-bar"><button type="button" class="chip${sameOn ? " on" : ""}" data-act="same-show">Going to the same show</button></div>`;
-    if (sameOn) {
-      sameBar += `<div class="chips same-show-picks">
-        <button type="button" class="chip${state.filters.event === "same" ? " on" : ""}" data-act="pick-same-event" data-id="same">Shows I'm going to</button>
-        ${myShows.map((e) => `<button type="button" class="chip${state.filters.event === e.id ? " on" : ""}" data-act="pick-same-event" data-id="${esc(e.id)}">${esc(eventChipLabel(e))}</button>`).join("")}
-      </div>`;
+    if (sameOn && isPlus()) {
+      sameBar += `<div class="same-show-picks" style="padding:0 16px 8px">${showPickerField("filter")}</div>`;
     }
     const genreOn = state.filters.genre && state.filters.genre !== "all";
     const genreBar = genreOn
@@ -4624,11 +4640,15 @@
       const f = state.filters || {};
       const ageMin = f.ageMin != null ? f.ageMin : 18;
       const ageMax = f.ageMax != null ? f.ageMax : 99;
+      const evf = parseEventFilter(f.event);
       const eventBlock = isPlus()
-        ? `<div class="label" style="margin-top:14px">Event</div><div class="chips">
-        <button type="button" class="chip${f.event === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
-        ${(state.events || []).map((e) => `<button type="button" class="chip${f.event === e.id ? " on" : ""}" data-act="set-event-filter" data-id="${e.id}">${esc(e.name)}</button>`).join("")}</div>`
-        : `<div class="label" style="margin-top:14px">Event</div><p class="tiny">${isNativeIos() ? "Event filters aren't in this version." : `Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button>`}</p>`;
+        ? `<div class="label" style="margin-top:14px">Shows</div>
+        <div class="chips" style="margin-bottom:8px">
+          <button type="button" class="chip${evf.type === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
+          <button type="button" class="chip${evf.type === "same" ? " on" : ""}" data-act="set-event-filter" data-id="same">Shows I'm going to</button>
+        </div>
+        ${showPickerField("filter")}`
+        : `<div class="label" style="margin-top:14px">Shows</div><p class="tiny">${isNativeIos() ? "Event filters aren't in this version." : `Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button>`}</p>`;
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2" style="font-size:22px">Filters</h2>
         <div class="label">Age range</div>
@@ -4677,11 +4697,12 @@
     if (o.type === "live") {
       const options = state.events.filter((e) => e.imGoing).length ? state.events.filter((e) => e.imGoing) : state.events;
       const eid = state.live.eventId || (options[0] && options[0].id);
+      if (eid && state.live && !state.live.eventId) state.live.eventId = eid;
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span class="wordmark grad" style="font-size:15px">At the show</span></div>
         <div class="right"><button class="toggle${state.live.on ? " on" : ""}" data-act="toggle-live" data-id="${eid || ""}" aria-label="Live mode"><i></i></button></div></div>
         <div class="scroll pad"><p class="sub">Turn live mode on to see people at the same event and pick a meet-up spot. No GPS is used unless you later add it.</p>
-        <div class="label" style="margin-top:16px">You're at</div><div class="chips">${options.map((e) =>
-          `<button class="chip${e.id === eid ? " on" : ""}" data-act="live-event" data-id="${e.id}">${e.emoji} ${esc(e.name)}</button>`).join("")}</div>
+        <div class="label" style="margin-top:16px">You're at</div>
+        ${showPickerField("live")}
         ${!state.live.on ? `<div class="empty"><p>Live mode is off. Toggle it on when you arrive.</p></div>` : `
           <div class="label" style="margin-top:16px">Meet-up spot</div><div class="chips">${SPOTS.map((s) =>
             `<button class="chip${state.live.meetupSpot === s ? " on" : ""}" data-act="spot" data-id="${esc(s)}">${esc(s)}</button>`).join("")}</div>
@@ -5127,8 +5148,17 @@
     if (act === "song-play") { toggleSong(el); return; }
     if (act === "show-pick-open") {
       if (!state.eventsLoaded && !pickableEvents().length) { try { await loadEvents(); } catch (_) {} }
-      const mode = (id === "post" || id === "story") ? id : "going";
-      const sel = mode === "going" ? goingIds() : (taggedShowId(mode) ? [taggedShowId(mode)] : []);
+      const mode = (id === "post" || id === "story" || id === "filter" || id === "live") ? id : "going";
+      if (mode === "filter" && !isPlus()) {
+        if (isNativeIos()) return;
+        state.overlay = Object.assign({}, state.overlay || {}, { type: "paywall", reason: "filters" });
+        render(); return;
+      }
+      let sel;
+      if (mode === "going") sel = goingIds();
+      else if (mode === "filter") sel = filterShowIds();
+      else if (mode === "live") sel = (state.live && state.live.eventId) ? [String(state.live.eventId)] : [];
+      else sel = taggedShowId(mode) ? [taggedShowId(mode)] : [];
       state.showPicker = { mode, sel, q: "", cat: "all" };
       render();
       return;
@@ -5139,7 +5169,7 @@
       const sp = state.showPicker;
       if (!sp) return;
       const sid = String(id);
-      if (sp.mode === "post" || sp.mode === "story") {
+      if (sp.mode === "post" || sp.mode === "story" || sp.mode === "live") {
         sp.sel = sp.sel.includes(sid) ? [] : [sid];
         const sheet = el.closest(".show-pick") || document.querySelector(".show-pick");
         if (sheet) {
@@ -5170,6 +5200,28 @@
         render();
         return;
       }
+      if (sp.mode === "filter") {
+        state.filters.event = eventFilterValue(sp.sel);
+        state.showPicker = null;
+        render();
+        if (!(state.overlay && state.overlay.type === "filters")) await loadFeed();
+        render();
+        return;
+      }
+      if (sp.mode === "live") {
+        const picked = sp.sel[0] || "";
+        state.showPicker = null;
+        if (picked) {
+          state.live.eventId = picked;
+          if (state.live.on) await api("/api/live", { method: "POST", body: { on: true, eventId: picked, meetupSpot: state.live.meetupSpot } });
+          try {
+            const near = await api("/api/live?eventId=" + encodeURIComponent(picked));
+            state.nearby = near.nearby || [];
+          } catch (_) {}
+        }
+        render();
+        return;
+      }
       el.textContent = "Saving…";
       const r = await saveGoing(sp.sel);
       state.showPicker = null;
@@ -5185,6 +5237,14 @@
       const mode = (el && el.getAttribute("data-mode")) || "going";
       if (mode === "post") { state.drafts.postEvent = ""; render(); return; }
       if (mode === "story") { state.drafts.storyEvent = ""; render(); return; }
+      if (mode === "filter") {
+        state.filters.event = eventFilterValue(filterShowIds().filter((x) => x !== String(id)));
+        render();
+        if (!(state.overlay && state.overlay.type === "filters")) await loadFeed();
+        render();
+        return;
+      }
+      if (mode === "live") { state.live.eventId = ""; render(); return; }
       const r = await saveGoing(goingIds().filter((x) => x !== String(id)));
       render();
       if (r.failed) toast("Couldn't remove that show. Try again.", "err");
@@ -6192,7 +6252,7 @@
       if (act === "set-genre") { state.filters.genre = id; render(); return; }
       if (act === "set-gender-filter") { state.filters.gender = id || "all"; render(); return; }
       if (act === "set-event-filter") {
-        if (!isPlus() && id && id !== "all") {
+        if (!isPlus() && id && id !== "all" && id !== "same") {
           if (isNativeIos()) return;
           state.overlay = { type: "paywall", reason: "filters" }; render(); return;
         }
