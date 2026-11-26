@@ -1752,6 +1752,18 @@
     const a = document.activeElement;
     return !!(a && a.getAttribute && a.getAttribute("data-field"));
   }
+  function chatComposerFocused() {
+    const a = document.activeElement;
+    if (!a || !a.getAttribute || a.getAttribute("data-field") !== "chat") return false;
+    const wrap = document.querySelector(".chat-composer-wrap");
+    return !!(wrap && wrap.contains(a));
+  }
+  function isOpenChatFrom(msg) {
+    if (!(state.overlay && state.overlay.type === "chat")) return false;
+    if (msg && msg.matchId != null && state.chatMatchId != null && Number(msg.matchId) === Number(state.chatMatchId)) return true;
+    if (msg && msg.from && state.chatWith && Number(msg.from.id) === Number(state.chatWith.id)) return true;
+    return false;
+  }
   function quiet(promise) {
     return Promise.resolve(promise).then(() => { if (!isTypingInField()) render(); }).catch(() => {});
   }
@@ -1781,13 +1793,15 @@
         const i = (state.chat || []).findIndex((m) => Number(m.id) === Number(msg.message.id));
         if (i >= 0) state.chat[i] = msg.message;
         refreshOpenChat();
-      } else if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && Number(msg.from.id) === Number(state.chatWith.id)) {
-        if (!state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
-        refreshOpenChat({ scroll: true });
-        markChatRead(state.chatWith.id);
       } else if (msg.type === "message") {
-        quiet(Promise.all([loadMatches(), loadUnread()]));
-        toast("New message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
+        if (isOpenChatFrom(msg)) {
+          if (msg.message && !state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
+          refreshOpenChat({ scroll: true });
+          if (state.chatWith) markChatRead(state.chatWith.id);
+        } else {
+          quiet(Promise.all([loadMatches(), loadUnread()]));
+          toast("New message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
+        }
       } else if (msg.type === "match") {
         quiet(Promise.all([loadMatches(), loadFeed()]));
         toast((matchKindLabel(msg.matchKind) || "It's a match") + (msg.user && msg.user.name ? " with " + msg.user.name : "") + "! Check Chats.");
@@ -4270,6 +4284,8 @@
   }
   function refreshOpenChat(opts) {
     if (state.overlay && state.overlay.type === "chat" && document.querySelector(".chat-log") && syncChatLog(opts)) return true;
+    // Never replace the composer node while the person is typing.
+    if (chatComposerFocused()) return false;
     render();
     if (opts && opts.scroll) scrollChatToEnd();
     return false;
@@ -5257,6 +5273,10 @@
   let renderFailures = 0;
   // Never leave the screen stuck: if drawing fails, drop whatever sheet or overlay was open and draw again.
   function render() {
+    if (chatComposerFocused() && state.view === "app" && state.overlay && state.overlay.type === "chat") {
+      refreshOpenChat();
+      return;
+    }
     if (state.view === "app" && state.pendingShare && !state.pendingShare.shown && !state.overlay) { state.pendingShare.shown = true; state.overlay = { type: "shareCard" }; }
     try {
       renderScreen();
