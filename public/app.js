@@ -523,7 +523,56 @@
   function pickableEvents() { return (state.events || []).filter((e) => e && e.id && !e.isExample); }
   function goingIds() {
     const mine = new Set(((state.me && state.me.events) || []).map(String));
-    return pickableEvents().filter((e) => e.imGoing || mine.has(String(e.id))).map((e) => String(e.id));
+    return pickableEvents().filter((e) => {
+      if (e.imGoing === false) return false;
+      return e.imGoing || mine.has(String(e.id));
+    }).map((e) => String(e.id));
+  }
+  function compactUpcomingFromEvent(e) {
+    if (!e) return null;
+    return {
+      id: e.id,
+      eventKey: e.eventKey || e.event_key || "",
+      name: e.name,
+      date: e.date || "",
+      startsAt: e.startsAt || e.starts_at || "",
+      venue: e.venue || "",
+      city: e.city || "",
+      emoji: e.emoji || "",
+      category: e.category || "concert",
+    };
+  }
+  function applyMyShows(eventsIds, upcomingShows) {
+    if (!state.me) return;
+    if (Array.isArray(eventsIds)) state.me.events = eventsIds.map(String);
+    if (Array.isArray(upcomingShows)) state.me.upcomingShows = upcomingShows;
+    if (state.profile && state.profile.user && Number(state.profile.user.id) === Number(state.me.id)) {
+      state.profile.user.events = state.me.events;
+      state.profile.user.upcomingShows = state.me.upcomingShows;
+      state.profile.upcomingShows = state.me.upcomingShows;
+    }
+  }
+  function applyRsvpResult(id, going, data) {
+    const sid = String(id);
+    const ev = (state.events || []).find((x) => String(x.id) === sid);
+    if (ev) {
+      ev.imGoing = going;
+      if (!going) ev.imOpenToMeet = false;
+      if (ev.goingCount != null) ev.goingCount = Math.max(0, Number(ev.goingCount) + (going ? 1 : -1));
+    }
+    if (data && (Array.isArray(data.events) || Array.isArray(data.upcomingShows))) {
+      applyMyShows(data.events, data.upcomingShows);
+      return;
+    }
+    if (!state.me) return;
+    const list = ((state.me.events || []).map(String)).filter((x) => x !== sid);
+    state.me.events = going ? list.concat(sid) : list;
+    let shows = (state.me.upcomingShows || []).filter((s) => String(s.id) !== sid && String(s.eventKey || "") !== String((ev && ev.eventKey) || ""));
+    if (going) {
+      const card = compactUpcomingFromEvent(ev) || (state.me.upcomingShows || []).find((s) => String(s.id) === sid);
+      if (card && !shows.some((s) => String(s.id) === sid)) shows = shows.concat([card]);
+    }
+    applyMyShows(state.me.events, shows);
   }
   function showDayLabel(e) {
     const day = String(e.date || "").split(" · ")[0].trim();
@@ -666,13 +715,8 @@
     let failed = 0;
     for (const [id, going] of changes) {
       try {
-        await api("/api/events/" + encodeURIComponent(id) + "/going", { method: "POST", body: { going } });
-        const ev = (state.events || []).find((x) => String(x.id) === id);
-        if (ev) { ev.imGoing = going; if (!going) ev.imOpenToMeet = false; }
-        if (state.me) {
-          const list = (state.me.events || []).map(String).filter((x) => x !== id);
-          state.me.events = going ? list.concat(id) : list;
-        }
+        const data = await api("/api/events/" + encodeURIComponent(id) + "/going", { method: "POST", body: { going } });
+        applyRsvpResult(id, going, data);
       } catch (_) { failed++; }
     }
     return { changed: changes.length, failed };
@@ -1165,6 +1209,14 @@
   function findEvent(id) {
     const fromList = (state.events || []).find((x) => String(x.id) === String(id));
     if (fromList) return fromList;
+    const fromUpcoming = []
+      .concat((state.me && state.me.upcomingShows) || [])
+      .concat((state.profile && (state.profile.upcomingShows || (state.profile.user && state.profile.user.upcomingShows))) || [])
+      .find((x) => x && String(x.id) === String(id));
+    if (fromUpcoming) {
+      const going = Boolean(state.me && ((state.me.events || []).map(String).includes(String(id)) || (state.me.upcomingShows || []).some((s) => String(s.id) === String(id))));
+      return Object.assign({ going: [], color: "linear-gradient(135deg,#1a0a00,#ff5c00)", imGoing: going, category: "", artists: [], imageUrl: "", ageLimit: "" }, fromUpcoming);
+    }
     const lists = [state.homePosts || [], (state.profile && state.profile.posts) || [], state.openPost ? [state.openPost] : []];
     for (const list of lists) {
       for (const p of list) {
@@ -1320,7 +1372,20 @@
     html += profileArtists(p);
     html += profileVideos(p, (opts.asOthers ? "pv" : "p") + p.id);
     html += profileCrewSlot();
-    const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
+    let shows = Array.isArray(p.upcomingShows) ? p.upcomingShows : [];
+    if (isMe) {
+      const liveGoing = new Set((state.events || []).filter((e) => e.imGoing).map((e) => String(e.id)));
+      const liveKnown = new Set((state.events || []).map((e) => String(e.id)));
+      const mine = new Set(((p.events || (state.me && state.me.events) || []).map(String)));
+      shows = shows.filter((s) => {
+        const sid = String(s.id);
+        if (liveKnown.has(sid)) return liveGoing.has(sid);
+        return mine.has(sid);
+      });
+      (state.events || []).forEach((e) => {
+        if (e.imGoing && !shows.some((s) => String(s.id) === String(e.id))) shows.push(e);
+      });
+    }
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
     html += `<div class="seg event-cats profile-tabs">
       <button type="button" class="${tab === "posts" ? "on" : ""}" data-act="profile-tab" data-id="posts">Posts</button>
@@ -6225,9 +6290,9 @@
         state.me.looking = v; await api("/api/me", { method: "PUT", body: { looking: v } }); render(); return;
       }
       if (act === "toggle-event") {
-        const going = !state.me.events.includes(id);
-        await api("/api/events/" + id + "/going", { method: "POST", body: { going } });
-        state.me.events = going ? state.me.events.concat(id) : state.me.events.filter((x) => x !== id);
+        const going = !(state.me.events || []).map(String).includes(String(id));
+        const data = await api("/api/events/" + encodeURIComponent(id) + "/going", { method: "POST", body: { going } });
+        applyRsvpResult(id, going, data);
         await loadEvents(); render(); return;
       }
       if (act === "pick-prompt") { state.drafts.promptQ = id; state.drafts.promptA = ""; render(); return; }
@@ -6704,7 +6769,7 @@
       }
 
       if (act === "toggle-meet") {
-        const ev = state.events.find((x) => x.id === id);
+        const ev = findEvent(id);
         if (!ev) return;
         const open = !ev.imOpenToMeet;
         await api("/api/events/" + encodeURIComponent(id) + "/meet", { method: "POST", body: { open, note: ev.meetNote || state.drafts.meetNote || "" } });
@@ -6767,9 +6832,13 @@
         toast("Meet plan saved."); render(); return;
       }
       if (act === "toggle-going") {
-        const ev = state.events.find((e) => e.id === id);
-        await api("/api/events/" + id + "/going", { method: "POST", body: { going: !ev.imGoing } });
-        await loadEvents(); render(); return;
+        const ev = findEvent(id);
+        const currently = ev ? Boolean(ev.imGoing) : Boolean(state.me && (state.me.events || []).map(String).includes(String(id)));
+        const going = !currently;
+        const data = await api("/api/events/" + encodeURIComponent(id) + "/going", { method: "POST", body: { going } });
+        applyRsvpResult(id, going, data);
+        try { await loadEvents(); } catch (_) {}
+        render(); return;
       }
       if (act === "open-live") {
         if (id) state.live.eventId = id;

@@ -103,9 +103,10 @@ async function userGoingShows(db, userId) {
   const out = [];
   for (const e of rows) {
     if (e.is_example) continue;
-    if (String(e.status || "active") === "removed") continue;
+    if (String(e.status || "active") === "removed" || String(e.status || "") === "past") continue;
     const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    if (!Number.isNaN(starts) && starts < now) continue;
+    const startsMs = Number.isNaN(starts) && e.starts_at ? new Date(e.starts_at).getTime() : starts;
+    if (!Number.isNaN(startsMs) && startsMs < now) continue;
     const key = e.event_key || e.id;
     if (seen.has(key)) continue;
     seen.add(key);

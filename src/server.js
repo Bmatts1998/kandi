@@ -626,7 +626,7 @@ app.get("/api/me", auth, async (req, res) => {
   const upcoming = await listUpcomingForProfile(db, req.user, req.user);
   res.json({
     user: publicUser(req.user, {
-      events: going.length ? going : JSON.parse(req.user.events || "[]"),
+      events: going,
       upcomingShows: upcoming.shows,
       ...selfBillingExtra(req.user, req),
     }),
@@ -1323,7 +1323,10 @@ app.post("/api/events/:id/going", auth, async (req, res) => {
   const going = Boolean(req.body.going);
   const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false });
   engagement.scheduleRefresh();
-  res.json({ ok: true, ...result });
+  const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  const goingIds = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
+  const upcoming = await listUpcomingForProfile(db, me || req.user, me || req.user);
+  res.json({ ok: true, ...result, events: goingIds, upcomingShows: upcoming.shows });
 });
 
 app.post("/api/events/:id/meet", auth, async (req, res) => {
@@ -1336,7 +1339,10 @@ app.post("/api/events/:id/meet", auth, async (req, res) => {
   const note = req.body.note != null ? String(req.body.note).slice(0, 80) : undefined;
   const result = await setRsvp(db, req.user, ev, { going: true, openToMeet: open, meetNote: note });
   engagement.scheduleRefresh();
-  res.json({ ok: true, ...result });
+  const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  const goingIds = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
+  const upcoming = await listUpcomingForProfile(db, me || req.user, me || req.user);
+  res.json({ ok: true, ...result, events: goingIds, upcomingShows: upcoming.shows });
 });
 
 app.post("/api/live", auth, async (req, res) => {
