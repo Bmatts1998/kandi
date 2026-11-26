@@ -1398,7 +1398,7 @@
     crewBadges: {},
     profileCrews: [],
     crewPeople: [],
-    drafts: { user: "", pass: "", name: "", age: "", email: "", forgotLogin: "", verifyEmail: "", setEmail: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
+    drafts: { user: "", pass: "", name: "", age: "", email: "", gender: "", forgotLogin: "", verifyEmail: "", setEmail: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -3319,6 +3319,10 @@
       ${mode === "signup" ? `
         <input id="f-name" data-field="name" aria-label="Name" autocomplete="given-name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
         <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
+        <div class="label" style="margin-top:16px">Gender <span class="tiny" style="font-weight:500">(optional)</span></div>
+        <div class="chips">${GENDERS.map((g) =>
+          `<button type="button" class="chip${state.drafts.gender === g.id ? " on" : ""}" data-act="set-signup-gender" data-id="${g.id}">${esc(g.label)}</button>`
+        ).join("")}</div>
         <input id="f-email" data-field="email" type="email" aria-label="Email" placeholder="Email" value="${esc(state.drafts.email || "")}" style="margin-top:8px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" inputmode="email" />
         <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="new-password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
@@ -3363,7 +3367,12 @@
         `<button type="button" class="chip genre-pick g-${esc(g.id)}${me.vibes.includes(g.id) ? " on" : ""}" data-act="toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
       ).join("")}</div>`;
     } else if (s === 1) {
-      body = `<div class="label">Looking for</div><div class="chips">${MEET_INTENTS.map((v) =>
+      body = `<div class="label">Gender <span class="tiny" style="font-weight:500">(optional)</span></div>
+        <div class="chips">${GENDERS.map((g) =>
+          `<button type="button" class="chip${(me.gender || state.drafts.gender) === g.id ? " on" : ""}" data-act="set-onboard-gender" data-id="${g.id}">${esc(g.label)}</button>`
+        ).join("")}</div>
+        <p class="tiny" style="margin:6px 0 14px">You can skip this and add it later in your profile.</p>
+        <div class="label">Looking for</div><div class="chips">${MEET_INTENTS.map((v) =>
         `<button type="button" class="chip${(me.meetIntent || state.drafts.meetIntent) === v.id ? " on" : ""}" data-act="set-meet-intent" data-id="${v.id}">${esc(v.label)}</button>`
       ).join("")}</div>
         <p class="sub" style="margin-bottom:14px">Friends, dating, or both — this decides who you see in Discover.</p>
@@ -5832,6 +5841,18 @@
         state.err = "";
         render(); return;
       }
+      if (act === "set-signup-gender") {
+        state.drafts.gender = state.drafts.gender === id ? "" : id;
+        render(); return;
+      }
+      if (act === "set-onboard-gender") {
+        state.drafts.gender = state.drafts.gender === id ? "" : id;
+        if (state.me) {
+          state.me.gender = state.drafts.gender;
+          await api("/api/me", { method: "PUT", body: { gender: state.drafts.gender } });
+        }
+        render(); return;
+      }
       if (act === "set-meet-intent") {
         state.drafts.meetIntent = id;
         if (state.me) {
@@ -5988,7 +6009,7 @@
         }
         if (!(state.drafts.email || "").trim()) { state.err = "Enter your email address."; render(); return; }
         if (!state.drafts.meetIntent) { state.err = "Choose whether you're here for friends, dating, or both."; render(); return; }
-        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent, referralCode: (state.drafts.referralCode || (state.pendingReferral && state.pendingReferral.code) || "").trim() } });
+        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent, gender: state.drafts.gender || "", referralCode: (state.drafts.referralCode || (state.pendingReferral && state.pendingReferral.code) || "").trim() } });
         applyMe({ user: data.user, likesLeft: DAILY });
         state.drafts.pass = "";
         if (state.me && state.me.emailLocked) {
@@ -7159,7 +7180,7 @@
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
   const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
-    "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
+    "set-genre", "set-event-filter", "set-gender-filter", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",

@@ -502,6 +502,7 @@ app.post("/api/signup", async (req, res) => {
   }
   const homeLocation = clipText(req.body.homeLocation || req.body.home_location || "", 80, "");
   const meetIntent = normalizeMeetIntent(req.body.meetIntent || req.body.meet_intent, "both");
+  const gender = normalizeGender(req.body.gender);
   const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
   if (await emailTaken(email)) return res.status(409).json({ error: "That email is already on a Kandi account. Log in instead, or use a different email.", field: "email" });
@@ -509,7 +510,7 @@ app.post("/api/signup", async (req, res) => {
   const mustVerify = mailer.verificationActive() ? 1 : 0;
   let info;
   try {
-    info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location,email,email_verify_required,meet_intent) VALUES (?,?,?,?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null, email, mustVerify, meetIntent);
+    info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location,email,email_verify_required,meet_intent,gender) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null, email, mustVerify, meetIntent, gender);
   } catch (err) {
     if (/unique|duplicate/i.test(String(err && err.message))) return res.status(409).json({ error: "That username or email is already taken." });
     throw err;
