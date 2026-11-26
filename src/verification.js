@@ -1,5 +1,7 @@
 "use strict";
 
+const objectStore = require("./object-store");
+
 const sharp = require("sharp");
 
 const POSES = [
@@ -102,6 +104,15 @@ async function migrateVerification(db) {
     await db.exec(tableSqlite);
     try { await db.exec("CREATE INDEX IF NOT EXISTS idx_verification_status ON verification_requests(status, created_at)"); } catch (_) { /* exists */ }
   }
+  if (db.driver === "postgres") {
+    await db.exec("ALTER TABLE verification_requests ADD COLUMN IF NOT EXISTS selfie_key TEXT");
+    await db.exec("ALTER TABLE verification_requests ADD COLUMN IF NOT EXISTS selfie_storage TEXT");
+  } else {
+    for (const sql of [
+      "ALTER TABLE verification_requests ADD COLUMN selfie_key TEXT",
+      "ALTER TABLE verification_requests ADD COLUMN selfie_storage TEXT",
+    ]) { try { await db.exec(sql); } catch (_) { /* exists */ } }
+  }
   try {
     const r = await db.prepare(`UPDATE users SET is_admin=1 WHERE lower(username)='boston' AND COALESCE(is_admin,0)=0`).run();
     if (r && r.changes) console.log("Granted admin to " + r.changes + " account(s) (boston).");
@@ -183,9 +194,26 @@ function installVerification({ app, getDb, auth, upload }) {
         const small = await shrinkSelfie(req.file.buffer);
         const now = new Date().toISOString();
         await db().prepare(`UPDATE verification_requests SET status='superseded' WHERE user_id=? AND status='pending'`).run(req.user.id);
+        let selfieData = small.toString("base64");
+        let selfieKey = null;
+        let selfieStorage = null;
+        if (objectStore.enabled()) {
+          try {
+            const tmpId = "pending-" + req.user.id + "-" + Date.now();
+            selfieKey = objectStore.keyFor({ visibility: "private", kind: "selfies", userId: req.user.id, fileId: tmpId + ".jpg" });
+            await objectStore.putObject({ key: selfieKey, body: small, contentType: "image/jpeg" });
+            selfieData = "";
+            selfieStorage = "s3";
+          } catch (err) {
+            console.error("verification object-store put failed, using db:", err.message || err);
+            selfieKey = null;
+            selfieStorage = null;
+            selfieData = small.toString("base64");
+          }
+        }
         const info = await db().prepare(
-          `INSERT INTO verification_requests (user_id, pose, selfie_data, selfie_mime, status, created_at, reason) VALUES (?,?,?,?,?,?,?)`
-        ).run(req.user.id, pose.id, small.toString("base64"), "image/jpeg", "pending", now, "");
+          `INSERT INTO verification_requests (user_id, pose, selfie_data, selfie_mime, status, created_at, reason, selfie_key, selfie_storage) VALUES (?,?,?,?,?,?,?,?,?)`
+        ).run(req.user.id, pose.id, selfieData, "image/jpeg", "pending", now, "", selfieKey, selfieStorage);
         await db().prepare(`UPDATE users SET verification_status='pending' WHERE id=?`).run(req.user.id);
         res.json({
           ok: true,
@@ -204,10 +232,15 @@ function installVerification({ app, getDb, auth, upload }) {
   app.get("/api/verification/photo/:id", auth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) return res.status(404).json({ error: "Not found." });
-    const row = await db().prepare(`SELECT id, user_id, selfie_data, selfie_mime FROM verification_requests WHERE id=?`).get(id);
+    const row = await db().prepare(`SELECT id, user_id, selfie_data, selfie_mime, selfie_key FROM verification_requests WHERE id=?`).get(id);
     if (!row) return res.status(404).json({ error: "Not found." });
     const mine = Number(row.user_id) === Number(req.user.id);
     if (!mine && !isAdminUser(req.user)) return res.status(404).json({ error: "Not found." });
+    if (row.selfie_key && objectStore.enabled()) {
+      const signed = objectStore.presignGet(row.selfie_key, { expires: 10 * 60 });
+      res.setHeader("Cache-Control", "private, max-age=60");
+      return res.redirect(302, signed.url);
+    }
     let body;
     try { body = Buffer.from(String(row.selfie_data || ""), "base64"); } catch (_) { body = null; }
     if (!body || !body.length) return res.status(404).json({ error: "Not found." });

@@ -8,6 +8,7 @@ const { buildVariants, variantForQuery } = require("./photo");
 const { contentRejected } = require("./content-filter");
 const { sendBuffer } = require("./media");
 const { finishVideo } = require("./video");
+const objectStore = require("./object-store");
 const {
   MAX_VOICE_SECONDS, MAX_VIDEO_SECONDS, MAX_VOICE_BYTES, MAX_VIDEO_BYTES,
   DISAPPEAR_AFTER_MS, sniffMedia, extForMime, baseMime, isAllowedAudio,
@@ -86,8 +87,33 @@ async function saveChatFile(db, { userId, matchId, buffer, mime, ext }) {
     thumbMime = variants.thumb.mime;
   }
   const id = newFileId(outExt || ext);
-  await db.prepare(`INSERT INTO chat_files (id, user_id, match_id, mime, data, thumb_data, thumb_mime) VALUES (?,?,?,?,?,?,?)`)
-    .run(id, userId, matchId, outMime, outBuf.toString("base64"), thumbBuf ? thumbBuf.toString("base64") : null, thumbMime);
+  let storage = null;
+  let objectKey = null;
+  let thumbKey = null;
+  let dataVal = outBuf.toString("base64");
+  let thumbVal = thumbBuf ? thumbBuf.toString("base64") : null;
+  if (objectStore.enabled()) {
+    try {
+      objectKey = objectStore.keyFor({ visibility: "private", kind: "chat", userId, matchId, fileId: id });
+      await objectStore.putObject({ key: objectKey, body: outBuf, contentType: outMime });
+      if (thumbBuf) {
+        thumbKey = objectKey + ".thumb";
+        await objectStore.putObject({ key: thumbKey, body: thumbBuf, contentType: thumbMime });
+      }
+      storage = "s3";
+      dataVal = "";
+      thumbVal = null;
+    } catch (err) {
+      console.error("object-store chat put failed, using db:", err.message || err);
+      storage = null;
+      objectKey = null;
+      thumbKey = null;
+      dataVal = outBuf.toString("base64");
+      thumbVal = thumbBuf ? thumbBuf.toString("base64") : null;
+    }
+  }
+  await db.prepare(`INSERT INTO chat_files (id, user_id, match_id, mime, data, thumb_data, thumb_mime, storage, object_key, thumb_key) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, userId, matchId, outMime, dataVal, thumbVal, thumbMime, storage, objectKey, thumbKey);
   try { fs.writeFileSync(cachePath(id), outBuf); } catch (_) { /* ephemeral disk is ok */ }
   return { id, mime: outMime };
 }
@@ -97,6 +123,10 @@ async function deleteChatFiles(db, ids) {
   for (const id of unique) {
     const still = await db.prepare(`SELECT id FROM messages WHERE media_id=? OR poster_id=? LIMIT 1`).get(id, id);
     if (still) continue;
+    try {
+      const row = await db.prepare(`SELECT object_key, thumb_key FROM chat_files WHERE id=?`).get(id);
+      if (row) await objectStore.deleteKeys([row.object_key, row.thumb_key]);
+    } catch (err) { console.error("object-store chat delete", id, err.message || err); }
     await db.prepare(`DELETE FROM chat_files WHERE id=?`).run(id);
     try { fs.unlinkSync(cachePath(id)); } catch (_) { /* ok */ }
   }
@@ -221,6 +251,12 @@ function installChat({ app, getDb, auth, publicUser, blockedSet, pairIds, broadc
     }
     const variant = variantForQuery(req.query);
     let typ = baseMime(file.mime);
+    if (file.object_key && objectStore.enabled()) {
+      const key = (typ.startsWith("image/") && variant === "thumb" && file.thumb_key) ? file.thumb_key : file.object_key;
+      const signed = objectStore.presignGet(key, { expires: 60 * 60 });
+      res.setHeader("Cache-Control", "private, max-age=60");
+      return res.redirect(302, signed.url);
+    }
     let buffer = null;
     if (typ.startsWith("image/") && variant === "thumb" && file.thumb_data) {
       buffer = Buffer.from(file.thumb_data, "base64");

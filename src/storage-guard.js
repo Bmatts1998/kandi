@@ -1,8 +1,11 @@
 "use strict";
 
-// Videos are stored in Postgres (photo_files, base64). Neon's free plan caps a branch at 1 GiB,
-// and a full database would break logins too, so new video uploads pause before we get close.
+// Videos were stored in Postgres (photo_files, base64). Neon's free plan caps a branch at 1 GiB,
+// and a full database would break logins too, so new video uploads pause before we get close
+// unless S3-compatible object storage is configured (see src/object-store.js).
 // Cap: KANDI_MEDIA_DB_CAP_MB (default 800 MB of the 1024 MB limit). Photos are small and unaffected.
+
+const objectStore = require("./object-store");
 
 const CHECK_EVERY_MS = 5 * 60 * 1000;
 let cached = { at: 0, bytes: 0 };
@@ -25,6 +28,7 @@ async function dbBytes(db) {
 const FULL_MSG = "Video uploads are paused for a bit while we make room. Photos still work.";
 
 async function videoUploadAllowed(db) {
+  if (objectStore.enabled()) return { ok: true, usedBytes: 0, capBytes: capBytes(), error: FULL_MSG };
   const used = await dbBytes(db);
   return { ok: used < capBytes(), usedBytes: used, capBytes: capBytes(), error: FULL_MSG };
 }

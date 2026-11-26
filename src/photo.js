@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const sharp = require("sharp");
 const heicConvert = require("heic-convert");
+const objectStore = require("./object-store");
 
 const MAX_EDGE = 1080;
 const FULL_EDGE = 1080;
@@ -342,8 +343,9 @@ function pickFromRow(row, variant) {
 async function materializeVariants(db, row) {
   if (!row || isVideoOrAudioMime(row.mime) || Number(row.ready) === 1) return row;
   if (Number(row.ready) === -1) return row;
+  if (row.object_key && !row.data) return row;
   if (!row.data) {
-    const full = await photoQuery(db, `SELECT id, mime, data, thumb_data, thumb_mime, ready FROM photo_files WHERE id=?`, row.id);
+    const full = await photoQuery(db, `SELECT id, mime, data, thumb_data, thumb_mime, ready, storage, object_key, thumb_key FROM photo_files WHERE id=?`, row.id);
     if (!full) return row;
     row = full;
   }
@@ -376,7 +378,7 @@ async function materializeVariants(db, row) {
 async function loadPhotoRow(db, id, variant) {
   let row = await photoQuery(
     db,
-    `SELECT id, mime, thumb_data, thumb_mime, ready FROM photo_files WHERE id=?`,
+    `SELECT id, mime, thumb_data, thumb_mime, ready, storage, object_key, thumb_key FROM photo_files WHERE id=?`,
     id
   );
   if (!row) return null;
@@ -387,7 +389,7 @@ async function loadPhotoRow(db, id, variant) {
   if (needData || needProcess) {
     const full = await photoQuery(
       db,
-      `SELECT id, mime, data, thumb_data, thumb_mime, ready FROM photo_files WHERE id=?`,
+      `SELECT id, mime, data, thumb_data, thumb_mime, ready, storage, object_key, thumb_key FROM photo_files WHERE id=?`,
       id
     );
     if (full) row = full;
@@ -418,6 +420,13 @@ async function sendUploadedMedia(req, res, db) {
   }
   const row = await coalesced(String(id), () => loadPhotoRow(db, id, variant));
   if (!row) return false;
+  if (row.object_key && objectStore.enabled()) {
+    const key = (variant === "thumb" && row.thumb_key) ? row.thumb_key : row.object_key;
+    const signed = objectStore.presignGet(key);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.redirect(302, signed.url);
+    return true;
+  }
   const picked = pickFromRow(row, variant);
   if (!picked) return false;
   mediaCache.set(cacheKey, { buffer: picked.buffer, mime: picked.mime });
@@ -447,16 +456,45 @@ async function savePhotoFile(db, { id, userId, buffer, mime, ext, uploadDir } = 
     ready = 1;
   }
   const fileId = id || `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${outExt || ext || ""}`;
+  let storage = null;
+  let objectKey = null;
+  let thumbKey = null;
+  let dataVal = outBuf.toString("base64");
+  let thumbVal = thumbBuf ? thumbBuf.toString("base64") : null;
+  if (objectStore.enabled()) {
+    try {
+      const kind = isVideoOrAudioMime(outMime) ? "videos" : "photos";
+      objectKey = objectStore.keyFor({ visibility: "public", kind, userId, fileId });
+      await objectStore.putObject({ key: objectKey, body: outBuf, contentType: outMime });
+      if (thumbBuf) {
+        thumbKey = objectKey + ".thumb";
+        await objectStore.putObject({ key: thumbKey, body: thumbBuf, contentType: thumbMime });
+      }
+      storage = "s3";
+      dataVal = "";
+      thumbVal = null;
+    } catch (err) {
+      console.error("object-store put failed, using db:", err.message || err);
+      storage = null;
+      objectKey = null;
+      thumbKey = null;
+      dataVal = outBuf.toString("base64");
+      thumbVal = thumbBuf ? thumbBuf.toString("base64") : null;
+    }
+  }
   await db.prepare(
-    `INSERT INTO photo_files (id, user_id, mime, data, thumb_data, thumb_mime, ready) VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO photo_files (id, user_id, mime, data, thumb_data, thumb_mime, ready, storage, object_key, thumb_key) VALUES (?,?,?,?,?,?,?,?,?,?)`
   ).run(
     fileId,
     userId,
     outMime,
-    outBuf.toString("base64"),
-    thumbBuf ? thumbBuf.toString("base64") : null,
+    dataVal,
+    thumbVal,
     thumbMime,
-    ready
+    ready,
+    storage,
+    objectKey,
+    thumbKey
   );
   if (uploadDir) {
     try { fs.writeFileSync(path.join(uploadDir, fileId), outBuf); } catch (_) { /* ephemeral disk is ok */ }
@@ -491,7 +529,7 @@ async function backfillPhotoVariants(db, { limit = 800 } = {}) {
     if (!rows || !rows.length) break;
     for (const r of rows) {
       try {
-        const row = await photoQuery(db, `SELECT id, mime, data, thumb_data, thumb_mime, ready FROM photo_files WHERE id=?`, r.id);
+        const row = await photoQuery(db, `SELECT id, mime, data, thumb_data, thumb_mime, ready, storage, object_key, thumb_key FROM photo_files WHERE id=?`, r.id);
         if (!row || Number(row.ready) === 1 || Number(row.ready) === -1) continue;
         await materializeVariants(db, row);
         done++;
@@ -516,6 +554,38 @@ function startPhotoBackfill(db) {
   }, Number.isFinite(delay) ? Math.max(0, delay) : 4000);
 }
 
+
+async function removePhotoFile(db, id) {
+  if (!id) return;
+  try {
+    const row = await photoQuery(db, `SELECT object_key, thumb_key FROM photo_files WHERE id=?`, id);
+    if (row) await objectStore.deleteKeys([row.object_key, row.thumb_key]);
+  } catch (err) {
+    console.error("object-store delete photo", id, err.message || err);
+  }
+  await photoRun(db, `DELETE FROM photo_files WHERE id=?`, id);
+  forgetMedia(id);
+}
+
+async function removePhotoFilesForUser(db, userId) {
+  if (!userId) return;
+  try {
+    const rows = await photoAll(db, `SELECT object_key, thumb_key FROM photo_files WHERE user_id=?`, userId);
+    await objectStore.deleteKeys((rows || []).flatMap((r) => [r.object_key, r.thumb_key]));
+  } catch (err) {
+    console.error("object-store delete user photos", err.message || err);
+  }
+  await photoRun(db, `DELETE FROM photo_files WHERE user_id=?`, userId);
+}
+
+async function registerStoredPhotoFile(db, { id, userId, mime, key, thumbKey, ready }) {
+  const fileId = id || `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+  await db.prepare(
+    `INSERT INTO photo_files (id, user_id, mime, data, thumb_data, thumb_mime, ready, storage, object_key, thumb_key) VALUES (?,?,?,?,?,?,?,?,?,?)`
+  ).run(fileId, userId, mime || "application/octet-stream", "", null, null, ready == null ? 1 : ready, "s3", key, thumbKey || null);
+  return fileId;
+}
+
 module.exports = {
   forgetMedia,
   sniffImageMime,
@@ -523,6 +593,9 @@ module.exports = {
   buildVariants,
   servePhoto,
   savePhotoFile,
+  removePhotoFile,
+  removePhotoFilesForUser,
+  registerStoredPhotoFile,
   sendUploadedMedia,
   startPhotoBackfill,
   backfillPhotoVariants,

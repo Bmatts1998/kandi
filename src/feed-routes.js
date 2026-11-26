@@ -2,7 +2,7 @@
 const followRules = require("./follow-rules");
 
 const crypto = require("crypto");
-const { normalizePhoto, sniffImageMime, savePhotoFile } = require("./photo");
+const { normalizePhoto, sniffImageMime, savePhotoFile, removePhotoFile } = require("./photo");
 const { listUpcomingForProfile } = require("./meetup");
 const { contentRejected } = require("./content-filter");
 const { finishVideo } = require("./video");
@@ -158,7 +158,7 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     if (used) return;
     const row = await db().prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
     if (!row || Number(row.user_id) !== Number(userId)) return;
-    await db().prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
+    await removePhotoFile(db(), fileId);
   }
 
   async function storeBuffer(userId, buffer, mime, ext) {

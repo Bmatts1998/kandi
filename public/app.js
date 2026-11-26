@@ -2380,6 +2380,37 @@
       ${state.videoUpload ? `<div class="upload-busy video-up"><span class="spin"></span>${esc(state.videoUpload.text || "Getting your video ready…")}</div>` : uploadBusy()}
     </div>`;
   }
+
+  async function directPut(file, purpose, extra) {
+    const presign = await api("/api/media/presign", { method: "POST", body: Object.assign({ purpose, mime: file.type || "application/octet-stream", bytes: file.size }, extra || {}) });
+    if (!presign || !presign.url) throw new Error("Couldn't start a direct upload.");
+    const headers = Object.assign({}, presign.headers || {});
+    const r = await fetch(presign.url, { method: presign.method || "PUT", headers, body: file });
+    if (!r.ok) throw new Error("Direct upload failed (" + r.status + ").");
+    return presign;
+  }
+  async function directUploadProfileVideo(prepared, onProgress) {
+    if (onProgress) onProgress(5);
+    const video = await directPut(prepared.file, "video");
+    if (onProgress) onProgress(70);
+    let posterKey = "", posterFileId = "";
+    if (prepared.poster) {
+      try {
+        const poster = await directPut(prepared.poster, "poster");
+        posterKey = poster.key;
+        posterFileId = poster.fileId;
+      } catch (_) { /* poster is optional */ }
+    }
+    if (onProgress) onProgress(90);
+    return api("/api/me/video", { method: "POST", body: {
+      key: video.key,
+      fileId: video.fileId,
+      mime: prepared.file.type || "video/mp4",
+      duration: Math.round(prepared.duration || 0),
+      posterKey,
+      posterFileId,
+    } });
+  }
   async function uploadProfileVideo(file) {
     if (state.uploadingPhoto || state.videoUpload) return;
     const KV = window.KandiVideo;
@@ -2400,7 +2431,12 @@
       if (prepared.poster) fd.append("poster", prepared.poster, "poster.jpg");
       if (prepared.duration) fd.append("duration", String(Math.round(prepared.duration)));
       job.text = "Uploading video 0%…"; paint();
-      const data = await KV.upload("/api/me/video", fd, (pct) => { job.text = "Uploading video " + pct + "%…"; paint(); });
+      let data = null;
+      if (state.me && state.me.objectStorage && state.me.objectStorage.directUpload) {
+        try { data = await directUploadProfileVideo(prepared, (pct) => { job.text = "Uploading video " + pct + "%…"; paint(); }); }
+        catch (err) { console.warn("direct video upload failed, using server:", err && err.message); data = null; }
+      }
+      if (!data) data = await KV.upload("/api/me/video", fd, (pct) => { job.text = "Uploading video " + pct + "%…"; paint(); });
       if (!data.user) throw new Error("Upload failed");
       state.me = data.user;
       toast(prepared.trimmed ? "Video added (first 60 seconds)" : "Video added");

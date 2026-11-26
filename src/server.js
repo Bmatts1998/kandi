@@ -20,7 +20,9 @@ const referrals = require("./referrals");
 const { normalizeMeetIntent, canConnect, visibleInMode, resolveMode, allowedModes, matchKindFromMode, backfillMatchKinds } = require("./meet-intent");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
-const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, MAX_UPLOAD_BYTES } = require("./photo");
+const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, removePhotoFile, removePhotoFilesForUser, registerStoredPhotoFile, MAX_UPLOAD_BYTES } = require("./photo");
+const objectStore = require("./object-store");
+const { installObjectStoreRoutes } = require("./object-store-routes");
 const { eventKey, chipLabel } = require("./event-key");
 const {
   isAdult, loadGoingRows, shapeGoers, resolveEvent, setRsvp,
@@ -117,23 +119,24 @@ app.use(express.json({ limit: "1mb" }));
 app.get("/uploads/:id", async (req, res, next) => {
   try {
     // Videos are too big for the photo cache; keep a few in memory so iPhone range requests stay fast.
+    // Object-stored files redirect to a signed or public URL and never load the blob through Render.
     const vid = String(req.params.id || "");
+    if (await sendUploadedMedia(req, res, db)) return;
     const cached = videoTools.cacheGet(vid);
     if (cached) {
       res.setHeader("ETag", videoTools.etagFor(vid));
       return sendBuffer(req, res, cached.buffer, cached.mime);
     }
     if (/\.(mp4|mov|webm|m4v)$/i.test(vid)) {
-      const row = await db.prepare(`SELECT mime, data FROM photo_files WHERE id=?`).get(vid);
+      const row = await db.prepare(`SELECT mime, data, object_key FROM photo_files WHERE id=?`).get(vid);
       const mime = row ? String(row.mime || "") : "";
-      if (row && mime.startsWith("video/")) {
+      if (row && mime.startsWith("video/") && row.data) {
         const raw = Buffer.isBuffer(row.data) ? row.data : Buffer.from(String(row.data), "base64");
         videoTools.cachePut(vid, { buffer: raw, mime });
         res.setHeader("ETag", videoTools.etagFor(vid));
         return sendBuffer(req, res, raw, mime);
       }
     }
-    if (await sendUploadedMedia(req, res, db)) return;
     next();
   } catch (err) { next(err); }
 });
@@ -314,9 +317,8 @@ async function deletePhotoFileIfOwned(fileId, userId) {
   } catch (_) { /* stories table may not exist during a partial migrate */ }
   const row = await db.prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
   if (!row || Number(row.user_id) !== Number(userId)) return;
-  await db.prepare(`DELETE FROM photo_files WHERE id=? AND user_id=?`).run(fileId, userId);
+  await removePhotoFile(db, fileId);
   videoTools.cacheDelete(fileId);
-  require("./photo").forgetMedia(fileId);
   try { fs.unlinkSync(path.join(uploadDir, fileId)); } catch (_) { /* ephemeral disk is ok */ }
 }
 
@@ -443,6 +445,7 @@ function selfBillingExtra(user, req) {
     complimentaryActive: founding.hasActiveComp(user),
     founding: founding.publicFounding(user),
     billing: billing.publicBillingForUser(user, billing.getConfig(), { ios: isNativeIosClient(req) }),
+    objectStorage: objectStore.clientConfig(),
   };
 }
 function pairIds(a, b) {
@@ -594,9 +597,17 @@ app.delete("/api/account", auth, async (req, res) => {
   for (const sql of [`DELETE FROM chat_reads WHERE user_id=?`, `DELETE FROM notif_seen WHERE user_id=?`, `DELETE FROM we_met WHERE user_id=? OR other_id=?`]) {
     try { await db.prepare(sql).run(...(sql.includes("other_id") ? [id, id] : [id])); } catch (_) { /* table not created yet */ }
   }
-  try { await db.prepare(`DELETE FROM verification_requests WHERE user_id=?`).run(id); } catch (_) { /* table may not exist yet */ }
+  try {
+    const selfies = await db.prepare(`SELECT selfie_key FROM verification_requests WHERE user_id=?`).all(id);
+    await objectStore.deleteKeys((selfies || []).map((r) => r.selfie_key));
+    await db.prepare(`DELETE FROM verification_requests WHERE user_id=?`).run(id);
+  } catch (_) { /* table may not exist yet */ }
   try { await referrals.voidInvitee(db, id); } catch (_) { /* table may not exist yet */ }
-  await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
+  await removePhotoFilesForUser(db, id);
+  try {
+    const chats = await db.prepare(`SELECT object_key, thumb_key FROM chat_files WHERE user_id=?`).all(id);
+    await objectStore.deleteKeys((chats || []).flatMap((r) => [r.object_key, r.thumb_key]));
+  } catch (err) { console.error("object-store delete chat on account close:", err && err.message); }
   await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
   try { await billing.cancelStripeForUser(req.user, billing.getConfig()); } catch (err) {
@@ -860,8 +871,49 @@ app.post("/api/me/photo/main", auth, async (req, res) => {
   res.json({ user });
 });
 
+async function completeDirectProfileVideo(req, res) {
+  if (!objectStore.enabled()) return res.status(400).json({ error: "Direct uploads are not enabled yet." });
+  const key = String((req.body && req.body.key) || "");
+  const mimeIn = String((req.body && req.body.mime) || "video/mp4");
+  const fileIdIn = String((req.body && req.body.fileId) || "");
+  const posterKey = String((req.body && req.body.posterKey) || "");
+  const posterFileId = String((req.body && req.body.posterFileId) || "");
+  if (!key || !objectStore.keyOwnedBy(key, { userId: req.user.id, kind: "videos" })) {
+    return res.status(400).json({ error: "That upload doesn't belong to this account." });
+  }
+  const head = await objectStore.headObject(key);
+  if (!head) return res.status(400).json({ error: "We couldn't find that upload. Try again." });
+  if (head.contentLength && head.contentLength > MAX_VIDEO_BYTES) return res.status(400).json({ error: "That video didn't get shrunk before sending. Close and reopen Kandi, then try again." });
+  const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  const list = parsePhotos(fresh && fresh.photos);
+  if (!photosOnly(list).length) return res.status(400).json({ error: "Add a photo first. Your first slot is always a photo so people can see your face." });
+  if (videosOnly(list).length >= MAX_PROFILE_VIDEOS) return res.status(400).json({ error: "You can add up to " + MAX_PROFILE_VIDEOS + " videos. Remove one to add another." });
+  const videoId = fileIdIn || key.split("/").pop();
+  await registerStoredPhotoFile(db, { id: videoId, userId: req.user.id, mime: mimeIn, key, ready: 1 });
+  let posterId = null;
+  if (posterKey && objectStore.keyOwnedBy(posterKey, { userId: req.user.id, kind: "photos" })) {
+    const phead = await objectStore.headObject(posterKey);
+    if (phead) {
+      posterId = posterFileId || posterKey.split("/").pop();
+      try { await registerStoredPhotoFile(db, { id: posterId, userId: req.user.id, mime: phead.contentType || "image/jpeg", key: posterKey, ready: 1 }); }
+      catch (_) { posterId = null; }
+    }
+  }
+  const duration = Math.min(60, Math.max(0, Math.round(Number(req.body && req.body.duration) || 0)));
+  list.push({ type: "video", url: "/uploads/" + videoId, poster: posterId ? "/uploads/" + posterId : null, duration, caption: "" });
+  const user = await saveUserPhotos(req.user.id, list);
+  console.log("profile-video direct ok", { userId: Number(req.user.id), bytes: head.contentLength || 0, videoId });
+  res.json({ user });
+}
+
 // Profile videos: same browser shrink (public/video-prep.js), server finish and storage as posts/stories.
 app.post("/api/me/video", auth, (req, res) => {
+  if (String(req.headers["content-type"] || "").includes("application/json")) {
+    return completeDirectProfileVideo(req, res).catch((e) => {
+      console.error("profile video direct upload failed:", e && (e.message || e));
+      res.status(500).json({ error: "Couldn't add that video. Try again." });
+    });
+  }
   uploadPost.fields([{ name: "video", maxCount: 1 }, { name: "poster", maxCount: 1 }])(req, res, async (err) => {
     try {
       if (err) {
@@ -1730,6 +1782,7 @@ function broadcastToUser(userId, payload) {
   }
 }
 
+installObjectStoreRoutes({ app, auth });
 installStories({
   app,
   getDb: () => db,
@@ -1950,6 +2003,10 @@ async function boot() {
   }
   server.listen(PORT, HOST, () => {
     console.log(`Kandi v1 listening on http://${HOST}:${PORT}`);
+    if (objectStore.enabled()) {
+      console.log("object-store: enabled (uploads go to the configured bucket)");
+      objectStore.applyBucketCorsOnce();
+    }
     startPhotoBackfill(db);
   });
 }

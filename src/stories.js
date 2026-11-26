@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
-const { normalizePhoto, sniffImageMime, savePhotoFile, MAX_UPLOAD_BYTES } = require("./photo");
+const { normalizePhoto, sniffImageMime, savePhotoFile, removePhotoFile, MAX_UPLOAD_BYTES } = require("./photo");
 const {
   sniffVideoMime,
   MAX_STORY_VIDEO_BYTES,
@@ -65,7 +65,7 @@ function installStories({ app, getDb, auth, publicUser, blockedSet, broadcastToU
     if (await mediaInUse(fileId)) return;
     const row = await db().prepare(`SELECT user_id FROM photo_files WHERE id=?`).get(fileId);
     if (!row || (userId != null && Number(row.user_id) !== Number(userId))) return;
-    await db().prepare(`DELETE FROM photo_files WHERE id=?`).run(fileId);
+    await removePhotoFile(db(), fileId);
     if (uploadDir) {
       try { fs.unlinkSync(path.join(uploadDir, fileId)); } catch (_) { /* ephemeral disk is ok */ }
     }

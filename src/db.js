@@ -980,8 +980,14 @@ async function migrate(db) {
     await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS thumb_data TEXT");
     await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS thumb_mime TEXT");
     await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS ready INTEGER DEFAULT 0");
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS storage TEXT");
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS object_key TEXT");
+    await db.exec("ALTER TABLE photo_files ADD COLUMN IF NOT EXISTS thumb_key TEXT");
     await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS thumb_data TEXT");
     await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS thumb_mime TEXT");
+    await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS storage TEXT");
+    await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS object_key TEXT");
+    await db.exec("ALTER TABLE chat_files ADD COLUMN IF NOT EXISTS thumb_key TEXT");
   } else {
     try { await db.exec("ALTER TABLE matches ADD COLUMN disappear INTEGER DEFAULT 0"); } catch (_) {}
     for (const [col, typ] of messageCols) {
@@ -1000,8 +1006,14 @@ async function migrate(db) {
       "ALTER TABLE photo_files ADD COLUMN thumb_data TEXT",
       "ALTER TABLE photo_files ADD COLUMN thumb_mime TEXT",
       "ALTER TABLE photo_files ADD COLUMN ready INTEGER DEFAULT 0",
+      "ALTER TABLE photo_files ADD COLUMN storage TEXT",
+      "ALTER TABLE photo_files ADD COLUMN object_key TEXT",
+      "ALTER TABLE photo_files ADD COLUMN thumb_key TEXT",
       "ALTER TABLE chat_files ADD COLUMN thumb_data TEXT",
       "ALTER TABLE chat_files ADD COLUMN thumb_mime TEXT",
+      "ALTER TABLE chat_files ADD COLUMN storage TEXT",
+      "ALTER TABLE chat_files ADD COLUMN object_key TEXT",
+      "ALTER TABLE chat_files ADD COLUMN thumb_key TEXT",
     ]) {
       try { await db.exec(sql); } catch (_) { /* already exists */ }
     }
