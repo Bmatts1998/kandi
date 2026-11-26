@@ -531,7 +531,7 @@ app.post("/api/signup", async (req, res) => {
         .run(d.id, user.id, "photo", "0", "Welcome to the floor.");
     } catch (_) { /* already liked */ }
   }
-  res.json({ user: publicUser(user, selfEmailExtra(user)), emailSent });
+  res.json({ user: publicUser(user, selfBillingExtra(user, req)), emailSent });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -549,7 +549,7 @@ app.post("/api/login", async (req, res) => {
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, user.id);
   setSessionCookie(res, token, req);
   try { await referrals.touchUser(db, req, res, user); } catch (_) {}
-  res.json({ user: publicUser(user, selfEmailExtra(user)), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
+  res.json({ user: publicUser(user, selfBillingExtra(user, req)), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
 });
 
 app.post("/api/logout", auth, async (req, res) => {
@@ -951,11 +951,15 @@ app.get("/api/discover", auth, async (req, res) => {
   let people = rows.map((u) => {
     const shared = sharedFor(u.id);
     const theirVibes = normalizeGenreIds(parseJsonList(u.vibes, []));
+    const showUpcoming = u.show_upcoming == null || Number(u.show_upcoming) !== 0;
     return publicUser(u, {
       sharedEvents: shared,
       sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
       sharedGenres: sharedGenreIds(myGenres, theirVibes),
       sharedGenreChip: sharedGenreChip(myGenres, theirVibes),
+      upcomingShows: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => compactShow(e)) : [],
+      upcomingHidden: !showUpcoming,
+      showUpcoming,
     });
   });
   if (genreId) people = people.filter((p) => p.vibes.includes(genreId));

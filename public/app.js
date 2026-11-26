@@ -2940,18 +2940,15 @@
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
       return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
-        ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
-        <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
+        ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
       ${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
-      ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
-      <button class="heart-fab${liked ? " loved" : ""}" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
+      ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
   }
   function promptEl(p, pr) {
-    return `<div class="prompt"><div class="q">${esc(pr.q)}</div><div class="a">${esc(pr.a)}</div>
-      <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="prompt" data-target="${esc(pr.id)}" aria-label="Like this prompt">♡</button></div>`;
+    return `<div class="prompt"><div class="q">${esc(pr.q)}</div><div class="a">${esc(pr.a)}</div></div>`;
   }
 
   function viewClaim() {
@@ -3271,7 +3268,10 @@
   }
 
   function viewDiscover() {
-    const right = `<span class="pill">${isPlus() ? "Unlimited likes" : (state.likesLeft + " likes left")}</span>
+    const p = state.feed[0];
+    const right = `<span class="pill">${isPlus() ? "Unlimited likes" : ((state.likesLeft == null ? "" : state.likesLeft + " likes left") || "Likes")}</span>
+      ${p ? `<button type="button" class="icon-btn" data-act="rewind" aria-label="Rewind last pass">↺</button>
+      <button type="button" class="icon-btn" data-act="report" data-id="${p.id}" aria-label="More">⋯</button>` : ""}
       <button class="icon-btn" data-act="filters" title="Filters" aria-label="Filters">✺</button>`;
     const evf = parseEventFilter(state.filters && state.filters.event);
     const sameOn = evf.type !== "all";
@@ -3284,7 +3284,6 @@
       ? `<div class="same-show-bar"><button type="button" class="chip on" data-act="set-genre" data-id="all">Genre: ${esc(vibeLabel(state.filters.genre))} · Clear</button></div>`
       : "";
     const mode = discoverMode();
-    const p = state.feed[0];
     if (!p) {
       return header("Kandi", right) + `<div class="scroll pad">${discoverModeBar()}${sameBar}${genreBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : (mode === "dating"
           ? (allowedDiscoverModes(state.me).includes("friends") ? "No one in Dating mode right now. Try Friends, or check back when more ravers join." : "No one in Dating mode right now. Check back when more ravers join, or rewind a pass.")
@@ -3293,44 +3292,47 @@
         <button class="btn sm primary" style="margin-top:16px" data-act="rewind">Rewind last pass</button></div></div>`;
     }
     const parts = [];
-    if ((p.photos || []).length) parts.push(photoEl(p, 0, true));
+    const photos = p.photos || [];
+    if (photos.length) parts.push(photoEl(p, 0, true));
     else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
-      <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
-    if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
+      <div class="emoji">${esc(initialOf(p))}</div></div>`);
+    const prompts = p.prompts || [];
+    if (prompts[0]) parts.push(promptEl(p, prompts[0]));
     if (mySongs(p).length) parts.push(`<div class="disco-song">${discoverSongs(p)}</div>`);
     const dv = videosOf(p);
-    if (dv.length) parts.push(videoTileHtml(dv[0], "d" + p.id + "-v0", { big: true, extra: `<button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="v0" aria-label="Like this video">♡</button>` }));
-    if (p.photos[1]) parts.push(photoEl(p, 1, false));
-    if (p.prompts[1]) parts.push(promptEl(p, p.prompts[1]));
-    if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
+    dv.forEach((v, i) => parts.push(videoTileHtml(v, "d" + p.id + "-v" + i, { big: i === 0 })));
+    photos.slice(1).forEach((_, i) => parts.push(photoEl(p, i + 1, false)));
+    prompts.slice(1).forEach((pr) => parts.push(promptEl(p, pr)));
     const discoChips = [];
     if (p.age) discoChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
     if (meetIntentChip(p)) discoChips.push(meetIntentChip(p));
+    if ((p.looking || []).length) {
+      discoChips.push(`<span class="chip soft">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ")}</span>`);
+    }
     if (p.gender) discoChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
     const discoHeight = formatHeight(p.heightIn);
     if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
     (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
+    const showsHidden = Boolean(p.upcomingHidden) || p.showUpcoming === false;
+    const shows = showsHidden ? [] : (p.upcomingShows || []);
     parts.push(`<div class="meta-card">${genreRow(p)}<div class="chips" style="margin:8px 0">${discoChips.join("")}</div>
-      <div class="muted">Looking for ${esc(meetIntentLabel(p.meetIntent) || "—")}${(p.looking || []).length ? " · " + (p.looking || []).map((lid) => lookingLabel(lid)).join(", ") : ""}</div>
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       ${crewBadgesHtml(p.id)}
+      ${upcomingBlock(shows, { hidden: showsHidden })}
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div>
-      <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" data-act="open-profile" data-id="${p.id}">View posts &amp; profile</button>
-      <button type="button" class="btn sm ghost" data-act="report" data-id="${p.id}">Report</button></div></div>`);
-    return header("Kandi", right) + `<div class="scroll">${discoverModeBar()}${sameBar}${genreBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
-      <div class="float-actions">
-        <button class="round rewind" data-act="rewind" aria-label="Rewind last pass">↺</button>
-        <button class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass on ${esc(p.name)}">✕</button>
-        <button class="round like" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♥</button>
-      </div>
-      <p class="tiny" style="text-align:center;padding-bottom:8px">Tap ♥ to like, ✕ to pass, or like a specific photo or prompt and add a comment.</p></div>`;
+      <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" data-act="open-profile" data-id="${p.id}">View posts &amp; profile</button></div></div>`);
+    return header("Kandi", right) + `<div class="scroll">${discoverModeBar()}${sameBar}${genreBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div></div>
+      <div class="float-actions disco-actions">
+        <button type="button" class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass on ${esc(p.name)}">✕</button>
+        <button type="button" class="round like" data-act="want-like" data-id="${p.id}" aria-label="Like ${esc(p.name)}">♥</button>
+      </div>`;
   }
 
   function viewLikes() {
     const head = header("Likes You", `<span class="pill">${state.inbound.count || 0}</span>`);
     if (state.inbound.locked) {
       const preview = state.inbound.people || [];
-      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked a photo or prompt of yours. ${isNativeIos() ? "" : (!paymentsEnabled() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are.")}</p>
+      return head + `<div class="scroll pad"><p class="sub" style="margin-bottom:14px">People who liked you. ${isNativeIos() ? "" : (!paymentsEnabled() ? "Seeing who likes you will be part of Kandi+ when it launches." : "Unlock Kandi+ to see who they are.")}</p>
         <div class="lock-grid">${preview.map((p, i) => `<div style="position:relative;overflow:hidden;border-radius:16px;height:180px;background:#111111">
           <div class="lock-card blurred" style="height:100%"></div>
           <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:28px">🔒</div></div>`).join("")}</div>
@@ -3341,15 +3343,14 @@
         <p class="tiny" style="text-align:center;margin-top:10px">${paymentsEnabled() ? "Kandi+ unlocks who likes you, unlimited likes, and filters." : "Kandi+ isn't available to purchase yet."}</p></div>`}`;
     }
     if (!state.inbound.people.length) {
-      return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes a photo or prompt, they'll land here.</p></div></div>`;
+      return head + `<div class="scroll pad"><div class="empty"><p>No new likes right now. When someone likes you, they'll land here.</p></div></div>`;
     }
     return head + `<div class="scroll pad">${state.inbound.people.map((p) => {
       const info = p.liked || {};
-      const detail = info.type === "prompt" ? ((p.prompts.find((x) => x.id === info.targetId) || {}).q || "a prompt") : (/^v\d/.test(String(info.targetId || "")) ? "a video" : "a photo");
       return `<div class="card" style="margin-bottom:10px"><div class="row">
         <button class="av-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av md")}</button>
-        <div class="grow"><div style="font-weight:600">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 2 })}
-          <div class="muted">Liked ${esc(detail)}</div>
+        <div class="grow"><div style="font-weight:600">${personName(p)}</div>${genreRow(p, { compact: true, max: 2 })}
+          <div class="muted">Liked you</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn sm primary" data-act="like-back" data-id="${p.id}">Like back</button>
@@ -4606,14 +4607,15 @@
     }
     if (o.type === "match") {
       const p = o.person;
+      const kind = matchKindLabel((o.matchKind || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).matchKind)) || "";
       return `<div class="overlay"><div class="match-wrap">
         <div class="avatars">${personAvatar(state.me, "av")}${beads(5, "sm")}
         ${personAvatar(p, "av")}</div>
-        <h2>${esc(matchKindLabel((o.matchKind || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).matchKind)) || "It's a trade!")}</h2>
-        <p class="sub">${esc(state.me.name)} and ${esc(p.name)} liked each other. Time to trade kandi — or at least a hello.</p>
+        <h2>It's a match</h2>
+        ${kind ? `<p class="sub" style="font-weight:700;margin-top:0">${esc(kind)}</p>` : ""}
+        <p class="sub">${esc(state.me.name)} and ${esc(p.name)} liked each other.</p>
         ${bothGoingLine(o.sharedEvents || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).sharedEvents, o.meetPlan || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).meetPlan)}
-        ${(o.sharedEvents || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).sharedEvents || []).length ? `<button class="btn ghost" style="margin-top:12px;max-width:280px" data-act="pick-meet" data-id="${p.id}">Pick a meet spot</button>` : ""}
-        <button class="btn primary" style="margin-top:12px;max-width:280px" data-act="chat" data-id="${p.id}">Send a message</button>
+        <button class="btn primary" style="margin-top:16px;max-width:280px" data-act="chat" data-id="${p.id}">Send a message</button>
         <button class="btn ghost" style="margin-top:8px;max-width:280px" data-act="close">Keep browsing</button></div></div>`;
     }
     if (o.type === "liked") {
@@ -6273,43 +6275,40 @@
         await loadFeed();
         render(); return;
       }
-      if (act === "want-like") {
+      if (act === "want-like" || act === "like-back" || act === "send-like") {
+        const o = state.overlay && state.overlay.type === "likeSheet" ? state.overlay : null;
+        const toId = act === "send-like" ? (o && o.id) : Number(id);
+        if (!toId) return;
         if (!isPlus() && state.likesLeft === 0) {
           state.overlay = { type: isNativeIos() ? "likeLimit" : "paywall", reason: "likes" };
           render(); return;
         }
-        state.drafts.comment = "";
-        const person = state.feed.find((x) => String(x.id) === String(id)) || (state.inbound.people || []).find((x) => String(x.id) === String(id)) || state.nearby.find((x) => String(x.id) === String(id));
-        state.overlay = { type: "likeSheet", id: Number(id), typeTarget: el.getAttribute("data-type"), targetId: el.getAttribute("data-target"), person }; render(); return;
-      }
-      if (act === "like-chip") { state.drafts.comment = el.getAttribute("data-t") || ""; render(); return; }
-      if (act === "send-like") {
-        const o = state.overlay;
-        const result = await api("/api/like", { method: "POST", body: { userId: o.id, type: o.typeTarget, targetId: o.targetId, comment: state.drafts.comment, mode: discoverMode() } });
+        const person = (o && o.person)
+          || state.feed.find((x) => String(x.id) === String(toId))
+          || (state.inbound.people || []).find((x) => String(x.id) === String(toId))
+          || (state.nearby || []).find((x) => String(x.id) === String(toId));
+        const result = await api("/api/like", { method: "POST", body: { userId: Number(toId), type: "photo", targetId: "0", comment: "", mode: discoverMode() } });
         state.likesLeft = result.likesLeft;
         if (result.matched) {
-          let person = o.person;
-          if (!person) {
+          let who = person;
+          if (!who) {
             const m = await api("/api/matches");
             state.matches = m.matches;
-            person = (m.matches.find((x) => x.user.id === o.id) || {}).user;
+            who = (m.matches.find((x) => String(x.user.id) === String(toId)) || {}).user;
           }
-          state.overlay = { type: "match", person: person || { id: o.id, name: "them", photos: [] }, matchKind: result.matchKind || "" };
-        } else state.overlay = { type: "liked" };
+          state.overlay = { type: "match", person: who || { id: Number(toId), name: "them", photos: [] }, matchKind: result.matchKind || "" };
+        } else {
+          state.overlay = null;
+        }
         render();
         await Promise.allSettled([loadFeed(), loadInbound(), loadMatches()]);
-        render(); return;
-      }
-      if (act === "like-back") {
-        const result = await api("/api/like", { method: "POST", body: { userId: Number(id), type: "photo", targetId: "0", comment: "", mode: discoverMode() } });
-        state.likesLeft = result.likesLeft;
-        await loadInbound(); await loadMatches(); await loadFeed();
-        if (result.matched) {
-          const m = state.matches.find((x) => String(x.user.id) === String(id));
-          state.overlay = { type: "match", person: m ? m.user : { id: Number(id), name: "them", photos: [] }, matchKind: result.matchKind || (m && m.matchKind) || "" };
+        if (result.matched && state.overlay && state.overlay.type === "match" && !state.overlay.person.name) {
+          const m = (state.matches || []).find((x) => String(x.user.id) === String(toId));
+          if (m) state.overlay.person = m.user;
         }
         render(); return;
       }
+      if (act === "like-chip") { state.drafts.comment = el.getAttribute("data-t") || ""; render(); return; }
       if (act === "pass") { await api("/api/pass", { method: "POST", body: { userId: Number(id) } }); await loadFeed(); await loadInbound(); render(); return; }
       if (act === "rewind") {
         await api("/api/rewind", { method: "POST", body: {} });
