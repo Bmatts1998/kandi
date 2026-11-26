@@ -1767,6 +1767,10 @@ installGroups({
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "kandi" }));
+app.get("/healthz", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.type("text").send("ok");
+});
 
 app.get(["/privacy", "/privacy.html"], (_req, res) => {
   res.sendFile(path.join(root, "public", "privacy.html"));
