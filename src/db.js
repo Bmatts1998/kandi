@@ -1035,6 +1035,7 @@ async function migrate(db) {
   } catch (err) { console.error("songs migration:", err.message || err); }
   await migrateGenderValues(db);
   await require("./verification").migrateVerification(db);
+  await require("./meet-intent").migrateMeetIntent(db);
 }
 
 // man/woman -> male/female, and copy sex into gender when gender was left blank.

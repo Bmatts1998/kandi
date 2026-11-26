@@ -374,3 +374,13 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 .admin-ph.selfie { max-width: 160px; }
 .admin-ph-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .admin-ph-row .admin-ph { width: 72px; min-width: 72px; }
+
+.tagline { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; margin: 18px 0 0; line-height: 1.2; }
+.tag-sub { margin-top: 8px; }
+.chip.soft.meet-intent, .chip.soft.match-kind { border-color: rgba(255,255,255,.18); letter-spacing: 0.01em; }
+.mode-toggle { display: flex; gap: 0; margin: 10px 16px 12px; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+.scroll.pad > .mode-toggle { margin-left: 0; margin-right: 0; }
+.mode-toggle button, .mode-toggle span { flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: 9px; text-align: center; }
+.mode-toggle button.on, .mode-toggle span.on { background: rgba(255,255,255,.12); color: #fff; }
+.mode-toggle.single { max-width: 180px; }
+.match-kind { margin-left: 6px; font-weight: 500; font-size: 11px; vertical-align: 1px; }

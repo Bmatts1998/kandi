@@ -1,7 +1,7 @@
 {
   "name": "Kandi",
   "short_name": "Kandi",
-  "description": "Find your people on the floor.",
+  "description": "Find your rave crew. Make friends, find a date, go to shows together.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

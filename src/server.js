@@ -16,6 +16,7 @@ const { installFeed } = require("./feed-routes");
 const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
 const { installShowInvites } = require("./show-invites");
 const { installVerification, isAdminUser, maybeStaleVerification, publicStatus } = require("./verification");
+const { normalizeMeetIntent, canConnect, visibleInMode, resolveMode, allowedModes, matchKindFromMode, backfillMatchKinds } = require("./meet-intent");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
 const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, MAX_UPLOAD_BYTES } = require("./photo");
@@ -361,6 +362,7 @@ function publicUser(u, extra) {
     foundingNumber: u.founding_number ? Number(u.founding_number) : null,
     homeLocation: u.home_location || "",
     verified: publicStatus(u) === "approved",
+    meetIntent: normalizeMeetIntent(u.meet_intent),
     ...(extra || {}),
   };
 }
@@ -488,6 +490,7 @@ app.post("/api/signup", async (req, res) => {
     // Birthday is the source of truth for 18+.
   }
   const homeLocation = clipText(req.body.homeLocation || req.body.home_location || "", 80, "");
+  const meetIntent = normalizeMeetIntent(req.body.meetIntent || req.body.meet_intent, "both");
   const exists = await db.prepare(`SELECT id FROM users WHERE lower(username)=?`).get(username);
   if (exists) return res.status(409).json({ error: "That username is taken." });
   if (await emailTaken(email)) return res.status(409).json({ error: "That email is already on a Kandi account. Log in instead, or use a different email.", field: "email" });
@@ -495,7 +498,7 @@ app.post("/api/signup", async (req, res) => {
   const mustVerify = mailer.verificationActive() ? 1 : 0;
   let info;
   try {
-    info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location,email,email_verify_required) VALUES (?,?,?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null, email, mustVerify);
+    info = await db.prepare(`INSERT INTO users (username,password_hash,name,age,date_of_birth,home_location,email,email_verify_required,meet_intent) VALUES (?,?,?,?,?,?,?,?,?)`).run(username, hash, name, age, (dob && dob.value) || null, homeLocation || null, email, mustVerify, meetIntent);
   } catch (err) {
     if (/unique|duplicate/i.test(String(err && err.message))) return res.status(409).json({ error: "That username or email is already taken." });
     throw err;
@@ -652,6 +655,9 @@ app.put("/api/me", auth, async (req, res) => {
   const bio = body.bio != null ? String(body.bio).slice(0, 500) : req.user.bio;
   const vibes = body.vibes != null ? JSON.stringify(normalizeGenreIds(body.vibes)) : req.user.vibes;
   const looking = body.looking != null ? JSON.stringify(cleanLooking(body.looking)) : req.user.looking;
+  const meetIntent = body.meetIntent != null || body.meet_intent != null
+    ? normalizeMeetIntent(body.meetIntent || body.meet_intent, "both")
+    : normalizeMeetIntent(req.user.meet_intent, "both");
   if (body.prompts != null) body.prompts = cleanPrompts(body.prompts);
   const prompts = body.prompts != null ? JSON.stringify(body.prompts) : req.user.prompts;
   if (!name || name.length < 2) return res.status(400).json({ error: "Name is required." });
@@ -747,8 +753,8 @@ app.put("/api/me", auth, async (req, res) => {
     songList = first ? [first, ...songList.slice(1).filter((x) => x.trackId !== first.trackId)].slice(0, songs.MAX_SONGS) : songList.slice(1);
     if (!first && songList[0]) favoriteSong = JSON.stringify(songList[0]);
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=?, songs=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, JSON.stringify(songList), req.user.id
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=?, songs=?, meet_intent=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, JSON.stringify(songList), meetIntent, req.user.id
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
@@ -900,6 +906,7 @@ app.get("/api/discover", auth, async (req, res) => {
   const genre = String(req.query.genre || "all");
   const event = String(req.query.event || "all");
   const gender = String(req.query.gender || "all");
+  const mode = resolveMode(req.user, req.query.mode || req.query.meet);
   const ageMin = Number(req.query.ageMin);
   const ageMax = Number(req.query.ageMax);
   // Genre badges are a core, free Discover filter. Event-specific filters stay Kandi+,
@@ -945,6 +952,7 @@ app.get("/api/discover", auth, async (req, res) => {
       return theirs.some((e) => e.id === event || e.event_key === event) || (p.events || []).includes(event);
     });
   }
+  people = people.filter((p) => visibleInMode(req.user, { ...p, meet_intent: p.meetIntent, interested_in: p.interestedIn }, mode));
   if (gender !== "all") people = people.filter((p) => genderMatches(p.gender, gender));
   const lo = Number.isFinite(ageMin) ? ageMin : 18;
   const hi = Number.isFinite(ageMax) ? ageMax : 99;
@@ -953,17 +961,20 @@ app.get("/api/discover", auth, async (req, res) => {
   }
   res.json({
     people,
+    mode,
+    allowedModes: allowedModes(req.user),
     likesLeft: isPlus(req.user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
   });
 });
 
-async function maybeMatch(fromId, toId) {
+async function maybeMatch(fromId, toId, kind) {
   const back = await db.prepare(`SELECT id FROM likes WHERE from_id=? AND to_id=?`).get(toId, fromId);
   if (!back) return null;
   const [a, b] = pairIds(fromId, toId);
   const existing = await db.prepare(`SELECT * FROM matches WHERE a_id=? AND b_id=?`).get(a, b);
   if (existing) return existing;
-  const info = await db.prepare(`INSERT INTO matches (a_id, b_id) VALUES (?,?)`).run(a, b);
+  const matchKind = kind === "date" ? "date" : "friend";
+  const info = await db.prepare(`INSERT INTO matches (a_id, b_id, match_kind) VALUES (?,?,?)`).run(a, b, matchKind);
   try { await followRules.clearUnmatched(db, a, b); } catch (_) {}
   return await db.prepare(`SELECT * FROM matches WHERE id=?`).get(Number(info.lastInsertRowid));
 }
@@ -975,6 +986,12 @@ app.post("/api/like", auth, async (req, res) => {
   const comment = String(req.body.comment || "").slice(0, 280);
   if (!toId || toId === req.user.id) return res.status(400).json({ error: "Invalid like." });
   if ((await blockedSet(req.user.id)).has(toId)) return res.status(400).json({ error: "You can't like this person." });
+  const targetUser = await db.prepare(`SELECT * FROM users WHERE id=?`).get(toId);
+  if (!targetUser) return res.status(404).json({ error: "That profile isn't available." });
+  const mode = resolveMode(req.user, req.body.mode || req.body.meetMode);
+  if (!visibleInMode(req.user, targetUser, mode)) {
+    return res.status(400).json({ error: "They're not in this Discover mode, or you're looking for different things." });
+  }
   if (!isPlus(req.user) && await likesUsedToday(req.user.id) >= DAILY_LIKES) {
     return res.status(402).json({ error: "You're out of free likes today.", code: "plus_required", reason: "likes" });
   }
@@ -985,14 +1002,15 @@ app.post("/api/like", auth, async (req, res) => {
   }
   await db.prepare(`DELETE FROM passes WHERE from_id=? AND to_id=?`).run(req.user.id, toId);
   if (!isPlus(req.user)) await bumpLike(req.user.id);
-  const match = await maybeMatch(req.user.id, toId);
-  if (match) broadcastToUser(toId, { type: "match", user: publicUser(req.user), matchId: match.id });
+  const match = await maybeMatch(req.user.id, toId, matchKindFromMode(mode));
+  if (match) broadcastToUser(toId, { type: "match", user: publicUser(req.user), matchId: match.id, matchKind: match.match_kind || matchKindFromMode(mode) });
   else broadcastToUser(toId, { type: "like", from: publicUser(req.user), targetType, targetId, comment });
   engagement.scheduleRefresh();
   res.json({
     ok: true,
     matched: Boolean(match),
     matchId: match ? match.id : null,
+    matchKind: match ? (match.match_kind || "") : "",
     likesLeft: isPlus(req.user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(req.user.id)),
   });
 });
@@ -1038,14 +1056,15 @@ app.get("/api/likes-received", auth, async (req, res) => {
     AND NOT EXISTS (SELECT 1 FROM matches m WHERE (m.a_id=l.from_id AND m.b_id=l.to_id) OR (m.a_id=l.to_id AND m.b_id=l.from_id))
     ORDER BY l.created_at DESC
   `).all(req.user.id, req.user.id, req.user.id);
-  const count = rows.length;
+  const visible = rows.filter((r) => canConnect(req.user, r));
+  const count = visible.length;
   if (!isPlus(req.user)) {
-    return res.json({ locked: true, count, people: rows.slice(0, 4).map((r) => ({ blurred: true, photos: publicUser(r).photos })) });
+    return res.json({ locked: true, count, people: visible.slice(0, 4).map((r) => ({ blurred: true, photos: publicUser(r).photos })) });
   }
   res.json({
     locked: false,
     count,
-    people: rows.map((r) => ({
+    people: visible.map((r) => ({
       ...publicUser(r),
       liked: { type: r.target_type, targetId: r.target_id, comment: r.like_comment },
     })),
@@ -1064,6 +1083,7 @@ app.get("/api/matches", auth, async (req, res) => {
     const shared = other ? await sharedShows(db, req.user.id, otherId) : [];
     const item = {
       matchId: m.id,
+      matchKind: m.match_kind || "",
       user: publicUser(other),
       lastMessage: last ? { text: previewText(last), preview: previewText(last), attachType: last.attach_type || null, fromId: last.from_id, at: last.created_at } : null,
       createdAt: m.created_at,
@@ -1827,6 +1847,18 @@ async function boot() {
         console.error("Demo genre seed on boot failed:", err.message || err);
       }
     }
+  }
+  try {
+    const n = await require("./seed").ensureDemoMeetIntent(db);
+    if (n) console.log("Set looking-for (friends/dating/both) on " + n + " demo profiles.");
+  } catch (err) {
+    console.error("Demo meet intent seed failed:", err.message || err);
+  }
+  try {
+    const n = await backfillMatchKinds(db);
+    if (n) console.log("Labeled " + n + " existing match(es) as friend or date.");
+  } catch (err) {
+    console.error("match kind backfill failed:", err.message || err);
   }
   try {
     const n = await require("./seed").ensureDemoSongs(db);

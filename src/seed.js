@@ -200,6 +200,7 @@ async function seed(existingDb) {
 
   // Attach demo accounts to upcoming real imported shows (not the retired sample festivals).
   await seedDemoMeetups(db);
+  await ensureDemoMeetIntent(db);
 
   // Some demo-to-demo likes so mutual matches can happen among seeds if needed
   const incoming = [
@@ -507,6 +508,28 @@ if (require.main === module) {
   });
 }
 
+
+const DEMO_MEET_INTENT = {
+  riot: "friends",
+  jade: "friends",
+  pixel: "friends",
+  orion: "dating",
+  ember: "dating",
+  nova: "dating",
+  hex: "both",
+  luna: "both",
+  vesper: "both",
+  sol: "both",
+};
+
+async function ensureDemoMeetIntent(db) {
+  let n = 0;
+  for (const [username, intent] of Object.entries(DEMO_MEET_INTENT)) {
+    const info = await db.prepare(`UPDATE users SET meet_intent=? WHERE lower(username)=? AND is_demo=1`).run(intent, username);
+    if (info && Number(info.changes)) n += 1;
+  }
+  return n;
+}
 
 async function ensureDemoGenres(db) {
   const { normalizeGenreIds } = require("./genres");
@@ -893,4 +916,4 @@ async function ensureDemoSongs(db) {
   return n;
 }
 
-module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, ensureDemoSongs, DEMO_SONGS, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, ensureDemoMeetIntent, ensureDemoSongs, DEMO_SONGS, DEMO_MEET_INTENT, DEMO_PASSWORD, EVENTS, USERS };

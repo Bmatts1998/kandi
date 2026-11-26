@@ -42,6 +42,12 @@
     { id: "hookup", label: "Hookups" },
     { id: "dance", label: "Dance partner" },
   ];
+  const MEET_INTENTS = [
+    { id: "friends", label: "Friends" },
+    { id: "dating", label: "Dating" },
+    { id: "both", label: "Both" },
+  ];
+  const DISCOVER_MODE_KEY = "kandiDiscoverMode";
   const GENDERS = [
     { id: "female", label: "Female" },
     { id: "male", label: "Male" },
@@ -98,6 +104,64 @@
   }
 
   function lookingLabel(id) { return LOOKING_LABEL[id] || id; }
+  function meetIntentLabel(id) {
+    if (id === "friends") return "Friends";
+    if (id === "dating") return "Dating";
+    if (id === "both") return "Both";
+    return "";
+  }
+  function meetIntentChip(p) {
+    const label = meetIntentLabel(p && p.meetIntent);
+    if (!label) return "";
+    return `<span class="chip soft meet-intent">${esc(label)}</span>`;
+  }
+  function allowedDiscoverModes(person) {
+    const i = (person && person.meetIntent) || "both";
+    if (i === "friends") return ["friends"];
+    if (i === "dating") return ["dating"];
+    return ["friends", "dating"];
+  }
+  function readStoredDiscoverMode() {
+    try { return localStorage.getItem(DISCOVER_MODE_KEY) || ""; } catch (_) { return ""; }
+  }
+  function discoverMode() {
+    const allowed = allowedDiscoverModes(state.me);
+    const cur = state.discoverMode || readStoredDiscoverMode();
+    if (allowed.includes(cur)) return cur;
+    return allowed[0];
+  }
+  function setDiscoverMode(mode, persist) {
+    const allowed = allowedDiscoverModes(state.me);
+    const next = allowed.includes(mode) ? mode : allowed[0];
+    state.discoverMode = next;
+    if (persist !== false) {
+      try { localStorage.setItem(DISCOVER_MODE_KEY, next); } catch (_) {}
+    }
+    return next;
+  }
+  function matchKindLabel(kind) {
+    if (kind === "friend") return "Friend match";
+    if (kind === "date") return "Date match";
+    return "";
+  }
+  function matchKindChip(m) {
+    const label = matchKindLabel(m && m.matchKind);
+    if (!label) return "";
+    return `<span class="chip soft match-kind">${esc(label)}</span>`;
+  }
+  function matchForUser(userId) {
+    return (state.matches || []).find((m) => m.user && Number(m.user.id) === Number(userId));
+  }
+  function discoverModeBar() {
+    const modes = allowedDiscoverModes(state.me);
+    const cur = discoverMode();
+    if (modes.length < 2) {
+      return `<div class="mode-toggle single" aria-label="Discover mode"><span class="on">${cur === "dating" ? "Dating" : "Friends"}</span></div>`;
+    }
+    return `<div class="mode-toggle" role="tablist" aria-label="Discover mode">${
+      modes.map((id) => `<button type="button" role="tab" class="${cur === id ? "on" : ""}" aria-selected="${cur === id ? "true" : "false"}" data-act="set-discover-mode" data-id="${id}">${id === "dating" ? "Dating" : "Friends"}</button>`).join("")
+    }</div>`;
+  }
   function genderLabel(id) {
     const key = String(id || "").trim().toLowerCase();
     if (key === "man" || key === "male" || key === "m") return "Male";
@@ -671,6 +735,7 @@
       pronouns: me.pronouns || "",
       sex: me.sex || "",
       interestedIn: (me.interestedIn || []).slice(),
+      meetIntent: me.meetIntent || "both",
       vibes: (me.vibes || []).slice(),
       looking: (me.looking || []).slice(),
       hobbies: (me.hobbies || []).slice(),
@@ -732,6 +797,7 @@
       gender: d.gender || "",
       pronouns: d.pronouns || "",
       interestedIn: d.interestedIn || [],
+      meetIntent: d.meetIntent || "both",
       vibes: d.vibes || [],
       looking: d.looking || [],
       hobbies: d.hobbies || [],
@@ -993,6 +1059,7 @@
     if (!p) return "";
     const chips = [];
     if (p.age) chips.push(`<span class="chip soft">${esc(p.age)}</span>`);
+    if (meetIntentChip(p)) chips.push(meetIntentChip(p));
     if (p.gender) chips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
     if (p.pronouns) chips.push(`<span class="chip soft">${esc(p.pronouns)}</span>`);
     const height = formatHeight(p.heightIn);
@@ -1005,7 +1072,8 @@
     if (chips.length) html += `<div class="chips prof-chips">${chips.join("")}</div>`;
     html += `<div class="prof-facts">`;
     html += profileFact("Interested in", interested);
-    html += profileFact("Looking for", looking);
+    html += profileFact("Looking for", meetIntentLabel(p.meetIntent) || "");
+    html += profileFact("Open to", looking);
     html += profileFact("Hobbies", (p.hobbies || []).join(", "));
     html += profileFact("Favorite artists / DJs", p.favoriteArtists);
     html += profileFact("Favorite festival or show", p.favoriteFestival);
@@ -1186,6 +1254,7 @@
     uploadProgress: null,
     uploadError: "",
     onboardStep: 0,
+    discoverMode: "",
     filters: { event: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
     billing: "monthly",
     pendingPlan: "plus",
@@ -1568,7 +1637,7 @@
         toast("New message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
       } else if (msg.type === "match") {
         quiet(Promise.all([loadMatches(), loadFeed()]));
-        toast("It's a match" + (msg.user && msg.user.name ? " with " + msg.user.name : "") + "! Check Matches.");
+        toast((matchKindLabel(msg.matchKind) || "It's a match") + (msg.user && msg.user.name ? " with " + msg.user.name : "") + "! Check Chats.");
       } else if (msg.type === "like") {
         quiet(Promise.all([loadInbound(), loadNotifs()]));
       } else if (msg.type === "unmatch") {
@@ -1863,11 +1932,12 @@
     if (data.locationShare !== undefined) state.locationShare = data.locationShare;
     if (data.genreCatalog) state.genreCatalog = data.genreCatalog;
     else if (data.genres) state.genreCatalog = data.genres;
+    if (state.me) setDiscoverMode(state.discoverMode || readStoredDiscoverMode(), true);
   }
   // After a refresh or re-login mid-onboarding, pick up where they left off instead of step 1.
   function onboardResumeStep(u) {
     if (!u || !(u.vibes || []).length) return 0;
-    if (!(u.looking || []).length) return 1;
+    if (!(u.looking || []).length || !u.meetIntent) return 1;
     if (!(u.prompts || []).length) return 2;
     return 4;
   }
@@ -2532,6 +2602,7 @@
     if (state.filters.genre && state.filters.genre !== "all") q.set("genre", state.filters.genre);
     if (state.filters.event && state.filters.event !== "all") q.set("event", state.filters.event);
     if (state.filters.gender && state.filters.gender !== "all") q.set("gender", state.filters.gender);
+    q.set("mode", discoverMode());
     const ageMin = Number(state.filters.ageMin);
     const ageMax = Number(state.filters.ageMax);
     if (Number.isFinite(ageMin) && ageMin > 18) q.set("ageMin", String(ageMin));
@@ -2574,7 +2645,7 @@
   function notifText(n) {
     const who = n.user ? `<strong>${esc(n.user.name)}</strong>` : "<strong>Someone</strong>";
     if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : (/^v\d/.test(String(n.targetId || "")) ? "video" : "photo")}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">${!isNativeIos() && paymentsEnabled() ? "See who with Kandi+" : "Keep exploring Discover. If you like them back, it's a match."}</span>`;
-    if (n.kind === "match") return `You matched with ${who}. Say hi!`;
+    if (n.kind === "match") return `${matchKindLabel(n.matchKind) || "You matched"} with ${who}. Say hi!`;
     if (n.kind === "post_like") return `${who} liked your post`;
     if (n.kind === "comment") return `${who} commented: “${esc(n.text)}”`;
     if (n.kind === "follow") return `${who} started following you`;
@@ -2920,7 +2991,8 @@
     return `<div class="screen splash top-pad"><div class="inner auth-card">
       ${beads(8, "lg")}
       <h1 class="wordmark grad">Kandi</h1>
-      <p>Find your people on the floor. Trade kandi, meet ravers, stay PLUR.</p>
+      <p class="tagline">Find your rave crew.</p>
+      <p class="sub tag-sub">Make friends, find a date, go to shows together.</p>
       <div class="demo-tag">${isNativeIos() ? "18+ only" : "18+ only · installable web app"}</div>
       ${trustNote()}
       ${mode === "signup" ? `
@@ -2929,6 +3001,11 @@
         <input id="f-email" data-field="email" type="email" aria-label="Email" placeholder="Email" value="${esc(state.drafts.email || "")}" style="margin-top:8px" autocapitalize="none" autocomplete="email" autocorrect="off" spellcheck="false" inputmode="email" />
         <input id="f-user" data-field="user" aria-label="Username" placeholder="Username" value="${esc(state.drafts.user)}" style="margin-top:8px" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" inputmode="text" />
         <input id="f-pass" data-field="pass" type="password" aria-label="Password" autocomplete="new-password" placeholder="Password (8+ characters)" value="${esc(state.drafts.pass)}" style="margin-top:8px" />
+        <div class="label" style="margin-top:16px">Looking for</div>
+        <div class="chips">${MEET_INTENTS.map((v) =>
+          `<button type="button" class="chip${state.drafts.meetIntent === v.id ? " on" : ""}" data-act="set-signup-intent" data-id="${v.id}">${esc(v.label)}</button>`
+        ).join("")}</div>
+        <p class="tiny" style="margin-top:6px">You can change this later in your profile.</p>
         <label class="agree-row">
           <input type="checkbox" data-act="toggle-agree-terms" ${state.drafts.agreeTerms ? "checked" : ""} />
           <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I confirm I am 18 or older.</span>
@@ -2955,14 +3032,18 @@
   function viewOnboard() {
     const s = state.onboardStep;
     const me = state.me || { vibes: [], looking: [], events: [], prompts: [], photos: [] };
-    const titles = ["What's your sound?", "What are you open to?", "Where might you be?", "Add a prompt", "Add a photo", "PLUR, always."];
+    const titles = ["What's your sound?", "Who are you looking for?", "Where might you be?", "Add a prompt", "Add a photo", "PLUR, always."];
     let body = "";
     if (s === 0) {
       body = `<div class="label">Your genre badges</div><p class="sub" style="margin-bottom:8px">Pick up to ${MAX_GENRES}. These show on your profile and in Discover.</p><div class="chips">${genreCatalog().map((g) =>
         `<button type="button" class="chip genre-pick g-${esc(g.id)}${me.vibes.includes(g.id) ? " on" : ""}" data-act="toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
       ).join("")}</div>`;
     } else if (s === 1) {
-      body = `<div class="label">Looking for</div><div class="chips">${LOOKING.map((v) =>
+      body = `<div class="label">Looking for</div><div class="chips">${MEET_INTENTS.map((v) =>
+        `<button type="button" class="chip${(me.meetIntent || state.drafts.meetIntent) === v.id ? " on" : ""}" data-act="set-meet-intent" data-id="${v.id}">${esc(v.label)}</button>`
+      ).join("")}</div>
+        <p class="sub" style="margin-bottom:14px">Friends, dating, or both — this decides who you see in Discover.</p>
+        <div class="label">Open to</div><div class="chips">${LOOKING.map((v) =>
         `<button class="chip${me.looking.includes(v.id) ? " on" : ""}" data-act="toggle-look" data-id="${v.id}">${esc(v.label)}</button>`
       ).join("")}</div><p class="sub">Be honest — consent starts here.</p>`;
     } else if (s === 2) {
@@ -2992,7 +3073,7 @@
       body = `<div class="notice warn"><strong>PLUR, always.</strong> Ask before you touch, wait for a yes, and look out for each other. Dates and hookups are fine — pressure is not.</div>
         <p class="sub">You can share a meetup note with a friend at a show, and you can report or block anyone at any time.</p>`;
     }
-    const can = (s === 0 && me.vibes.length) || (s === 1 && me.looking.length) || s === 2 || (s === 3 && me.prompts.length >= 1) || s === 4 || s === 5;
+    const can = (s === 0 && me.vibes.length) || (s === 1 && me.looking.length && (me.meetIntent || state.drafts.meetIntent)) || s === 2 || (s === 3 && me.prompts.length >= 1) || s === 4 || s === 5;
     return `<div class="screen top-pad"><div class="scroll pad">${beads(6, "sm")}
       <div class="wordmark grad" style="font-size:12px;margin:10px 0 18px;text-align:center">Kandi</div>
       <h2 class="h2">${titles[s]}</h2>${body}</div>
@@ -3018,9 +3099,12 @@
     const genreBar = genreOn
       ? `<div class="same-show-bar"><button type="button" class="chip on" data-act="set-genre" data-id="all">Genre: ${esc(vibeLabel(state.filters.genre))} · Clear</button></div>`
       : "";
+    const mode = discoverMode();
     const p = state.feed[0];
     if (!p) {
-      return header("Kandi", right) + `<div class="scroll pad">${sameBar}${genreBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : "You're caught up for now. Check back when more ravers join, or rewind a pass."}</p>
+      return header("Kandi", right) + `<div class="scroll pad">${discoverModeBar()}${sameBar}${genreBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : (mode === "dating"
+          ? (allowedDiscoverModes(state.me).includes("friends") ? "No one in Dating mode right now. Try Friends, or check back when more ravers join." : "No one in Dating mode right now. Check back when more ravers join, or rewind a pass.")
+          : (allowedDiscoverModes(state.me).includes("dating") ? "No one in Friends mode right now. Try Dating, or check back when more ravers join." : "No one in Friends mode right now. Check back when more ravers join, or rewind a pass."))}</p>
         ${trustNote()}
         <button class="btn sm primary" style="margin-top:16px" data-act="rewind">Rewind last pass</button></div></div>`;
     }
@@ -3037,18 +3121,19 @@
     if (p.prompts[2]) parts.push(promptEl(p, p.prompts[2]));
     const discoChips = [];
     if (p.age) discoChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
+    if (meetIntentChip(p)) discoChips.push(meetIntentChip(p));
     if (p.gender) discoChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
     const discoHeight = formatHeight(p.heightIn);
     if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
     (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
     parts.push(`<div class="meta-card">${genreRow(p)}<div class="chips" style="margin:8px 0">${discoChips.join("")}</div>
-      <div class="muted">Looking for ${(p.looking || []).map((lid) => lookingLabel(lid)).join(", ") || "—"}</div>
+      <div class="muted">Looking for ${esc(meetIntentLabel(p.meetIntent) || "—")}${(p.looking || []).length ? " · " + (p.looking || []).map((lid) => lookingLabel(lid)).join(", ") : ""}</div>
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       ${crewBadgesHtml(p.id)}
       <div class="tiny" style="margin-top:10px">${p.isDemo ? "Example / demo profile" : "Member on Kandi"}</div>
       <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" data-act="open-profile" data-id="${p.id}">View posts &amp; profile</button>
       <button type="button" class="btn sm ghost" data-act="report" data-id="${p.id}">Report</button></div></div>`);
-    return header("Kandi", right) + `<div class="scroll">${sameBar}${genreBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
+    return header("Kandi", right) + `<div class="scroll">${discoverModeBar()}${sameBar}${genreBar}<div class="stack" style="padding-top:4px">${parts.join("")}</div>
       <div class="float-actions">
         <button class="round rewind" data-act="rewind" aria-label="Rewind last pass">↺</button>
         <button class="round pass" data-act="pass" data-id="${p.id}" aria-label="Pass on ${esc(p.name)}">✕</button>
@@ -3136,13 +3221,13 @@
 
   function viewMatches() {
     let html = header("Chats", bellBtn()) + `<div class="scroll pad">`;
-    if (!state.matches.length) return html + `<div class="empty"><div style="font-size:40px;margin-bottom:8px">✉</div><h2 class="h2" style="font-size:22px">No matches yet</h2><p class="sub">When you and another raver like each other, you can chat here.</p>
+    if (!state.matches.length) return html + `<div class="empty"><div style="font-size:40px;margin-bottom:8px">✉</div><h2 class="h2" style="font-size:22px">No matches yet</h2><p class="sub">When you and another raver like each other, you can chat here. Friend matches and date matches show up in this list.</p>
       <button class="btn primary" style="margin-top:16px" data-act="tab" data-id="discover">Find people in Discover</button>
       <button class="btn ghost" style="margin-top:8px" data-act="tab" data-id="likes">See who liked you</button></div></div>`;
     const fresh = state.matches.filter((m) => !m.lastMessage);
     if (fresh.length) {
       html += `<div class="label">New matches</div><div class="stories" style="padding:0 0 12px">${fresh.map((m) =>
-        `<button class="story" data-act="chat" data-id="${m.user.id}" aria-label="Chat with ${esc(m.user.name)}">${personAvatar(m.user, "av")}<div class="nm">${esc(m.user.name)}</div></button>`).join("")}</div>
+        `<button class="story" data-act="chat" data-id="${m.user.id}" aria-label="Chat with ${esc(m.user.name)}">${personAvatar(m.user, "av")}<div class="nm">${esc(m.user.name)}</div>${m.matchKind ? `<div class="tiny">${esc(matchKindLabel(m.matchKind))}</div>` : ""}</button>`).join("")}</div>
         <div class="label">Messages</div>`;
     }
     state.matches.forEach((m) => {
@@ -3150,8 +3235,8 @@
       const last = m.lastMessage;
       html += `<button class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="chat" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:600">${esc(p.name)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
-        <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : "You matched. Say hi.")}</div>
+        <div class="grow"><div style="font-weight:600">${esc(p.name)}${matchKindChip(m)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
+        <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : (m.matchKind === "friend" ? "Friend match. Say hi." : (m.matchKind === "date" ? "Date match. Say hi." : "You matched. Say hi.")))}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
     });
@@ -3620,7 +3705,12 @@
       <div class="chips">${genreCatalog().map((g) =>
         `<button type="button" class="chip genre-pick g-${esc(g.id)}${(d.vibes || []).includes(g.id) ? " on" : ""}" data-act="edit-toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
       ).join("")}</div>
-      ${editChipRow("Looking for", LOOKING, d.looking, "edit-toggle-look", false)}
+      <div class="label">Looking for</div>
+      <div class="chips">${MEET_INTENTS.map((v) =>
+        `<button type="button" class="chip${(d.meetIntent || "both") === v.id ? " on" : ""}" data-act="edit-set-meet-intent" data-id="${v.id}">${esc(v.label)}</button>`
+      ).join("")}</div>
+      <p class="tiny" style="margin:4px 0 10px">Friends mode ignores gender preferences. Dating mode still uses them.</p>
+      ${editChipRow("Open to", LOOKING, d.looking, "edit-toggle-look", false)}
       <div class="label" style="margin-top:14px">Hobbies</div>
       <div class="chips">${hobbySet.map((h) => `<button type="button" class="chip${(d.hobbies || []).includes(h) ? " on" : ""}" data-act="edit-toggle-hobby" data-id="${esc(h)}">${esc(h)}</button>`).join("")}</div>
       <div class="row" style="margin-top:8px"><input data-field="editCustomHobby" placeholder="Add your own hobby" value="${esc(state.drafts.editCustomHobby || "")}" />
@@ -4265,7 +4355,7 @@
       return `<div class="overlay"><div class="match-wrap">
         <div class="avatars">${personAvatar(state.me, "av")}${beads(5, "sm")}
         ${personAvatar(p, "av")}</div>
-        <h2>It's a trade!</h2>
+        <h2>${esc(matchKindLabel((o.matchKind || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).matchKind)) || "It's a trade!")}</h2>
         <p class="sub">${esc(state.me.name)} and ${esc(p.name)} liked each other. Time to trade kandi — or at least a hello.</p>
         ${bothGoingLine(o.sharedEvents || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).sharedEvents, o.meetPlan || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).meetPlan)}
         ${(o.sharedEvents || (state.matches.find((m) => m.user && m.user.id === p.id) || {}).sharedEvents || []).length ? `<button class="btn ghost" style="margin-top:12px;max-width:280px" data-act="pick-meet" data-id="${p.id}">Pick a meet spot</button>` : ""}
@@ -4419,7 +4509,7 @@
       </div>` : "";
       return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
-        <div class="chat-head"><button type="button" class="chat-head-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}</div>${state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`}</div></button>${genreRow(p, { compact: true, max: 2 })}</div></div>
+        <div class="chat-head"><button type="button" class="chat-head-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}</div>${(matchForUser(p.id) && matchKindLabel(matchForUser(p.id).matchKind)) ? `<div class="tiny">${esc(matchKindLabel(matchForUser(p.id).matchKind))}${state.chatShared && state.chatShared[0] ? " · Both going to " + esc(state.chatShared[0].name) : ""}</div>` : (state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`)}</div></button>${genreRow(p, { compact: true, max: 2 })}</div></div>
         <div class="right">
           <button type="button" class="icon-btn ghost-btn${ghostOn ? " on" : ""}" data-act="open-disappear" aria-label="Disappearing messages" aria-pressed="${ghostOn}" title="Disappearing messages">👻</button>
           <button class="icon-btn" data-act="chat-menu" data-id="${p.id}" aria-label="More options">⋯</button>
@@ -4428,7 +4518,7 @@
         ${state.chatShared && state.chatShared.length ? `<div style="padding:0 16px 8px"><button type="button" class="btn sm ghost" data-act="pick-meet" data-id="${p.id}">${state.chatMeetPlan && (state.chatMeetPlan.spot || state.chatMeetPlan.time) ? "Edit meet spot" : "Pick a meet spot"}</button></div>` : ""}
         ${ghostOn ? `<div class="tiny" style="text-align:center;padding:0 16px 8px;color:var(--muted)">Disappearing messages are on. Screenshots are still possible.</div>` : ""}
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
-        <div class="scroll chat-log">${state.chat.map(chatBubble).join("") || `<div class="tiny" style="text-align:center">You matched on Kandi. Say hi.</div>`}</div>
+        <div class="scroll chat-log">${state.chat.map(chatBubble).join("") || `<div class="tiny" style="text-align:center">${esc((matchForUser(p.id) && matchForUser(p.id).matchKind === "friend") ? "You matched as friends. Say hi." : ((matchForUser(p.id) && matchForUser(p.id).matchKind === "date") ? "You matched for dating. Say hi." : "You matched on Kandi. Say hi."))}</div>`}</div>
         ${bar}${musicSheet}${disappearSheet}${lite}</div>`;
     }
     if (o.type === "notifs") {
@@ -5170,6 +5260,33 @@
         state.editDraft.looking = cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id);
         render(); return;
       }
+      if (act === "edit-set-meet-intent") {
+        state.editDraft = state.editDraft || {};
+        state.editDraft.meetIntent = id || "both";
+        render(); return;
+      }
+      if (act === "set-signup-intent") {
+        state.drafts.meetIntent = id;
+        state.err = "";
+        render(); return;
+      }
+      if (act === "set-meet-intent") {
+        state.drafts.meetIntent = id;
+        if (state.me) {
+          state.me.meetIntent = id;
+          await api("/api/me", { method: "PUT", body: { meetIntent: id } });
+          setDiscoverMode(state.discoverMode || id, true);
+        }
+        render(); return;
+      }
+      if (act === "set-discover-mode") {
+        if (discoverMode() === id) return;
+        setDiscoverMode(id, true);
+        render();
+        await loadFeed();
+        render();
+        return;
+      }
       if (act === "edit-toggle-interested") {
         state.editDraft = state.editDraft || { interestedIn: [] };
         const cur = state.editDraft.interestedIn || [];
@@ -5308,7 +5425,8 @@
           render(); return;
         }
         if (!(state.drafts.email || "").trim()) { state.err = "Enter your email address."; render(); return; }
-        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true } });
+        if (!state.drafts.meetIntent) { state.err = "Choose whether you're here for friends, dating, or both."; render(); return; }
+        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent } });
         applyMe({ user: data.user, likesLeft: DAILY });
         state.drafts.pass = "";
         if (state.me && state.me.emailLocked) {
@@ -5815,7 +5933,7 @@
       if (act === "like-chip") { state.drafts.comment = el.getAttribute("data-t") || ""; render(); return; }
       if (act === "send-like") {
         const o = state.overlay;
-        const result = await api("/api/like", { method: "POST", body: { userId: o.id, type: o.typeTarget, targetId: o.targetId, comment: state.drafts.comment } });
+        const result = await api("/api/like", { method: "POST", body: { userId: o.id, type: o.typeTarget, targetId: o.targetId, comment: state.drafts.comment, mode: discoverMode() } });
         state.likesLeft = result.likesLeft;
         if (result.matched) {
           let person = o.person;
@@ -5824,19 +5942,19 @@
             state.matches = m.matches;
             person = (m.matches.find((x) => x.user.id === o.id) || {}).user;
           }
-          state.overlay = { type: "match", person: person || { id: o.id, name: "them", photos: [] } };
+          state.overlay = { type: "match", person: person || { id: o.id, name: "them", photos: [] }, matchKind: result.matchKind || "" };
         } else state.overlay = { type: "liked" };
         render();
         await Promise.allSettled([loadFeed(), loadInbound(), loadMatches()]);
         render(); return;
       }
       if (act === "like-back") {
-        const result = await api("/api/like", { method: "POST", body: { userId: Number(id), type: "photo", targetId: "0", comment: "" } });
+        const result = await api("/api/like", { method: "POST", body: { userId: Number(id), type: "photo", targetId: "0", comment: "", mode: discoverMode() } });
         state.likesLeft = result.likesLeft;
         await loadInbound(); await loadMatches(); await loadFeed();
         if (result.matched) {
           const m = state.matches.find((x) => String(x.user.id) === String(id));
-          state.overlay = { type: "match", person: m ? m.user : { id: Number(id), name: "them", photos: [] } };
+          state.overlay = { type: "match", person: m ? m.user : { id: Number(id), name: "them", photos: [] }, matchKind: result.matchKind || (m && m.matchKind) || "" };
         }
         render(); return;
       }
