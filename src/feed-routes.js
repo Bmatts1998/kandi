@@ -3,7 +3,7 @@ const followRules = require("./follow-rules");
 
 const crypto = require("crypto");
 const { normalizePhoto, sniffImageMime, savePhotoFile, removePhotoFile } = require("./photo");
-const { listUpcomingForProfile } = require("./meetup");
+const { listUpcomingForProfile, goingEventIds } = require("./meetup");
 const { contentRejected } = require("./content-filter");
 const { finishVideo } = require("./video");
 
@@ -533,10 +533,12 @@ function installFeed({ app, getDb, auth, upload, uploadPost, publicUser, blocked
     const canFollow = !following && matched;
     const rows = await db().prepare(`${authorJoin} WHERE p.user_id=? ORDER BY p.created_at DESC, p.id DESC LIMIT 60`).all(id);
     const upcoming = await listUpcomingForProfile(db(), user, req.user);
+    const goingIds = await goingEventIds(db(), user.id);
+    const showList = upcoming.hidden ? [] : upcoming.shows;
     res.json({
-      user: publicUser(user, { ...counts, following, canFollow, matched, isMe: id === Number(req.user.id), upcomingShows: upcoming.hidden ? [] : upcoming.shows, upcomingHidden: upcoming.hidden }),
+      user: publicUser(user, { ...counts, following, canFollow, matched, isMe: id === Number(req.user.id), events: (upcoming.hidden && id !== Number(req.user.id)) ? [] : goingIds, upcomingShows: showList, upcomingHidden: upcoming.hidden }),
       posts: await shapePosts(rows, req.user.id),
-      upcomingShows: upcoming.hidden ? [] : upcoming.shows,
+      upcomingShows: showList,
       upcomingHidden: upcoming.hidden,
     });
   });

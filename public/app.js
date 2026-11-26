@@ -1214,7 +1214,7 @@
       .concat((state.profile && (state.profile.upcomingShows || (state.profile.user && state.profile.user.upcomingShows))) || [])
       .find((x) => x && String(x.id) === String(id));
     if (fromUpcoming) {
-      const going = Boolean(state.me && ((state.me.events || []).map(String).includes(String(id)) || (state.me.upcomingShows || []).some((s) => String(s.id) === String(id))));
+      const going = Boolean(state.me && (state.me.events || []).map(String).includes(String(id)));
       return Object.assign({ going: [], color: "linear-gradient(135deg,#1a0a00,#ff5c00)", imGoing: going, category: "", artists: [], imageUrl: "", ageLimit: "" }, fromUpcoming);
     }
     const lists = [state.homePosts || [], (state.profile && state.profile.posts) || [], state.openPost ? [state.openPost] : []];
@@ -1374,16 +1374,19 @@
     html += profileCrewSlot();
     let shows = Array.isArray(p.upcomingShows) ? p.upcomingShows : [];
     if (isMe) {
+      const rsvpIds = new Set(((p.events || (state.me && state.me.events) || []).map(String)));
       const liveGoing = new Set((state.events || []).filter((e) => e.imGoing).map((e) => String(e.id)));
       const liveKnown = new Set((state.events || []).map((e) => String(e.id)));
-      const mine = new Set(((p.events || (state.me && state.me.events) || []).map(String)));
+      // Profile shows must have an active event_going RSVP. Don't keep a row
+      // just because a stale in-memory events list still has imGoing.
       shows = shows.filter((s) => {
         const sid = String(s.id);
+        if (!rsvpIds.has(sid)) return false;
         if (liveKnown.has(sid)) return liveGoing.has(sid);
-        return mine.has(sid);
+        return true;
       });
       (state.events || []).forEach((e) => {
-        if (e.imGoing && !shows.some((s) => String(s.id) === String(e.id))) shows.push(e);
+        if (e.imGoing && rsvpIds.has(String(e.id)) && !shows.some((s) => String(s.id) === String(e.id))) shows.push(e);
       });
     }
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
@@ -2227,6 +2230,8 @@
   }
   function applyMe(data) {
     state.me = data.user;
+    if (state.me && Array.isArray(data.upcomingShows)) state.me.upcomingShows = data.upcomingShows;
+    if (state.me && Array.isArray(data.events)) state.me.events = data.events.map(String);
     state.likesLeft = data.likesLeft == null ? null : data.likesLeft;
     if (data.live) state.live = data.live;
     if (data.locationShare !== undefined) state.locationShare = data.locationShare;
@@ -6326,7 +6331,11 @@
         if (id === "likes") await loadInbound();
         if (id === "matches") await loadMatches();
         if (id === "events") await loadEvents();
-        if (id === "you" && state.me) await loadProfile(state.me.id);
+        if (id === "you" && state.me) {
+          try { applyMe(await api("/api/me")); } catch (_) {}
+          try { await loadEvents(); } catch (_) {}
+          await loadProfile(state.me.id);
+        }
         if (state.tab === id) render();
         return;
       }

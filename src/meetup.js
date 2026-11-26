@@ -91,6 +91,11 @@ async function setRsvp(db, user, ev, { going, openToMeet, meetNote }) {
   };
 }
 
+async function goingEventIds(db, userId) {
+  const rows = await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(userId);
+  return rows.map((r) => r.event_id);
+}
+
 async function userGoingShows(db, userId) {
   const rows = await db.prepare(`
     SELECT e.*, g.open_to_meet, g.meet_note
@@ -233,6 +238,7 @@ module.exports = {
   shapeGoers,
   resolveEvent,
   setRsvp,
+  goingEventIds,
   userGoingShows,
   listUpcomingForProfile,
   sharedShows,

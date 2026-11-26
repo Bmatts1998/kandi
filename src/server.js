@@ -1027,6 +1027,7 @@ app.get("/api/discover", auth, async (req, res) => {
       sharedGenres: sharedGenreIds(myGenres, theirVibes),
       sharedGenreChip: sharedGenreChip(myGenres, theirVibes),
       upcomingShows: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => compactShow(e)) : [],
+      events: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => e.id) : [],
       upcomingHidden: !showUpcoming,
       showUpcoming,
     });
