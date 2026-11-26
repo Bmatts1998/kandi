@@ -284,13 +284,20 @@ function corsOrigins() {
   return Array.from(set);
 }
 
+// B2 S3 PutBucketCors rejects non-http(s) origins such as capacitor://localhost
+// ("an allowedOrigin doesn't look like an origin"). Keep them in corsOrigins()
+// for docs/native rules, but omit them from the S3 XML.
+function s3CorsOrigins() {
+  return corsOrigins().filter((o) => /^https?:\/\//i.test(o));
+}
+
 function corsXml() {
-  const origins = corsOrigins().map((o) => "<AllowedOrigin>" + o.replace(/&/g, "&amp;") + "</AllowedOrigin>").join("");
+  const origins = s3CorsOrigins().map((o) => "<AllowedOrigin>" + o.replace(/&/g, "&amp;") + "</AllowedOrigin>").join("");
   return '<?xml version="1.0" encoding="UTF-8"?><CORSConfiguration>' +
     "<CORSRule>" + origins +
-    "<AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod>" +
+    "<AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>POST</AllowedMethod>" +
     "<AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><ExposeHeader>x-amz-request-id</ExposeHeader>" +
-    "<MaxAgeSeconds>86400</MaxAgeSeconds></CORSRule></CORSConfiguration>";
+    "<MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>";
 }
 
 async function applyBucketCors() {
@@ -303,10 +310,13 @@ async function applyBucketCors() {
     : (() => { const u = new URL(cfg.endpoint); return u.protocol + "//" + cfg.bucket + "." + u.host + "?cors"; })();
   const u = new URL(url);
   const payloadHash = sha256Hex(body);
+  // Backblaze B2 requires Content-MD5 (or x-amz-checksum-*) on PutBucketCors.
+  const contentMd5 = crypto.createHash("md5").update(body).digest("base64");
   const headers = {
     host: u.host,
     "content-type": "application/xml",
     "content-length": String(body.length),
+    "content-md5": contentMd5,
     "x-amz-content-sha256": payloadHash,
     "x-amz-date": amz,
   };
