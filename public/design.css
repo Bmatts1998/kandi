@@ -358,3 +358,19 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 .invite-status { margin-top: 8px; opacity: .8; }
 .bubble.show_invite { min-width: 220px; max-width: 86%; }
 .show-land-art { width: 100%; height: 160px; border-radius: 16px; margin-top: 18px; background: #1a0a00 center/cover no-repeat; display: grid; place-items: center; font-size: 42px; overflow: hidden; }
+
+.trust-note { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 0; padding: 11px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.03); color: var(--muted); font-size: 12.5px; line-height: 1.45; text-align: left; font-weight: 400; }
+.trust-note svg, .trust-note .kic { width: 15px; height: 15px; flex: 0 0 15px; margin-top: 1px; opacity: .65; color: #c4c4c4; }
+.empty .trust-note { margin-top: 16px; max-width: 360px; }
+.verified-badge { display: inline-flex; align-items: center; vertical-align: -3px; margin-left: 5px; color: #c8c8c8; }
+.verified-badge svg, .verified-badge .kic { width: 15px; height: 15px; }
+.verify-card { margin-top: 16px; padding: 18px 16px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(255,255,255,.03); text-align: center; }
+.verify-pose { width: 48px; height: 48px; margin: 0 auto 8px; display: grid; place-items: center; color: #c8c8c8; }
+.verify-pose svg, .verify-pose .kic { width: 28px; height: 28px; }
+.verify-preview { width: 100%; max-width: 280px; height: 280px; margin: 16px auto 0; border-radius: 16px; background: #111 center/cover no-repeat; border: 1px solid rgba(255,255,255,.08); }
+.admin-verify-card { margin-bottom: 16px; padding: 14px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(255,255,255,.03); }
+.admin-compare { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+.admin-ph { width: 100%; aspect-ratio: 1; border-radius: 12px; background: #111 center/cover no-repeat; border: 1px solid rgba(255,255,255,.08); }
+.admin-ph.selfie { max-width: 160px; }
+.admin-ph-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-ph-row .admin-ph { width: 72px; min-width: 72px; }

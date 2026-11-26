@@ -1089,7 +1089,7 @@
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
     const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
     let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
-      <div class="nm">${esc(p.name)}${p.age ? ", " + p.age : ""}${founderBadge(p)}</div>
+      <div class="nm">${personName(p)}</div>
       <div class="muted">@${esc(p.username)}${pronouns}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
       ${genreRow(p)}
       ${socialLinksHtml(p)}
@@ -1389,6 +1389,7 @@
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
+    shield: '<path d="M12 3.5 5.5 6.2v5.1c0 4.2 2.8 7.9 6.5 8.7 3.7-.8 6.5-4.5 6.5-8.7V6.2L12 3.5Z"/><path d="M9.3 12.2 11 14l3.8-4.3"/>',
   };
   function kIcon(name, extraClass) {
     const d = KICON_PATHS[name];
@@ -1686,6 +1687,36 @@
     if (ws) { try { ws.close(); } catch (_) {} ws = null; }
     render();
   }
+  function isAdminPath() {
+    return /^\/admin\/verify\/?$/.test(location.pathname || "");
+  }
+  async function loadAdminVerifications(status) {
+    const st = status || "pending";
+    state.adminVerify = Object.assign({}, state.adminVerify || {}, { status: st, loading: true, requests: (state.adminVerify && state.adminVerify.requests) || [] });
+    render();
+    try {
+      const data = await api("/api/admin/verifications?status=" + encodeURIComponent(st));
+      state.adminVerify = { status: st, loading: false, requests: (data && data.requests) || [] };
+    } catch (err) {
+      state.adminVerify = { status: st, loading: false, requests: [], error: err.message || "Couldn't load requests." };
+      toast(err.message || "Couldn't load requests.", "err");
+      if (err.status === 404) { state.view = "app"; history.replaceState({}, "", "/"); }
+    }
+    render();
+  }
+  async function maybeOpenAdmin() {
+    if (!(state.pendingAdmin || isAdminPath())) return false;
+    state.pendingAdmin = false;
+    if (state.me && state.me.isAdmin) {
+      state.view = "adminVerify";
+      history.replaceState({}, "", "/admin/verify");
+      render();
+      await loadAdminVerifications("pending");
+      return true;
+    }
+    if (isAdminPath()) history.replaceState({}, "", "/");
+    return false;
+  }
   async function loadShowFromUrl() {
     const m = (location.pathname || "").match(/^\/s\/([^/]+)\/?$/);
     if (!m) return false;
@@ -1778,6 +1809,7 @@
     } catch (e) {
       clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
       state.view = e && e.status === 401 ? "auth" : "offline";
+      if (state.view === "auth" && isAdminPath()) state.pendingAdmin = true;
       state.err = state.view === "offline" ? (e.message || "Can't reach Kandi right now.") : "";
       render();
       return;
@@ -1785,6 +1817,14 @@
     clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
     applyMe(me);
     if (state.me && state.me.emailLocked) { enterVerify(); return; }
+    if (isAdminPath() && state.me && state.me.isAdmin) {
+      state.view = "adminVerify";
+      connectWs();
+      render();
+      await loadAdminVerifications(state.adminVerify && state.adminVerify.status || "pending");
+      return;
+    }
+    if (isAdminPath()) history.replaceState({}, "", "/");
     state.view = needsOnboard(state.me) ? "onboard" : "app";
     if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
     connectWs();
@@ -1845,6 +1885,24 @@
     if (!person || !person.isFounder) return "";
     const n = person.foundingNumber ? " #" + person.foundingNumber : "";
     return ` <span class="founder-badge">Founding${n}</span>`;
+  }
+  function verifiedBadge(person) {
+    if (!person || !person.verified) return "";
+    return ` <span class="verified-badge" title="Selfie-verified">${kIcon("shield")}</span>`;
+  }
+  function personName(person) {
+    if (!person) return "";
+    return `${esc(person.name)}${person.age ? ", " + person.age : ""}${verifiedBadge(person)}${founderBadge(person)}`;
+  }
+  function trustNote() {
+    return `<p class="trust-note">${kIcon("shield")}<span>Real people only. Every profile can be selfie-verified, and we review reports and remove fakes and scammers fast.</span></p>`;
+  }
+  function verifyStatusCopy(status) {
+    if (status === "approved") return "You're selfie-verified. The badge shows on your profile and in Discover.";
+    if (status === "pending") return "We're reviewing your selfie. This usually doesn't take long.";
+    if (status === "stale") return "Your main photo changed, so we need a new selfie to keep your badge.";
+    if (status === "rejected") return "That selfie didn't match your profile photos closely enough. Try again with a clear live photo.";
+    return "Take a live selfie in the pose we show you. We keep it private and only use it to verify you.";
   }
   function isVip() { return state.me && state.me.subscription === "vip"; }
   function isNativeIos() {
@@ -2670,12 +2728,12 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
         <button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
-      ${showWho ? `<div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      ${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}
       <button class="heart-fab${liked ? " loved" : ""}" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="${i}" aria-label="Like this photo">♡</button></div>`;
@@ -2771,6 +2829,78 @@
     </div></div>`;
   }
 
+
+  function viewGetVerified(o) {
+    const me = state.me || {};
+    const st = (o && o.status) || me.verificationStatus || "";
+    const pose = (o && o.pose) || {};
+    const reason = o && o.latest && o.latest.reason;
+    const preview = o && o.previewUrl;
+    let body;
+    if (o && o.loading) {
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Get verified</span></div></div>
+        <div class="scroll pad"><p class="muted">Loading…</p></div></div>`;
+    }
+    if (st === "approved" && !(o && o.retake)) {
+      body = `<div class="verify-pose">${kIcon("shield")}</div>
+        <h2 class="h2" style="margin-top:10px">You're verified</h2>
+        <p class="sub">${esc(verifyStatusCopy("approved"))}</p>
+        <p class="tiny" style="margin-top:12px">If you change your main photo, we'll ask you to verify again.</p>`;
+    } else if (st === "pending" && !(o && o.retake) && !(preview)) {
+      body = `<div class="verify-pose">${kIcon("shield")}</div>
+        <h2 class="h2" style="margin-top:10px">Selfie in review</h2>
+        <p class="sub">${esc(verifyStatusCopy("pending"))}</p>
+        ${pose.label ? `<p class="tiny" style="margin-top:10px">Pose we received: ${esc(pose.label)}</p>` : ""}
+        <button type="button" class="btn ghost" style="margin-top:18px" data-act="verify-retake">Send a new selfie</button>`;
+    } else {
+      body = `${st === "stale" ? `<div class="notice warn" style="margin-bottom:14px">${esc(verifyStatusCopy("stale"))}</div>` : ""}
+        ${st === "rejected" && reason ? `<div class="notice warn" style="margin-bottom:14px">${esc(reason)}</div>` : (st === "rejected" ? `<div class="notice warn" style="margin-bottom:14px">${esc(verifyStatusCopy("rejected"))}</div>` : "")}
+        <p class="sub">Take a live selfie that matches this pose. Don't use a saved photo if you can help it — we compare this to your profile pictures, and we never show the selfie on your profile.</p>
+        <div class="verify-card">
+          <div class="verify-pose">${kIcon("shield")}</div>
+          <div class="nm" style="font-size:20px">${esc(pose.label || "Follow the pose")}</div>
+          <p class="muted" style="margin-top:6px">${esc(pose.hint || "Hold the pose clearly, with your face in frame.")}</p>
+        </div>
+        ${preview ? `<div class="verify-preview" style="background-image:url('${esc(preview)}')"></div><p class="tiny" style="margin-top:8px;text-align:center">This stays private. Only our review team sees it.</p>` : ""}
+        <label class="btn ${preview ? "ghost" : "primary"}" style="margin-top:16px;display:block;text-align:center">
+          ${preview ? "Retake selfie" : "Open camera"}
+          <input class="file-sr" type="file" accept="image/*" capture="user" data-act-file="verify-selfie" aria-label="Take a live selfie" />
+        </label>
+        ${preview ? `<button type="button" class="btn primary" style="margin-top:8px" data-act="verify-submit"${o.uploading ? " disabled" : ""}>${o.uploading ? "Sending…" : "Send for review"}</button>` : ""}
+        <p class="tiny" style="margin-top:14px">${esc(verifyStatusCopy(""))}</p>`;
+    }
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Get verified</span></div></div>
+      <div class="scroll pad">${body}</div></div>`;
+  }
+
+  function viewAdminVerify() {
+    const o = state.adminVerify || { status: "pending", requests: [], loading: true };
+    const tabs = [["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]];
+    const tabBar = `<div class="chips" style="margin:4px 0 14px">${tabs.map(([id, label]) => `<button type="button" class="chip${o.status === id ? " on" : ""}" data-act="admin-verify-filter" data-id="${id}">${label}</button>`).join("")}</div>`;
+    let list;
+    if (o.loading) list = `<p class="muted">Loading…</p>`;
+    else if (!(o.requests || []).length) list = `<div class="empty"><p>No ${o.status === "all" ? "" : o.status + " "}requests right now.</p></div>`;
+    else list = (o.requests || []).map((r) => {
+      const photos = (r.profilePhotos || []).map((url) => `<div class="admin-ph" style="background-image:url('${esc(mediaUrl(url, 480))}')"></div>`).join("");
+      const actions = r.status === "pending"
+        ? `<div class="row" style="margin-top:10px;gap:8px"><button type="button" class="btn sm primary" data-act="admin-verify-decide" data-id="${r.id}" data-decision="approve">Approve</button>
+            <button type="button" class="btn sm ghost" data-act="admin-verify-decide" data-id="${r.id}" data-decision="reject">Reject</button></div>
+            <input data-field="adminReason-${r.id}" placeholder="Optional note if you reject" value="${esc((state.drafts["adminReason-" + r.id] || ""))}" style="margin-top:8px" />`
+        : `<p class="tiny" style="margin-top:8px">${esc(r.status)}${r.reviewedAt ? " · " + esc(r.reviewedAt) : ""}${r.reason ? " · " + esc(r.reason) : ""}</p>`;
+      return `<div class="admin-verify-card">
+        <div class="nm">${esc(r.name || "")} <span class="muted">@${esc(r.username || "")}</span></div>
+        <p class="sub" style="margin:6px 0 10px">Asked to pose: <strong>${esc(r.poseLabel || r.pose)}</strong>${r.poseHint ? " — " + esc(r.poseHint) : ""}</p>
+        <div class="admin-compare">
+          <div><div class="tiny">Selfie</div><div class="admin-ph selfie" style="background-image:url('${esc(r.selfieUrl)}')"></div></div>
+          <div><div class="tiny">Profile photos</div><div class="admin-ph-row">${photos || "<span class='muted'>No photos</span>"}</div></div>
+        </div>
+        ${actions}
+      </div>`;
+    }).join("");
+    return `<div class="screen top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="admin-verify-close" aria-label="Back">‹</button><span style="font-weight:600">Review verifications</span></div></div>
+      <div class="scroll pad">${tabBar}${list}</div></div>`;
+  }
+
   function viewAuth() {
     const mode = state.overlay && state.overlay.type === "signup" ? "signup" : (state.overlay && state.overlay.type === "forgot" ? "forgot" : "login");
     const cfg = state.authConfig || {};
@@ -2792,6 +2922,7 @@
       <h1 class="wordmark grad">Kandi</h1>
       <p>Find your people on the floor. Trade kandi, meet ravers, stay PLUR.</p>
       <div class="demo-tag">${isNativeIos() ? "18+ only" : "18+ only · installable web app"}</div>
+      ${trustNote()}
       ${mode === "signup" ? `
         <input id="f-name" data-field="name" aria-label="Name" autocomplete="given-name" placeholder="Name" value="${esc(state.drafts.name)}" style="margin-top:24px" />
         <input id="f-age" data-field="age" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Age" placeholder="Age (18+)" value="${esc(state.drafts.age)}" style="margin-top:8px" />
@@ -2890,11 +3021,12 @@
     const p = state.feed[0];
     if (!p) {
       return header("Kandi", right) + `<div class="scroll pad">${sameBar}${genreBar}<div class="empty"><p>${sameOn ? "No one else is marked going to that show yet. Try another one, or invite a friend." : "You're caught up for now. Check back when more ravers join, or rewind a pass."}</p>
+        ${trustNote()}
         <button class="btn sm primary" style="margin-top:16px" data-act="rewind">Rewind last pass</button></div></div>`;
     }
     const parts = [];
     if ((p.photos || []).length) parts.push(photoEl(p, 0, true));
-    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${esc(p.name)}, ${p.age}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
+    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
       <div class="emoji">${esc(initialOf(p))}</div><button class="heart-fab" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0" aria-label="Like ${esc(p.name)}">♡</button></div>`);
     if (p.prompts[0]) parts.push(promptEl(p, p.prompts[0]));
     if (mySongs(p).length) parts.push(`<div class="disco-song">${discoverSongs(p)}</div>`);
@@ -3403,6 +3535,8 @@
         ${row("open-notifs", "Activity", "Likes, matches, comments and follows")}
       </div>
       <div class="label">Safety &amp; privacy</div><div class="set-group">
+        ${row("open-get-verified", p.verified ? "You're verified" : "Get verified", p.verified ? "Selfie-verified badge is on your profile" : (p.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : (p.verificationStatus === "stale" ? "Your main photo changed — verify again" : "Take a live selfie so people know you're real")))}
+        ${p.isAdmin ? row("open-admin-verify", "Review verifications", "Approve or reject selfie checks") : ""}
         <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
           <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
@@ -4025,6 +4159,9 @@
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Settings</span></div></div>
         <div class="scroll pad">${settingsBody()}</div></div>`;
     }
+    if (o.type === "getVerified") {
+      return viewGetVerified(o);
+    }
     if (o.type === "post") {
       const p = state.openPost || findPost(o.id);
       if (!p) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this post.</div></div>`;
@@ -4601,6 +4738,7 @@
     else if (state.view === "verify") html = viewVerify();
     else if (state.view === "shareLanding") html = viewShareLanding();
     else if (state.view === "showLanding") html = viewShowLanding();
+    else if (state.view === "adminVerify") html = viewAdminVerify();
     else if (state.view === "onboard") { html = viewOnboard(); if (state.showPicker) html = html.replace(/<\/div>\s*$/, viewShowPicker() + "</div>"); }
     else {
       let body = "";
@@ -5195,13 +5333,110 @@
         render();
         if (state.view === "onboard") await loadEvents(); else await refreshAll();
         await openPendingShow();
+        if (await maybeOpenAdmin()) return;
         render(); return;
       }
       if (act === "logout") {
         try { await api("/api/logout", { method: "POST", body: {} }); } catch (_) { /* still sign out locally */ }
         state.me = null; state.view = "auth"; state.overlay = null; state.tab = "home"; state.drafts.pass = "";
+        state.adminVerify = null; state.pendingAdmin = false;
+        if (isAdminPath()) history.replaceState({}, "", "/");
         if (ws) { try { ws.close(); } catch (_) {} ws = null; }
         render(); return;
+      }
+      if (act === "open-get-verified") {
+        const returnTo = state.overlay && state.overlay.type === "settings" ? state.overlay : null;
+        state.overlay = { type: "getVerified", returnTo, loading: true };
+        render();
+        try {
+          const data = await api("/api/verification");
+          state.overlay = Object.assign({}, state.overlay, {
+            loading: false,
+            status: data.status || "",
+            pose: data.pose || {},
+            latest: data.latest || null,
+            retake: false,
+          });
+        } catch (err) {
+          state.overlay = Object.assign({}, state.overlay, { loading: false });
+          toast(err.message || "Couldn't open verification.", "err");
+        }
+        render(); return;
+      }
+      if (act === "verify-retake") {
+        if (state.overlay && state.overlay.type === "getVerified") {
+          if (state.overlay.previewUrl) try { URL.revokeObjectURL(state.overlay.previewUrl); } catch (_) {}
+          state.overlay.retake = true;
+          state.overlay.file = null;
+          state.overlay.previewUrl = "";
+          render();
+        }
+        return;
+      }
+      if (act === "verify-submit") {
+        const o = state.overlay;
+        if (!o || o.type !== "getVerified" || !o.file) { toast("Take a live selfie first.", "err"); return; }
+        if (o.uploading) return;
+        o.uploading = true; render();
+        try {
+          const fd = new FormData();
+          fd.append("selfie", o.file, "selfie.jpg");
+          if (o.pose && o.pose.id) fd.append("pose", o.pose.id);
+          const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/verification");
+            xhr.withCredentials = true;
+            xhr.onload = () => {
+              let body = {};
+              try { body = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
+              if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+              else reject(new Error(body.error || "Couldn't send that selfie."));
+            };
+            xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+            xhr.send(fd);
+          });
+          if (state.me) {
+            state.me.verificationStatus = data.status || "pending";
+            state.me.verified = false;
+          }
+          if (o.previewUrl) try { URL.revokeObjectURL(o.previewUrl); } catch (_) {}
+          state.overlay = { type: "getVerified", returnTo: o.returnTo, status: "pending", pose: data.pose || o.pose, latest: { status: "pending" }, retake: false };
+          toast(data.message || "Selfie sent for review.");
+        } catch (err) {
+          if (state.overlay) state.overlay.uploading = false;
+          toast(err.message || "Couldn't send that selfie.", "err");
+        }
+        render(); return;
+      }
+      if (act === "open-admin-verify") {
+        if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
+        state.overlay = null;
+        state.view = "adminVerify";
+        history.replaceState({}, "", "/admin/verify");
+        render();
+        await loadAdminVerifications("pending");
+        return;
+      }
+      if (act === "admin-verify-close") {
+        state.view = "app";
+        history.replaceState({}, "", "/");
+        render(); return;
+      }
+      if (act === "admin-verify-filter") {
+        await loadAdminVerifications(id || "pending");
+        return;
+      }
+      if (act === "admin-verify-decide") {
+        const decision = el && el.getAttribute("data-decision");
+        const reason = (state.drafts["adminReason-" + id] || "").trim();
+        try {
+          await api("/api/admin/verifications/" + id, { method: "POST", body: { action: decision, reason } });
+          toast(decision === "approve" ? "Approved. Badge is on their profile." : "Rejected.");
+          await loadAdminVerifications((state.adminVerify && state.adminVerify.status) || "pending");
+        } catch (err) {
+          toast(err.message || "Couldn't save that review.", "err");
+        }
+        return;
       }
       if (act === "delete-account") { state.err = ""; state.drafts.deleteUser = ""; state.drafts.deleteConfirm = ""; state.overlay = { type: "deleteAccount", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : null }; render(); return; }
       if (act === "delete-account-confirm") {
@@ -6491,6 +6726,26 @@
       state.drafts.claimFile = file;
       state.drafts.claimPreview = URL.createObjectURL(file);
       render();
+      return;
+    }
+    if (kind === "verify-selfie") {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const compact = await compressImage(file) || file;
+        const url = URL.createObjectURL(compact);
+        if (state.overlay && state.overlay.type === "getVerified") {
+          if (state.overlay.previewUrl) try { URL.revokeObjectURL(state.overlay.previewUrl); } catch (_) {}
+          state.overlay.file = compact;
+          state.overlay.previewUrl = url;
+        } else {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+        }
+        render();
+      } catch (err) {
+        toast((err && err.message) || "Couldn't read that photo.", "err");
+      }
       return;
     }
     if (kind === "upload-video") {

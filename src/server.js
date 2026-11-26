@@ -15,6 +15,7 @@ const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
 const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
 const { installShowInvites } = require("./show-invites");
+const { installVerification, isAdminUser, maybeStaleVerification, publicStatus } = require("./verification");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
 const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, MAX_UPLOAD_BYTES } = require("./photo");
@@ -289,6 +290,8 @@ function fileIdFromPhoto(ph) {
 }
 
 async function saveUserPhotos(userId, photos) {
+  const current = await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId);
+  await maybeStaleVerification(db, current, photos);
   await db.prepare(`UPDATE users SET photos=? WHERE id=?`).run(JSON.stringify(photos), userId);
   return publicUser(await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId));
 }
@@ -357,6 +360,7 @@ function publicUser(u, extra) {
     isFounder: Boolean(Number(u.is_founder)),
     foundingNumber: u.founding_number ? Number(u.founding_number) : null,
     homeLocation: u.home_location || "",
+    verified: publicStatus(u) === "approved",
     ...(extra || {}),
   };
 }
@@ -415,6 +419,9 @@ function selfEmailExtra(user) {
     emailLocked: mailer.isLocked(user),
     emailVerificationOn: mailer.verificationActive(),
     allowLinkFollows: followRules.shareFollowEnabled(user),
+    isAdmin: isAdminUser(user),
+    verificationStatus: publicStatus(user),
+    verified: publicStatus(user) === "approved",
   };
 }
 
@@ -571,6 +578,7 @@ app.delete("/api/account", auth, async (req, res) => {
   for (const sql of [`DELETE FROM chat_reads WHERE user_id=?`, `DELETE FROM notif_seen WHERE user_id=?`, `DELETE FROM we_met WHERE user_id=? OR other_id=?`]) {
     try { await db.prepare(sql).run(...(sql.includes("other_id") ? [id, id] : [id])); } catch (_) { /* table not created yet */ }
   }
+  try { await db.prepare(`DELETE FROM verification_requests WHERE user_id=?`).run(id); } catch (_) { /* table may not exist yet */ }
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
@@ -1697,6 +1705,13 @@ installShowInvites({
   blockedSet,
   broadcastToUser,
   getUserFromReq,
+});
+
+installVerification({
+  app,
+  getDb: () => db,
+  auth,
+  upload,
 });
 
 

@@ -542,7 +542,7 @@ const REPLACE_CONFLICT = {
   blocks: { cols: ["user_id", "blocked_id"], update: ["reason"] },
 };
 
-const SERIAL_TABLES = new Set(["users", "likes", "matches", "messages", "reports", "location_shares", "posts", "comments", "stories", "crews", "crew_requests", "crew_messages"]);
+const SERIAL_TABLES = new Set(["users", "likes", "matches", "messages", "reports", "location_shares", "posts", "comments", "stories", "crews", "crew_requests", "crew_messages", "verification_requests"]);
 
 function tableName(sql) {
   const m = String(sql).match(/\b(?:INTO|UPDATE|FROM|TABLE)\s+([a-zA-Z_][\w]*)/i);
@@ -1034,6 +1034,7 @@ async function migrate(db) {
     if (r && r.changes) console.log("My songs: moved " + r.changes + " favorite songs into slot 1.");
   } catch (err) { console.error("songs migration:", err.message || err); }
   await migrateGenderValues(db);
+  await require("./verification").migrateVerification(db);
 }
 
 // man/woman -> male/female, and copy sex into gender when gender was left blank.
