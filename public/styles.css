@@ -19,6 +19,7 @@
       --ok: #5dffb0;
       --safe-t: env(safe-area-inset-top, 0px);
       --safe-b: env(safe-area-inset-bottom, 0px);
+      --kb: 0px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; background: #000000; color: var(--text);
@@ -801,6 +802,19 @@
 .chat-media-btn { display: block; padding: 0; line-height: 0; }
 /* Reserve the photo's box before it loads so lazy images don't collapse and the chat doesn't jump. */
 .chat-photo { width: min(240px, 62vw); height: auto; aspect-ratio: 3 / 4; }
+
+/* Chat overlay: one scroller (the log), composer pinned at the bottom, keyboard inset via --kb. */
+.overlay.chat-overlay { overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+.overlay.chat-overlay > *:not(.chat-log) { flex-shrink: 0; }
+.overlay.chat-overlay .chat-log { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.chat-composer-wrap { flex-shrink: 0; padding-bottom: var(--kb, 0px); }
+.overlay.chat-overlay .chat-bar { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+.chat-bar input { font-size: 16px; }
+.overlay.chat-overlay input:focus, .overlay.chat-overlay textarea:focus { box-shadow: none; }
+.chat-video { aspect-ratio: 3 / 4; height: auto; }
+/* Hide the blurred tab bar while a chat is open so keyboard resize doesn't composite it. */
+body.chat-open .tabbar { visibility: hidden; pointer-events: none; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+
 /* Long words, links, and emoji runs wrap instead of running off the screen. */
 .bubble, .bubble-cap, .prompt .a, .prof-bio, .caption, .cap, .post-text-inner, .crew-msg, .wrap-text,
 .card .muted, .overlay .sub, .notif .grow, .story-text { overflow-wrap: anywhere; word-break: normal; }

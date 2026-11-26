@@ -40,6 +40,14 @@ const config = {
       style: "DARK",
       backgroundColor: "#000000",
     },
+    // Next native iOS build: install @capacitor/keyboard and cap sync.
+    // resize: "none" stops WKWebView from resizing the whole app when the
+    // keyboard opens (that resize fights the chat log). The web chat screen
+    // already insets the composer with visualViewport + --kb.
+    Keyboard: {
+      resize: "none",
+      resizeOnFullScreen: false,
+    },
   },
   ios: {
     scheme: "Kandi",

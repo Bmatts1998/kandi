@@ -1747,8 +1747,12 @@
   let ws;
   let wsRetry = 0;
   let wsTimer = null;
+  function isTypingInField() {
+    const a = document.activeElement;
+    return !!(a && a.getAttribute && a.getAttribute("data-field"));
+  }
   function quiet(promise) {
-    return Promise.resolve(promise).then(() => render()).catch(() => {});
+    return Promise.resolve(promise).then(() => { if (!isTypingInField()) render(); }).catch(() => {});
   }
   function connectWs() {
     if (!state.me || state.me.emailLocked) return;
@@ -1775,11 +1779,10 @@
       if (msg.type === "message-update" && msg.message) {
         const i = (state.chat || []).findIndex((m) => Number(m.id) === Number(msg.message.id));
         if (i >= 0) state.chat[i] = msg.message;
-        render();
+        refreshOpenChat();
       } else if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && Number(msg.from.id) === Number(state.chatWith.id)) {
         if (!state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
-        render();
-        scrollChatToEnd();
+        refreshOpenChat({ scroll: true });
         markChatRead(state.chatWith.id);
       } else if (msg.type === "message") {
         quiet(Promise.all([loadMatches(), loadUnread()]));
@@ -1798,13 +1801,13 @@
           state.chatMeetPlan = msg.meetPlan;
         }
         toast((msg.from && msg.from.name ? msg.from.name : "Your match") + " picked a meet spot.");
-        render();
+        if (state.overlay && state.overlay.type === "chat" && isTypingInField()) refreshOpenChat();
+        else render();
       } else if (msg.type === "disappear") {
         if (Number(msg.matchId) === Number(state.chatMatchId)) {
           state.chatDisappear = Boolean(msg.disappear);
           if (msg.message && !state.chat.some((m) => Number(m.id) === Number(msg.message.id))) state.chat.push(msg.message);
-          render();
-          scrollChatToEnd();
+          refreshOpenChat({ scroll: true });
         }
       } else if (msg.type === "messages-read") {
         if (Number(msg.matchId) === Number(state.chatMatchId)) {
@@ -1812,7 +1815,7 @@
             const m = state.chat.find((x) => Number(x.id) === Number(id));
             if (m) m.readAt = msg.readAt;
           });
-          render();
+          refreshOpenChat();
         }
       } else if (msg.type === "messages-deleted") {
         const ids = new Set((msg.messageIds || []).map(Number));
@@ -1820,7 +1823,7 @@
         if (Number(msg.matchId) === Number(state.chatMatchId) || state.chat.some((m) => ids.has(Number(m.id)))) {
           state.chat = state.chat.filter((m) => !ids.has(Number(m.id)));
           if (state.chatLightbox && ids.has(Number(state.chatLightbox.messageId))) state.chatLightbox = null;
-          if (state.chat.length !== before) render();
+          if (state.chat.length !== before) refreshOpenChat();
         }
         quiet(Promise.all([loadMatches(), loadUnread()]));
       } else if (msg.type === "crew-message") {
@@ -1828,9 +1831,7 @@
         if (onGroup && msg.message && !(state.groupMessages || []).some((m) => m.id === msg.message.id)) {
           const row = Object.assign({}, msg.message, { from: msg.from });
           state.groupMessages = (state.groupMessages || []).concat([row]);
-          render();
-          const log = document.querySelector(".crew-chat");
-          if (log) log.scrollTop = log.scrollHeight;
+          if (!appendCrewMessage(row)) render();
         } else {
           toast("New crew message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
         }
@@ -1852,7 +1853,7 @@
         const m = state.chat.find((x) => Number(x.id) === Number(mid));
         if (m && !m.readAt) { m.readAt = at; changed = true; }
       });
-      if (changed) render();
+      if (changed) refreshOpenChat();
     }).catch(() => {});
   }
   function scrollChatToEnd() {
@@ -1862,6 +1863,7 @@
   // Chat fallback: if the socket is down (Render sleeping, network change), poll the open chat.
   setInterval(() => {
     if (document.hidden || !state.me || !state.overlay) return;
+    if (isTypingInField()) return;
     if (state.overlay.type === "chat" && state.chatWith) {
       if (ws && ws.readyState === 1) return;
       const id = state.chatWith.id;
@@ -1872,8 +1874,7 @@
         if (ids !== cur || Boolean(data.disappear) !== Boolean(state.chatDisappear)) {
           state.chat = data.messages || [];
           state.chatDisappear = Boolean(data.disappear);
-          render();
-          scrollChatToEnd();
+          refreshOpenChat({ scroll: true });
         }
       }).catch(() => {});
       return;
@@ -4176,10 +4177,88 @@
     const bars = (peaks && peaks.length) ? peaks : Array.from({ length: 24 }, (_, i) => 20 + Math.round(40 * Math.abs(Math.sin(i * 0.7 + (duration || 1)))));
     return `<span class="voice-wave" aria-hidden="true">${bars.map((h) => `<i style="height:${Math.max(4, Math.min(100, Number(h) || 8))}%"></i>`).join("")}</span>`;
   }
+  function chatBubbleSig(m) {
+    const inv = m.showInvite || {};
+    return String(m.id) + "|" + (m.readAt || "") + "|" + (m.attachType || "") + "|" + (inv.status || "") + "|" + (m.text || "") + "|" + (m.mediaUrl || "") + "|" + (m.posterUrl || "") + "|" + ((m.music && (m.music.embedUrl || m.music.url)) || "");
+  }
+  function chatEmptyHint() {
+    const p = state.chatWith;
+    const m = p && matchForUser(p.id);
+    const kind = m && m.matchKind;
+    const text = kind === "friend" ? "You matched as friends. Say hi." : (kind === "date" ? "You matched for dating. Say hi." : "You matched on Kandi. Say hi.");
+    return `<div class="tiny chat-empty" style="text-align:center">${esc(text)}</div>`;
+  }
+  function syncChatLog(opts) {
+    const log = document.querySelector(".chat-log");
+    if (!log || !state.overlay || state.overlay.type !== "chat") return false;
+    const want = state.chat || [];
+    const have = new Map();
+    Array.from(log.children).forEach((n) => {
+      const id = n.getAttribute("data-msg");
+      if (id) have.set(String(id), n);
+      else n.remove();
+    });
+    const keep = new Set(want.map((m) => String(m.id)));
+    have.forEach((n, id) => { if (!keep.has(id)) { n.remove(); have.delete(id); } });
+    let next = log.firstElementChild;
+    for (let i = 0; i < want.length; i++) {
+      const m = want[i];
+      const id = String(m.id);
+      const sig = chatBubbleSig(m);
+      let node = have.get(id);
+      if (!node || node.getAttribute("data-sig") !== sig) {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = chatBubble(m);
+        const fresh = wrap.firstElementChild;
+        if (!fresh) continue;
+        if (node) {
+          if (next === node) next = node.nextElementSibling;
+          node.replaceWith(fresh);
+        }
+        node = fresh;
+        have.set(id, node);
+      }
+      if (node.parentNode !== log || node !== next) log.insertBefore(node, next || null);
+      next = node.nextElementSibling;
+    }
+    if (!want.length && !log.querySelector(".chat-empty")) log.innerHTML = chatEmptyHint();
+    if (opts && opts.scroll) scrollChatToEnd();
+    return true;
+  }
+  function refreshOpenChat(opts) {
+    if (state.overlay && state.overlay.type === "chat" && document.querySelector(".chat-log") && syncChatLog(opts)) return true;
+    render();
+    if (opts && opts.scroll) scrollChatToEnd();
+    return false;
+  }
+  function clearChatDraft() {
+    state.drafts.chat = "";
+    const input = document.querySelector('[data-field="chat"]');
+    if (input) input.value = "";
+  }
+  function crewMsgHtml(m) {
+    return `<div class="crew-msg${Number(m.fromId) === Number(state.me.id) ? " me" : ""}" data-crew-msg="${m.id}">
+            <div class="tiny">${esc((m.from && m.from.name) || (Number(m.fromId) === Number(state.me.id) ? "You" : "Member"))} · ${esc(timeAgo(m.at))}${Number(m.fromId) !== Number(state.me.id) && m.fromId ? ` · <button type="button" class="tiny crew-report" data-act="report" data-id="${Number(m.fromId)}" aria-label="Report this message">Report</button>` : ""}</div>
+            <div>${esc(m.text)}</div>
+          </div>`;
+  }
+  function appendCrewMessage(row) {
+    const log = document.querySelector(".crew-chat");
+    if (!log) return false;
+    const empty = log.querySelector(".muted");
+    if (empty && !log.querySelector(".crew-msg")) empty.remove();
+    if (row && row.id && log.querySelector('[data-crew-msg="' + row.id + '"]')) return true;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = crewMsgHtml(row);
+    if (wrap.firstElementChild) log.appendChild(wrap.firstElementChild);
+    log.scrollTop = log.scrollHeight;
+    return true;
+  }
   function chatBubble(m) {
     const mine = Number(m.fromId) === Number(state.me.id);
     const typ = m.attachType || "";
-    if (typ === "system") return `<div class="bubble sys">${esc(m.text)}</div>`;
+    const sig = esc(chatBubbleSig(m));
+    if (typ === "system") return `<div class="bubble sys" data-msg="${m.id}" data-sig="${sig}">${esc(m.text)}</div>`;
     const side = mine ? "me" : "them";
     let inner = "";
     if (typ === "voice") {
@@ -4191,21 +4270,21 @@
       <audio data-voice-id="${m.id}" src="${esc(m.mediaUrl || "")}" preload="none" playsinline webkit-playsinline></audio>`;
     } else if (typ === "photo") {
       inner = `<button type="button" class="chat-media-btn" data-act="open-chat-media" data-id="${m.id}" aria-label="View photo">
-        <img class="chat-photo" src="${esc(thumbUrl(m.mediaUrl || ""))}" alt="" loading="lazy" decoding="async">
+        <img class="chat-photo" src="${esc(thumbUrl(m.mediaUrl || ""))}" alt="" width="240" height="320" loading="lazy" decoding="async">
       </button>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
     } else if (typ === "video") {
-      inner = `<video class="chat-video" src="${esc(mediaUrl(m.mediaUrl || ""))}" ${m.posterUrl ? `poster="${esc(thumbUrl(m.posterUrl))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+      inner = `<video class="chat-video" src="${esc(mediaUrl(m.mediaUrl || ""))}" width="240" height="320" ${m.posterUrl ? `poster="${esc(thumbUrl(m.posterUrl))}"` : ""} playsinline webkit-playsinline controls preload="metadata"></video>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
     } else if (typ === "music" && m.music && m.music.embedUrl) {
       const prov = m.music.source || m.music.provider || "spotify";
       const hgt = (typeof tuneFrameHeight === "function") ? tuneFrameHeight(m.music) : 152;
-      inner = `<div class="chat-music ${esc(prov)}"><iframe src="${esc(m.music.embedUrl)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Music" style="height:${hgt}px"></iframe></div>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+      inner = `<div class="chat-music ${esc(prov)}"><iframe src="${esc(m.music.embedUrl)}" width="280" height="${hgt}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Music" style="height:${hgt}px"></iframe></div>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
     } else if (typ === "show_invite" && m.showInvite) {
       inner = showInviteCard(m, mine);
     } else {
       inner = esc(m.text);
     }
     const opened = mine && m.disappear && m.readAt ? `<div class="bubble-meta">Opened</div>` : (mine && m.disappear && !m.readAt ? `<div class="bubble-meta">Sent</div>` : "");
-    return `<div class="bubble ${side} ${typ}" data-msg="${m.id}">${inner}${opened}</div>`;
+    return `<div class="bubble ${side} ${typ}" data-msg="${m.id}" data-sig="${sig}">${inner}${opened}</div>`;
   }
   async function sendChatMedia(opts) {
     if (!state.chatWith) return null;
@@ -4516,8 +4595,8 @@
         ? await window.KandiVideo.upload("/api/chats/" + chatWith.id, fd, (pct) => { job.uploadPct = pct; paint(); })
         : await api("/api/chats/" + chatWith.id, { method: "POST", body: fd, timeout: 300000 });
       if (data.message && state.chatWith === chatWith && !state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
-      state.drafts.chat = "";
-      render(); scrollChatToEnd();
+      clearChatDraft();
+      refreshOpenChat({ scroll: true });
     } finally {
       bar.remove();
     }
@@ -4526,8 +4605,8 @@
     let ready = null;
     try { ready = await compressImage(file); } catch (_) { ready = null; }
     await sendChatMedia({ type: "photo", file: ready || file, text: state.drafts.chat.trim() });
-    state.drafts.chat = "";
-    render(); scrollChatToEnd();
+    clearChatDraft();
+    refreshOpenChat({ scroll: true });
   }
 
   function overlays() {
@@ -4854,7 +4933,7 @@
           ? `<video src="${esc(state.chatLightbox.url)}" ${state.chatLightbox.poster ? `poster="${esc(state.chatLightbox.poster)}"` : ""} playsinline webkit-playsinline controls autoplay></video>`
           : `<img src="${esc(state.chatLightbox.url)}" alt="">`}
       </div>` : "";
-      return `<div class="overlay" style="background:var(--bg);display:flex;flex-direction:column">
+      return `<div class="overlay chat-overlay">
         <div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button>
         <div class="chat-head"><button type="button" class="chat-head-btn" data-act="open-profile" data-id="${p.id}" aria-label="View ${esc(p.name)}'s profile">${personAvatar(p, "av chat")}<div style="text-align:left"><div class="nm">${esc(p.name)}</div>${(matchForUser(p.id) && matchKindLabel(matchForUser(p.id).matchKind)) ? `<div class="tiny">${esc(matchKindLabel(matchForUser(p.id).matchKind))}${state.chatShared && state.chatShared[0] ? " · Both going to " + esc(state.chatShared[0].name) : ""}</div>` : (state.chatShared && state.chatShared[0] ? `<div class="tiny">Both going to ${esc(state.chatShared[0].name)}</div>` : `<div class="tiny">View profile</div>`)}</div></button>${genreRow(p, { compact: true, max: 2 })}</div></div>
         <div class="right">
@@ -4865,7 +4944,7 @@
         ${state.chatShared && state.chatShared.length ? `<div style="padding:0 16px 8px"><button type="button" class="btn sm ghost" data-act="pick-meet" data-id="${p.id}">${state.chatMeetPlan && (state.chatMeetPlan.spot || state.chatMeetPlan.time) ? "Edit meet spot" : "Pick a meet spot"}</button></div>` : ""}
         ${ghostOn ? `<div class="tiny" style="text-align:center;padding:0 16px 8px;color:var(--muted)">Disappearing messages are on. Screenshots are still possible.</div>` : ""}
         <div class="notice warn" style="margin:0 16px 8px">Consent reminder: be direct, accept a no, and don't pressure anyone to meet or hook up.</div>
-        <div class="scroll chat-log">${state.chat.map(chatBubble).join("") || `<div class="tiny" style="text-align:center">${esc((matchForUser(p.id) && matchForUser(p.id).matchKind === "friend") ? "You matched as friends. Say hi." : ((matchForUser(p.id) && matchForUser(p.id).matchKind === "date") ? "You matched for dating. Say hi." : "You matched on Kandi. Say hi."))}</div>`}</div>
+        <div class="scroll chat-log">${state.chat.map(chatBubble).join("") || chatEmptyHint()}</div>
         ${bar}${musicSheet}${disappearSheet}${lite}</div>`;
     }
     if (o.type === "notifs") {
@@ -5082,10 +5161,7 @@
       if (isMember) {
         const msgs = state.groupMessages || [];
         body += `<div class="label" style="margin-top:8px">Crew chat</div>
-          <div class="crew-chat">${msgs.length ? msgs.map((m) => `<div class="crew-msg${Number(m.fromId) === Number(state.me.id) ? " me" : ""}">
-            <div class="tiny">${esc((m.from && m.from.name) || (Number(m.fromId) === Number(state.me.id) ? "You" : "Member"))} · ${esc(timeAgo(m.at))}${Number(m.fromId) !== Number(state.me.id) && m.fromId ? ` · <button type="button" class="tiny crew-report" data-act="report" data-id="${Number(m.fromId)}" aria-label="Report this message">Report</button>` : ""}</div>
-            <div>${esc(m.text)}</div>
-          </div>`).join("") : `<div class="muted">Say hi to the crew.</div>`}</div>
+          <div class="crew-chat">${msgs.length ? msgs.map(crewMsgHtml).join("") : `<div class="muted">Say hi to the crew.</div>`}</div>
           <div class="row" style="margin-top:10px"><input data-field="crewChat" aria-label="Message the crew" enterkeyhint="send" autocomplete="off" placeholder="Message the crew..." value="${esc(state.drafts.crewChat || "")}" />
             <button class="btn sm primary" data-act="send-crew-chat" data-id="${g.id}">Send</button></div>`;
       }
@@ -5227,6 +5303,7 @@
     else stopStoryPlayback();
     bindVoiceControls();
     scheduleMarkRead();
+    document.body.classList.toggle("chat-open", !!(state.view === "app" && state.overlay && state.overlay.type === "chat"));
   }
   let lastRenderKey = "";
   const busyActs = new Set();
@@ -6757,8 +6834,8 @@
           const data = await api("/api/chats/" + state.chatWith.id, { method: "POST", body: { text } });
           if (!state.chat.some((m) => m.id === data.message.id)) state.chat.push(data.message);
         }
-        state.drafts.chat = "";
-        render(); scrollChatToEnd(); return;
+        clearChatDraft();
+        refreshOpenChat({ scroll: true }); return;
       }
       if (act === "chat-attach") { state.chatSheet = state.chatSheet === "attach" ? null : "attach"; render(); return; }
       if (act === "close-chat-sheet") { state.chatSheet = null; render(); return; }
@@ -6991,9 +7068,9 @@
         const row = Object.assign({}, data.message, { from: data.from });
         state.groupMessages = (state.groupMessages || []).concat([row]);
         state.drafts.crewChat = "";
-        render();
-        const log = document.querySelector(".crew-chat");
-        if (log) log.scrollTop = log.scrollHeight;
+        const crewInput = document.querySelector('[data-field="crewChat"]');
+        if (crewInput) crewInput.value = "";
+        if (!appendCrewMessage(row)) render();
         return;
       }
       if (act === "event-from-group") {
@@ -7403,8 +7480,35 @@
   // Keep the bell and chat badges fresh while the app is open.
   setInterval(() => {
     if (document.hidden || !state.me || state.view !== "app") return;
-    Promise.allSettled([loadNotifs()]).then(() => { if (!document.activeElement || !document.activeElement.getAttribute || !document.activeElement.getAttribute("data-field")) render(); });
+    Promise.allSettled([loadNotifs()]).then(() => { if (!isTypingInField()) render(); });
   }, 60000);
+
+  // Keyboard inset: throttle to one rAF. Never call scrollIntoView (it fights .chat-log on iOS).
+  let kbRaf = 0;
+  let lastKb = 0;
+  let kbWasOpen = false;
+  function syncKeyboardInset() {
+    kbRaf = 0;
+    const vv = window.visualViewport;
+    let kb = 0;
+    if (vv) kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    if (kb < 40) kb = 0;
+    if (kb === lastKb) return;
+    lastKb = kb;
+    document.documentElement.style.setProperty("--kb", kb + "px");
+    const open = kb > 0 && state.overlay && state.overlay.type === "chat";
+    if (open && !kbWasOpen) scrollChatToEnd();
+    kbWasOpen = !!open;
+  }
+  function onViewportChange() {
+    if (kbRaf) return;
+    kbRaf = requestAnimationFrame(syncKeyboardInset);
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onViewportChange, { passive: true });
+    window.visualViewport.addEventListener("scroll", onViewportChange, { passive: true });
+  }
+  window.addEventListener("resize", onViewportChange, { passive: true });
 
   // Multi-photo posts: keep the "2/5" counter in sync while swiping.
   root.addEventListener("scroll", (e) => {
