@@ -1,13 +1,15 @@
-/* Kandi video prep: shrinks any phone video (4K/60fps HEVC, hundreds of MB) to a ~720p H.264 MP4
-   in the browser before upload, trims to the first N seconds, grabs a poster frame, and uploads
-   with progress. Shared by posts, stories and chat: window.KandiVideo.prepare(file, opts). */
+/* Kandi video prep: if a clip already fits the upload cap, send the original
+   .mov/.mp4 (iOS WKWebView transcode often drops AAC). Larger files are
+   shrunk in the browser to ~720p H.264, trimmed to the first N seconds, with
+   a poster frame. Shared by posts, stories, chat and profile video:
+   window.KandiVideo.prepare(file, opts). */
 (function () {
   "use strict";
   const TARGET_LONG = 1280;          // 720p (long side)
   const FPS = 30;
   const VIDEO_BPS = 2000000;         // ~2 Mbps video
   const AUDIO_BPS = 128000;          // 128 kbps AAC
-  const PASSTHROUGH_BYTES = 16 * 1024 * 1024; // small clips upload untouched
+  const PASSTHROUGH_BYTES = 60 * 1024 * 1024; // upload originals that already fit; iOS transcode drops audio
   const STALL_MS = 25000;
 
   let audioCtx = null;
@@ -451,31 +453,42 @@
     const name = String(file.name || "").toLowerCase();
     const playableContainer = !/webm/.test(typ) && !/\.webm$/.test(name);
     const tooLong = meta.duration > opts.maxSeconds + 0.5;
-    if (!tooLong && meta.duration > 0 && file.size <= opts.passthroughBytes && playableContainer && !opts.forceTranscode) {
+    const passLimit = Math.max(Number(opts.passthroughBytes) || 0, Number(opts.maxBytes) || 0);
+    const fitsUpload = playableContainer && file.size > 0 && file.size <= passLimit;
+    // Prefer the original whenever it already fits. Client transcode in iOS
+    // WKWebView (WebCodecs + MediaElementSource, or MediaRecorder on a muted
+    // canvas stream) often yields no audio or a 0-channel AAC track. The
+    // server remuxes with ffmpeg -c copy (trim + faststart) and keeps AAC.
+    if (fitsUpload && !opts.forceTranscode) {
       if (opts.onProgress) opts.onProgress(100);
-      return { file, poster: meta.poster, duration: meta.duration, trimmed: false, transcoded: false, noAudio: false, mode: "original" };
+      return { file, poster: meta.poster, duration: meta.duration, trimmed: tooLong, transcoded: false, noAudio: false, mode: "original" };
+    }
+    function originalOk() {
+      return { file, poster: meta.poster, duration: meta.duration, trimmed: tooLong, transcoded: false, noAudio: false, mode: "original" };
+    }
+    function audioLost() {
+      const e = new Error("Couldn't keep the sound while shrinking that video. Trim it in Photos to under a minute and try again.");
+      e.code = "audio_lost";
+      return e;
     }
     let out;
     try {
       try {
         out = await transcode(file, opts);
-        // WebKit often muxes an empty AAC track (0 packets) when capture fails.
-        // Shrink again without audio so we don't upload a fake silent track.
-        if (out && out.noAudio && !opts.skipAudio && out.mode === "webcodecs") {
-          try { out = await transcode(file, Object.assign({}, opts, { skipAudio: true })); } catch (_) {}
+        if (out && out.noAudio && !opts.skipAudio) {
+          if (fitsUpload) return originalOk();
+          throw audioLost();
         }
       } catch (first) {
         if (!first || first.code !== "audio_stall") throw first;
-        // This WebView can't play and capture sound at once: shrink it without the sound route.
-        out = await transcode(file, Object.assign({}, opts, { skipAudio: true }));
+        if (fitsUpload) return originalOk();
+        throw audioLost();
       }
     } catch (err) {
       if (err && err.name === "AbortError") throw err;
       try { console.warn("KandiVideo: shrink failed", err && (err.message || err)); } catch (_) {}
       // Could not shrink it here: a small enough original can still go up as is.
-      if (!tooLong && file.size <= opts.maxBytes && playableContainer) {
-        return { file, poster: meta.poster, duration: meta.duration, trimmed: false, transcoded: false, noAudio: false, mode: "original" };
-      }
+      if (fitsUpload) return originalOk();
       throw err;
     }
     if (out.blob.size > opts.maxBytes) throw new Error("That video is still too big after shrinking it. Try a shorter clip.");
