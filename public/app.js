@@ -43,11 +43,12 @@
     { id: "dance", label: "Dance partner" },
   ];
   const GENDERS = [
-    { id: "woman", label: "Woman" },
-    { id: "man", label: "Man" },
+    { id: "female", label: "Female" },
+    { id: "male", label: "Male" },
     { id: "nonbinary", label: "Nonbinary" },
     { id: "trans", label: "Trans" },
     { id: "agender", label: "Agender" },
+    { id: "intersex", label: "Intersex" },
     { id: "other", label: "Other" },
   ];
   const PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns", "ask me"];
@@ -61,11 +62,6 @@
     { id: "yes", label: "Always trading" },
     { id: "sometimes", label: "Sometimes" },
     { id: "no", label: "Not really" },
-  ];
-  const SEXES = [
-    { id: "female", label: "Female" },
-    { id: "male", label: "Male" },
-    { id: "intersex", label: "Intersex" },
   ];
   const HOBBIES = ["dancing", "DJing", "producing", "kandi making", "photography", "festivals", "afters", "vinyl", "fashion", "thrifting", "hiking", "camping", "yoga", "gym", "skating", "art", "gaming", "travel", "animals", "tattooing"];
   const MAX_TUNES = 5;
@@ -89,7 +85,6 @@
   const GENDER_LABEL = Object.fromEntries(GENDERS.map((x) => [x.id, x.label]));
   const INTERESTED_LABEL = Object.fromEntries(INTERESTED_IN.map((x) => [x.id, x.label]));
   const KANDI_TRADES_LABEL = Object.fromEntries(KANDI_TRADES.map((x) => [x.id, x.label]));
-  const SEX_LABEL = Object.fromEntries(SEXES.map((x) => [x.id, x.label]));
   function genreCatalog() {
     return (state.genreCatalog && state.genreCatalog.length) ? state.genreCatalog : GENRES;
   }
@@ -103,8 +98,12 @@
   }
 
   function lookingLabel(id) { return LOOKING_LABEL[id] || id; }
-  function genderLabel(id) { return GENDER_LABEL[id] || id; }
-  function sexLabel(id) { return SEX_LABEL[id] || id; }
+  function genderLabel(id) {
+    const key = String(id || "").trim().toLowerCase();
+    if (key === "man" || key === "male" || key === "m") return "Male";
+    if (key === "woman" || key === "female" || key === "w") return "Female";
+    return GENDER_LABEL[id] || GENDER_LABEL[key] || id;
+  }
   function formatHeight(inches) {
     if (inches == null || inches === "") return "";
     const n = Number(inches);
@@ -430,16 +429,31 @@
     const parts = String(e.date || "").split(" · ");
     return e.timeTba ? "Time TBA" : (parts[1] || "").trim();
   }
+  function showPickerMode(where) {
+    return (where === "post" || where === "story") ? where : "going";
+  }
+  function taggedShowId(mode) {
+    if (mode === "post") return String(state.drafts.postEvent || "");
+    if (mode === "story") return String(state.drafts.storyEvent || "");
+    return "";
+  }
   function showPickerField(where) {
-    const ids = new Set(goingIds());
+    const mode = showPickerMode(where);
+    const tagId = taggedShowId(mode);
+    const ids = new Set(mode === "going" ? goingIds() : (tagId ? [tagId] : []));
     const sel = pickableEvents().filter((e) => ids.has(String(e.id)));
     const n = sel.length;
     const loading = !state.eventsLoaded && !pickableEvents().length;
+    let summary = "Loading shows…";
+    if (!loading) {
+      if (mode === "going") summary = n ? n + (n === 1 ? " show" : " shows") + " picked" : "Choose shows";
+      else summary = n ? eventChipLabel(sel[0]) : "Choose a show";
+    }
     return `<div class="show-field" data-where="${esc(where || "")}">
-      <button type="button" class="show-field-btn" data-act="show-pick-open" aria-haspopup="dialog" ${loading ? "disabled" : ""}>
-        ${kIcon("events")}<span class="grow">${loading ? "Loading shows…" : (n ? n + (n === 1 ? " show" : " shows") + " picked" : "Choose shows")}</span>${kIcon("down")}
+      <button type="button" class="show-field-btn" data-act="show-pick-open" data-id="${esc(mode)}" aria-haspopup="dialog" ${loading ? "disabled" : ""}>
+        ${kIcon("events")}<span class="grow">${esc(summary)}</span>${kIcon("down")}
       </button>
-      ${n ? `<div class="show-chips">${sel.map((e) => `<span class="show-chip">${e.emoji ? `<span aria-hidden="true">${esc(e.emoji)}</span>` : ""}<span class="show-chip-name">${esc(eventChipLabel(e))}</span><button type="button" class="show-chip-x" data-act="show-unpick" data-id="${esc(e.id)}" aria-label="Remove ${esc(e.name)}">×</button></span>`).join("")}</div>` : ""}
+      ${n ? `<div class="show-chips">${sel.map((e) => `<span class="show-chip">${e.emoji ? `<span aria-hidden="true">${esc(e.emoji)}</span>` : ""}<span class="show-chip-name">${esc(eventChipLabel(e))}</span><button type="button" class="show-chip-x" data-act="show-unpick" data-id="${esc(e.id)}" data-mode="${esc(mode)}" aria-label="Remove ${esc(e.name)}">×</button></span>`).join("")}</div>` : ""}
     </div>`;
   }
   function viewShowPicker() {
@@ -463,15 +477,18 @@
       </button>`;
     }).join("")}</div>`).join("");
     const n = sel.size;
-    return `<div class="sheet-bg show-pick-bg"><div class="sheet show-pick" data-stop="1" role="dialog" aria-modal="true" aria-label="Shows I'm going to"><div class="grab"></div>
-      <div class="show-pick-head"><h2 class="h2">Shows I'm going to</h2><button type="button" class="icon-btn" data-act="show-pick-cancel" aria-label="Close without saving">✕</button></div>
+    const mode = sp.mode || "going";
+    const title = mode === "going" ? "Shows I'm going to" : "Tag a rave or concert";
+    const multi = mode === "going";
+    return `<div class="sheet-bg show-pick-bg"><div class="sheet show-pick" data-stop="1" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
+      <div class="show-pick-head"><h2 class="h2">${esc(title)}</h2><button type="button" class="icon-btn" data-act="show-pick-cancel" aria-label="Close without saving">✕</button></div>
       <label class="show-search">${kIcon("search")}<input type="search" data-field="showPickQ" aria-label="Search shows" placeholder="Search shows, artists, venues" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(sp.q || "")}" /></label>
       <div class="seg event-cats show-pick-cats">
         <button type="button" class="${sp.cat === "all" ? "on" : ""}" data-act="show-pick-cat" data-id="all">All</button>
         <button type="button" class="${sp.cat === "rave" ? "on" : ""}" data-act="show-pick-cat" data-id="rave">Raves &amp; EDM</button>
         <button type="button" class="${sp.cat === "concert" ? "on" : ""}" data-act="show-pick-cat" data-id="concert">Concerts</button>
       </div>
-      <div class="show-pick-list" role="listbox" aria-multiselectable="true" aria-label="Upcoming shows">${body || `<p class="muted">No upcoming shows are listed right now.</p>`}
+      <div class="show-pick-list" role="listbox" aria-multiselectable="${multi ? "true" : "false"}" aria-label="Upcoming shows">${body || `<p class="muted">No upcoming shows are listed right now.</p>`}
         <p class="muted show-pick-empty" hidden>No shows match that search.</p></div>
       <div class="show-pick-foot"><button type="button" class="btn primary" data-act="show-pick-done">${n ? "Done · " + n + (n === 1 ? " show" : " shows") : "Done"}</button></div>
     </div></div>`;
@@ -501,6 +518,11 @@
     const sp = state.showPicker;
     const b = document.querySelector("[data-act=show-pick-done]");
     if (!sp || !b) return;
+    if (sp.mode === "post" || sp.mode === "story") {
+      const ev = pickableEvents().find((e) => String(e.id) === String(sp.sel[0] || ""));
+      b.textContent = ev ? "Done · " + ev.name : "Done";
+      return;
+    }
     const n = sp.sel.length;
     b.textContent = n ? "Done · " + n + (n === 1 ? " show" : " shows") : "Done";
   }
@@ -709,7 +731,6 @@
       homeLocation: String(state.drafts.editHomeLocation || "").trim(),
       gender: d.gender || "",
       pronouns: d.pronouns || "",
-      sex: d.sex || "",
       interestedIn: d.interestedIn || [],
       vibes: d.vibes || [],
       looking: d.looking || [],
@@ -973,7 +994,6 @@
     const chips = [];
     if (p.age) chips.push(`<span class="chip soft">${esc(p.age)}</span>`);
     if (p.gender) chips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
-    if (p.sex) chips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
     if (p.pronouns) chips.push(`<span class="chip soft">${esc(p.pronouns)}</span>`);
     const height = formatHeight(p.heightIn);
     if (height) chips.push(`<span class="chip soft">${esc(height)}</span>`);
@@ -1100,7 +1120,6 @@
       const topChips = [];
       if (p.age) topChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
       if (p.gender) topChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
-      if (p.sex) topChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
       const height = formatHeight(p.heightIn);
       if (height) topChips.push(`<span class="chip soft">${esc(height)}</span>`);
       (p.hobbies || []).slice(0, 3).forEach((h) => topChips.push(`<span class="chip soft">${esc(h)}</span>`));
@@ -2817,7 +2836,6 @@
     const discoChips = [];
     if (p.age) discoChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
     if (p.gender) discoChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
-    if (p.sex) discoChips.push(`<span class="chip soft">${esc(sexLabel(p.sex))}</span>`);
     const discoHeight = formatHeight(p.heightIn);
     if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
     (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
@@ -3152,7 +3170,6 @@
   }
   function storyComposerHtml() {
     const d = state.storyDraft || {};
-    const evs = state.events || [];
     const preview = d.preview
       ? `<div class="story-preview">${d.kind === "video" && d.videoUrl
           ? `<video src="${esc(d.videoUrl)}" muted playsinline webkit-playsinline autoplay loop></video>`
@@ -3170,8 +3187,7 @@
       ${d.preview ? `<div class="label" style="margin-top:12px">Text overlay (optional)</div>
         <input data-field="storyText" maxlength="140" placeholder="Add a line..." value="${esc(state.drafts.storyText || "")}" />
         <div class="label" style="margin-top:12px">Tag an event (optional)</div>
-        <div class="chips"><button type="button" class="chip${!(state.drafts.storyEvent) ? " on" : ""}" data-act="story-event" data-id="">None</button>
-          ${evs.map((e) => `<button type="button" class="chip${state.drafts.storyEvent === e.id ? " on" : ""}" data-act="story-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>` : ""}
+        ${showPickerField("story")}` : ""}
       ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
       ${uploadBusy()}
       ${d.preview ? `<button type="button" class="btn primary" style="margin-top:16px" data-act="submit-story">Share story</button>
@@ -3391,7 +3407,6 @@
       <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
       ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}
       ${editChipRow("Pronouns", PRONOUNS.map((x) => ({ id: x, label: x })), d.pronouns, "edit-set-pronouns", true)}
-      ${editChipRow("Sex", SEXES, d.sex, "edit-set-sex", true)}
       <div class="label" style="margin-top:14px">Height</div>
       <div class="row height-row"><select data-field="editHeightFt" aria-label="Height in feet">${ftOpts}</select>
         <select data-field="editHeightIn" aria-label="Height in inches">${inOpts}</select></div>
@@ -3461,7 +3476,6 @@
   }
 
   function composerView() {
-    const evs = state.events || [];
     const photo = hiddenFileInput("post-photos", "Add photos", { accept: "image/*", multiple: true });
     const video = hiddenFileInput("post-video", "Add a short video", { accept: "video/*,video/mp4,video/quicktime,.mov,.mp4,.m4v" });
     return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Cancel">✕</button><span style="font-weight:600">New post</span></div>
@@ -3474,8 +3488,7 @@
           ${video.input}<label class="btn sm ghost" for="${video.id}">Add video</label>
         </div>
         <div class="label" style="margin-top:16px">Tag a rave or concert (optional)</div>
-        <div class="chips"><button type="button" class="chip${!(state.drafts.postEvent) ? " on" : ""}" data-act="post-event" data-id="">None</button>
-          ${evs.map((e) => `<button type="button" class="chip${state.drafts.postEvent === e.id ? " on" : ""}" data-act="post-event" data-id="${esc(e.id)}">${esc(e.emoji || "")} ${esc(e.name)}</button>`).join("")}</div>
+        ${showPickerField("post")}
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
         <div style="height:28px"></div>
       </div></div>`;
@@ -4524,7 +4537,9 @@
     if (act === "song-play") { toggleSong(el); return; }
     if (act === "show-pick-open") {
       if (!state.eventsLoaded && !pickableEvents().length) { try { await loadEvents(); } catch (_) {} }
-      state.showPicker = { sel: goingIds(), q: "", cat: "all" };
+      const mode = (id === "post" || id === "story") ? id : "going";
+      const sel = mode === "going" ? goingIds() : (taggedShowId(mode) ? [taggedShowId(mode)] : []);
+      state.showPicker = { mode, sel, q: "", cat: "all" };
       render();
       return;
     }
@@ -4533,8 +4548,22 @@
     if (act === "show-pick-toggle") {
       const sp = state.showPicker;
       if (!sp) return;
-      const on = !sp.sel.includes(String(id));
-      sp.sel = on ? sp.sel.concat(String(id)) : sp.sel.filter((x) => x !== String(id));
+      const sid = String(id);
+      if (sp.mode === "post" || sp.mode === "story") {
+        sp.sel = sp.sel.includes(sid) ? [] : [sid];
+        const sheet = el.closest(".show-pick") || document.querySelector(".show-pick");
+        if (sheet) {
+          sheet.querySelectorAll(".show-opt").forEach((o) => {
+            const on = sp.sel.includes(String(o.getAttribute("data-id")));
+            o.classList.toggle("on", on);
+            o.setAttribute("aria-selected", String(on));
+          });
+        }
+        paintShowPickCount();
+        return;
+      }
+      const on = !sp.sel.includes(sid);
+      sp.sel = on ? sp.sel.concat(sid) : sp.sel.filter((x) => x !== sid);
       el.classList.toggle("on", on);
       el.setAttribute("aria-selected", String(on));
       paintShowPickCount();
@@ -4543,6 +4572,14 @@
     if (act === "show-pick-done") {
       const sp = state.showPicker;
       if (!sp) return;
+      if (sp.mode === "post" || sp.mode === "story") {
+        const picked = sp.sel[0] || "";
+        if (sp.mode === "post") state.drafts.postEvent = picked;
+        else state.drafts.storyEvent = picked;
+        state.showPicker = null;
+        render();
+        return;
+      }
       el.textContent = "Saving…";
       const r = await saveGoing(sp.sel);
       state.showPicker = null;
@@ -4555,6 +4592,9 @@
       return;
     }
     if (act === "show-unpick") {
+      const mode = (el && el.getAttribute("data-mode")) || "going";
+      if (mode === "post") { state.drafts.postEvent = ""; render(); return; }
+      if (mode === "story") { state.drafts.storyEvent = ""; render(); return; }
       const r = await saveGoing(goingIds().filter((x) => x !== String(id)));
       render();
       if (r.failed) toast("Couldn't remove that show. Try again.", "err");

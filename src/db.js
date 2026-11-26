@@ -1033,6 +1033,32 @@ async function migrate(db) {
     const r = await db.prepare(`UPDATE users SET songs = '[' || favorite_song || ']' WHERE (songs IS NULL OR songs = '') AND favorite_song IS NOT NULL AND favorite_song <> ''`).run();
     if (r && r.changes) console.log("My songs: moved " + r.changes + " favorite songs into slot 1.");
   } catch (err) { console.error("songs migration:", err.message || err); }
+  await migrateGenderValues(db);
+}
+
+// man/woman -> male/female, and copy sex into gender when gender was left blank.
+async function migrateGenderValues(db) {
+  const steps = [
+    [`UPDATE users SET gender = 'male' WHERE lower(trim(gender)) IN ('man', 'm')`, "man->male"],
+    [`UPDATE users SET gender = 'female' WHERE lower(trim(gender)) IN ('woman', 'w')`, "woman->female"],
+    [`UPDATE users SET gender = 'male' WHERE (gender IS NULL OR trim(gender) = '') AND lower(trim(sex)) IN ('male', 'man', 'm')`, "sex male->gender"],
+    [`UPDATE users SET gender = 'female' WHERE (gender IS NULL OR trim(gender) = '') AND lower(trim(sex)) IN ('female', 'woman', 'w')`, "sex female->gender"],
+    [`UPDATE users SET gender = 'intersex' WHERE (gender IS NULL OR trim(gender) = '') AND lower(trim(sex)) = 'intersex'`, "sex intersex->gender"],
+  ];
+  let total = 0;
+  for (const [sql, label] of steps) {
+    try {
+      const r = await db.prepare(sql).run();
+      const n = (r && r.changes) || 0;
+      if (n) {
+        total += n;
+        console.log("Gender migrate " + label + ": " + n);
+      }
+    } catch (err) {
+      console.error("Gender migrate " + label + ":", err.message || err);
+    }
+  }
+  if (total) console.log("Gender labels normalized on " + total + " profiles.");
 }
 
 // Email + verification + password reset. Existing rows get email_verify_required=0,

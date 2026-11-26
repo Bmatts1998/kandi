@@ -108,6 +108,14 @@ test.describe("Profile preview, edit, and posts (iPhone WebKit)", () => {
     await expect(photoInput).not.toHaveCSS("display", "none");
     await expect(videoInput).not.toHaveCSS("display", "none");
     await expect(page.getByText("Tag a rave or concert")).toBeVisible();
+    await expect(page.locator(".overlay .show-field-btn")).toBeVisible();
+    await expect(page.locator(".overlay [data-act='post-event']")).toHaveCount(0);
+    await page.locator(".overlay .show-field-btn").click();
+    await expect(page.locator(".show-pick")).toBeVisible();
+    await expect(page.locator(".show-pick .h2")).toHaveText("Tag a rave or concert");
+    await expect(page.locator(".show-pick input[data-field='showPickQ']")).toBeVisible();
+    await page.locator(".show-pick [data-act='show-pick-cancel']").click();
+    await expect(page.locator(".show-pick")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Post", exact: true })).toBeVisible();
     await page.locator('.overlay .header [data-act="close"]').click();
     await expect(page.getByRole("button", { name: "New Post" })).toBeVisible();

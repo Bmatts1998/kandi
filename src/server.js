@@ -616,6 +616,26 @@ function cleanPrompts(list) {
     a: String(p.a || "").trim().slice(0, 300),
   })).filter((p) => p.q && p.a);
 }
+// Unify man/woman with male/female so Discover filters and profile labels stay in sync.
+function normalizeGender(val) {
+  const g = String(val == null ? "" : val).trim().toLowerCase();
+  if (!g) return "";
+  if (g === "man" || g === "m") return "male";
+  if (g === "woman" || g === "w") return "female";
+  return clipText(g, 40, "");
+}
+function genderMatches(value, wanted) {
+  const w = String(wanted || "").trim().toLowerCase();
+  if (!w || w === "all") return true;
+  const v = String(value || "").trim().toLowerCase();
+  const aliases = {
+    male: ["male", "man", "m"],
+    man: ["male", "man", "m"],
+    female: ["female", "woman", "w"],
+    woman: ["female", "woman", "w"],
+  };
+  return (aliases[w] || [w]).includes(v);
+}
 
 app.put("/api/me", auth, async (req, res) => {
   const body = req.body || {};
@@ -639,7 +659,7 @@ app.put("/api/me", auth, async (req, res) => {
       return res.status(400).json({ error: "Kandi is 18+. Enter an age between 18 and 99." });
     }
   }
-  const gender = body.gender != null ? clipText(body.gender, 40, "") : (req.user.gender || "");
+  const gender = body.gender != null ? normalizeGender(body.gender) : normalizeGender(req.user.gender);
   const pronouns = body.pronouns != null ? clipText(body.pronouns, 40, "") : (req.user.pronouns || "");
   const interestedIn = body.interestedIn != null ? JSON.stringify(body.interestedIn) : (req.user.interested_in || "[]");
   const favoriteArtists = body.favoriteArtists != null ? clipText(body.favoriteArtists, 200, "") : (req.user.favorite_artists || "");
@@ -916,7 +936,7 @@ app.get("/api/discover", auth, async (req, res) => {
       return theirs.some((e) => e.id === event || e.event_key === event) || (p.events || []).includes(event);
     });
   }
-  if (gender !== "all") people = people.filter((p) => p.gender === gender);
+  if (gender !== "all") people = people.filter((p) => genderMatches(p.gender, gender));
   const lo = Number.isFinite(ageMin) ? ageMin : 18;
   const hi = Number.isFinite(ageMax) ? ageMax : 99;
   if (lo > 18 || hi < 99) {

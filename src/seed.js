@@ -13,7 +13,7 @@ const DEMO_PASSWORD = "plur-demo";
 
 const DETAILS = {
   nova: {
-    gender: "woman", pronouns: "she/her", interestedIn: ["men"],
+    gender: "female", pronouns: "she/her", interestedIn: ["men"],
     favoriteArtists: "Charlotte de Witte, AMELIE LENS",
     favoriteFestival: "Movement", favoriteVenue: "Hart Plaza",
     favoriteHangout: "Afters warehouse, no photos",
@@ -21,7 +21,7 @@ const DETAILS = {
     sex: "female", heightIn: 66, hobbies: ["dancing", "photography", "vinyl", "afters"],
   },
   hex: {
-    gender: "man", pronouns: "he/him", interestedIn: ["everyone"],
+    gender: "male", pronouns: "he/him", interestedIn: ["everyone"],
     favoriteArtists: "Excision, Subtronics",
     favoriteFestival: "Lost Lands", favoriteVenue: "Legend Valley",
     favoriteHangout: "The pit, obviously",
@@ -29,7 +29,7 @@ const DETAILS = {
     sex: "male", heightIn: 71, hobbies: ["DJing", "producing", "kandi making", "gaming"],
   },
   luna: {
-    gender: "woman", pronouns: "she/they", interestedIn: ["women", "nonbinary"],
+    gender: "female", pronouns: "she/they", interestedIn: ["women", "nonbinary"],
     favoriteArtists: "Above & Beyond, Lane 8",
     favoriteFestival: "Electric Forest", favoriteVenue: "The Canopy",
     favoriteHangout: "Under the canopy at Forest",
@@ -46,7 +46,7 @@ const DETAILS = {
     lookingExtra: ["crew"],
   },
   vesper: {
-    gender: "woman", pronouns: "she/her", interestedIn: ["men"],
+    gender: "female", pronouns: "she/her", interestedIn: ["men"],
     favoriteArtists: "Four Tet, Peggy Gou",
     favoriteFestival: "CRSSD Festival", favoriteVenue: "Waterfront Park",
     favoriteHangout: "The waterfront after the last set",
@@ -54,7 +54,7 @@ const DETAILS = {
     sex: "female", heightIn: 64, hobbies: ["kandi making", "thrifting", "photography", "dancing"],
   },
   sol: {
-    gender: "man", pronouns: "he/him", interestedIn: ["women"],
+    gender: "male", pronouns: "he/him", interestedIn: ["women"],
     favoriteArtists: "Armin van Buuren, Rezz",
     favoriteFestival: "EDC Las Vegas", favoriteVenue: "Kinetic Field",
     favoriteHangout: "Under the big owl",
@@ -62,7 +62,7 @@ const DETAILS = {
     sex: "male", heightIn: 70, hobbies: ["festivals", "fashion", "gym", "travel"],
   },
   ember: {
-    gender: "woman", pronouns: "she/her", interestedIn: ["men", "women"],
+    gender: "female", pronouns: "she/her", interestedIn: ["men", "women"],
     favoriteArtists: "I Hate Models, Dax J",
     favoriteFestival: "Movement", favoriteVenue: "Whatever warehouse is running afters",
     favoriteHangout: "Cement floors and strobes",
@@ -79,7 +79,7 @@ const DETAILS = {
     lookingExtra: ["crew"],
   },
   jade: {
-    gender: "woman", pronouns: "she/they", interestedIn: ["everyone"],
+    gender: "female", pronouns: "she/they", interestedIn: ["everyone"],
     favoriteArtists: "Skrillex, Dom Dolla",
     favoriteFestival: "EDC Las Vegas", favoriteVenue: "Circuit Grounds",
     favoriteHangout: "Crew camp, faces not included",
@@ -88,7 +88,7 @@ const DETAILS = {
     lookingExtra: ["crew"],
   },
   orion: {
-    gender: "man", pronouns: "he/him", interestedIn: ["women"],
+    gender: "male", pronouns: "he/him", interestedIn: ["women"],
     favoriteArtists: "Tale Of Us, Stephan Bodzin",
     favoriteFestival: "Movement", favoriteVenue: "The afters, closing hours",
     favoriteHangout: "A late-night walk when the lights come up",
