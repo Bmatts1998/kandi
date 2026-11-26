@@ -44,8 +44,21 @@ function parseInfo(stderr) {
   const d = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr);
   const duration = d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0;
   const vm = /Stream #[^\n]*Video:\s*([a-z0-9_]+)/i.exec(stderr);
-  const am = /Stream #[^\n]*Audio:\s*([a-z0-9_]+)/i.exec(stderr);
-  return { duration, vcodec: vm ? vm[1].toLowerCase() : "", acodec: am ? am[1].toLowerCase() : "" };
+  const am = /Stream #[^\n]*Audio:\s*([a-z0-9_]+)([^\n]*)/i.exec(stderr);
+  const audioRest = am ? am[2] : "";
+  const ch = /(\d+)\s*channels/i.exec(audioRest);
+  const channels = ch ? Number(ch[1]) : (am ? null : 0);
+  return { duration, vcodec: vm ? vm[1].toLowerCase() : "", acodec: am ? am[1].toLowerCase() : "", channels, audioLine: audioRest };
+}
+
+async function audioIsUsable(inPath, info) {
+  if (!info || !info.acodec) return false;
+  if (info.channels === 0) return false;
+  if (/0 channels/i.test(info.audioLine || "")) return false;
+  const r = await run(["-hide_banner", "-i", inPath, "-map", "0:a:0", "-t", "1", "-f", "null", "-"], 15000);
+  if (r.code !== 0) return false;
+  if (/0 channels|Audio object type 0|Could not find codec parameters for stream.*Audio/i.test(r.stderr || "")) return false;
+  return true;
 }
 
 // One ffmpeg at a time keeps memory flat on a 512 MB instance.
@@ -71,9 +84,14 @@ function finishVideo(buffer, mime, { maxSeconds = 60, wantPoster = false } = {})
       fs.writeFileSync(inPath, buffer);
       const info = parseInfo((await run(["-hide_banner", "-i", inPath], 15000)).stderr);
       const result = Object.assign({}, fallback, { duration: info.duration, tooLong: info.duration > maxSeconds + 1 });
-      const copyable = /^(h264|hevc)$/.test(info.vcodec) && (!info.acodec || /^(aac|mp3|alac|ac3|eac3)$/.test(info.acodec));
+      const keepAudio = await audioIsUsable(inPath, info);
+      const copyable = /^(h264|hevc)$/.test(info.vcodec) && (!keepAudio || /^(aac|mp3|alac|ac3|eac3)$/.test(info.acodec));
       if (copyable) {
-        const args = ["-hide_banner", "-y", "-i", inPath, "-t", String(maxSeconds), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy"];
+        // Copy the video. Only map audio when it actually has a decodable track —
+        // some client transcodes leave an empty AAC stream (0 channels, 0 packets).
+        const args = ["-hide_banner", "-y", "-i", inPath, "-t", String(maxSeconds), "-map", "0:v:0"];
+        if (keepAudio) args.push("-map", "0:a:0");
+        args.push("-c", "copy");
         if (info.vcodec === "hevc") args.push("-tag:v", "hvc1");
         args.push("-movflags", "+faststart", "-f", "mp4", outPath);
         const r = await run(args, 60000);

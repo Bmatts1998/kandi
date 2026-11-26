@@ -1,4 +1,5 @@
 import UIKit
+import AVFoundation
 import Capacitor
 
 @UIApplicationMain
@@ -7,8 +8,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // WKWebView treats media as ambient audio, so the ringer/silent switch
+        // mutes videos and song previews. Playback category keeps them audible.
+        // This only takes effect in the next native iOS build.
+        activatePlaybackAudio()
         return true
+    }
+
+    func activatePlaybackAudio() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            // Leave the system default (ambient) if this fails.
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
@@ -26,7 +39,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        activatePlaybackAudio()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

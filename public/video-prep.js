@@ -293,8 +293,9 @@
         });
         venc.configure(avc);
         let aenc = null;
+        let audioChunks = 0;
         if (aac) {
-          aenc = new AudioEncoder({ output: (chunk, meta) => { try { muxer.addAudioChunk(chunk, meta); } catch (e) { fail(e); } }, error: fail });
+          aenc = new AudioEncoder({ output: (chunk, meta) => { try { muxer.addAudioChunk(chunk, meta); audioChunks += 1; } catch (e) { fail(e); } }, error: fail });
           aenc.configure(aac);
           const sp = ctx.createScriptProcessor(4096, 2, 2);
           const mute = ctx.createGain();
@@ -344,6 +345,7 @@
           muxer.finalize();
           try { venc.close(); } catch (_) {}
           try { aenc && aenc.close(); } catch (_) {}
+          if (aenc && audioChunks === 0) noAudio = true;
           return new Blob([target.buffer], { type: "video/mp4" });
         };
         startFrameLoop(onFrame);
@@ -457,6 +459,11 @@
     try {
       try {
         out = await transcode(file, opts);
+        // WebKit often muxes an empty AAC track (0 packets) when capture fails.
+        // Shrink again without audio so we don't upload a fake silent track.
+        if (out && out.noAudio && !opts.skipAudio && out.mode === "webcodecs") {
+          try { out = await transcode(file, Object.assign({}, opts, { skipAudio: true })); } catch (_) {}
+        }
       } catch (first) {
         if (!first || first.code !== "audio_stall") throw first;
         // This WebView can't play and capture sound at once: shrink it without the sound route.

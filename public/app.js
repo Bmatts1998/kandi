@@ -288,6 +288,11 @@
   }
   // iOS ignores audio.volume, so on iOS 17+ route through Web Audio for the fade
   // (audioSession "playback" keeps it audible with the silent switch on). Any trouble → plain audio.
+  function ensurePlaybackSession() {
+    try {
+      if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback";
+    } catch (_) {}
+  }
   function wantGraph() {
     return !volumeIsSettable() && typeof navigator !== "undefined" && navigator.audioSession && (window.AudioContext || window.webkitAudioContext);
   }
@@ -306,13 +311,14 @@
     if (!src) return;
     if (songAudio.key === key) { stopSong(); return; }
     stopSong();
+    ensurePlaybackSession();
     document.querySelectorAll("video").forEach((v) => { try { if (!v.paused) v.pause(); } catch (_) {} });
     if (!songAudio.el) songAudio.el = freshSongEl();
     let el = songAudio.el;
     if (wantGraph() && !songAudio.graphFailed) {
       try {
         if (!songAudio.ctx) {
-          try { navigator.audioSession.type = "playback"; } catch (_) {}
+          ensurePlaybackSession();
           const AC = window.AudioContext || window.webkitAudioContext;
           songAudio.ctx = new AC();
         }
@@ -387,7 +393,7 @@
   }
   // ---- Profile videos: inline, muted first, never full-screen; one at a time ----
   const MAX_PROFILE_VIDEOS = 3;
-  const vidPlayer = { el: null, key: "", sound: false };
+  const vidPlayer = { el: null, key: "", sound: false, holdPause: false };
   function mediaOf(p) { return (p && Array.isArray(p.media) ? p.media : (p && p.photos) || []).filter(Boolean); }
   function videosOf(p) { return mediaOf(p).filter((m) => m.type === "video" && m.url); }
   function fmtDur(s) { s = Math.round(Number(s) || 0); return s ? Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : ""; }
@@ -396,10 +402,12 @@
     const on = vidPlayer.key === key;
     const bg = entry.poster ? `background-image:url('${esc(mediaUrl(entry.poster, opts.big ? 1080 : 480))}')` : "background:#111";
     return `<div class="vid-tile${opts.big ? " big" : ""}${opts.cls ? " " + opts.cls : ""}${on ? " playing" : ""}${on && vidPlayer.sound ? " sound" : ""}" data-video-key="${esc(key)}" data-src="${esc(entry.url)}" data-poster="${esc(entry.poster ? mediaUrl(entry.poster, 1080) : "")}" style="${bg}">
-      <button type="button" class="vid-hit" data-act="video-tap" data-key="${esc(key)}" aria-label="${on ? (vidPlayer.sound ? "Stop video" : "Turn on sound") : "Play video, muted"}"></button>
+      <button type="button" class="vid-hit" data-act="video-tap" data-key="${esc(key)}" aria-label="${on ? "Pause video" : "Play video, muted"}"></button>
       <span class="vid-badge" aria-hidden="true">${kIcon("play")}</span>
       ${entry.duration ? `<span class="vid-dur" aria-hidden="true">${fmtDur(entry.duration)}</span>` : ""}
-      <span class="vid-sound" aria-hidden="true"><span class="off">${kIcon("soundOff")}</span><span class="on">${kIcon("soundOn")}</span></span>
+      <button type="button" class="vid-sound" data-act="video-sound" data-key="${esc(key)}" aria-label="${on && vidPlayer.sound ? "Mute video" : "Turn on sound"}">
+        <span class="off">${kIcon("soundOff")}</span><span class="on">${kIcon("soundOn")}</span>
+      </button>
       ${opts.extra || ""}
     </div>`;
   }
@@ -409,7 +417,9 @@
       n.classList.toggle("playing", on);
       n.classList.toggle("sound", on && vidPlayer.sound);
       const b = n.querySelector(".vid-hit");
-      if (b) b.setAttribute("aria-label", on ? (vidPlayer.sound ? "Stop video" : "Turn on sound") : "Play video, muted");
+      if (b) b.setAttribute("aria-label", on ? "Pause video" : "Play video, muted");
+      const s = n.querySelector(".vid-sound");
+      if (s) s.setAttribute("aria-label", on && vidPlayer.sound ? "Mute video" : "Turn on sound");
     });
   }
   function stopVideo() {
@@ -425,37 +435,75 @@
   function videoTileFor(key) {
     return Array.from(document.querySelectorAll("[data-video-key]")).find((n) => n.getAttribute("data-video-key") === key) || null;
   }
-  function videoTap(key) {
+  function unmuteVideoEl(v) {
+    if (!v) return Promise.resolve();
+    ensurePlaybackSession();
+    // iOS WKWebView often ignores the muted *property* if the muted *attribute* remains.
+    v.defaultMuted = false;
+    v.removeAttribute("muted");
+    v.muted = false;
+    const pr = v.play();
+    return pr && pr.catch ? pr.catch(() => {}) : Promise.resolve();
+  }
+  function startVideo(key, withSound) {
     const tile = videoTileFor(key);
     if (!tile) return;
     if (vidPlayer.key === key && vidPlayer.el) {
-      if (!vidPlayer.sound) {
+      if (withSound && !vidPlayer.sound) {
         vidPlayer.sound = true;
+        vidPlayer.holdPause = true;
         stopSong();
-        vidPlayer.el.muted = false;
-        const pr = vidPlayer.el.play();
-        if (pr && pr.catch) pr.catch(() => {});
+        unmuteVideoEl(vidPlayer.el).then(() => { setTimeout(() => { if (vidPlayer.key === key) vidPlayer.holdPause = false; }, 400); });
         paintVideoTiles();
-      } else stopVideo();
+      }
       return;
     }
     stopVideo();
     const v = document.createElement("video");
     v.className = "vid-el";
-    v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
     v.playsInline = true; v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "true");
     v.setAttribute("disablepictureinpicture", ""); v.setAttribute("disableremoteplayback", "");
     v.preload = "auto";
+    if (withSound) {
+      ensurePlaybackSession();
+      v.muted = false; v.defaultMuted = false;
+    } else {
+      v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
+    }
     if (tile.getAttribute("data-poster")) v.poster = tile.getAttribute("data-poster");
     v.addEventListener("ended", () => { if (vidPlayer.el === v) stopVideo(); });
     v.addEventListener("error", () => { if (vidPlayer.el === v) { stopVideo(); toast("That video won't play right now.", "err"); } });
-    v.addEventListener("pause", () => { if (vidPlayer.el === v && !v.ended && document.contains(v)) stopVideo(); });
+    v.addEventListener("pause", () => {
+      if (vidPlayer.el !== v || v.ended || !document.contains(v) || vidPlayer.holdPause) return;
+      stopVideo();
+    });
     v.src = tile.getAttribute("data-src");
-    vidPlayer.el = v; vidPlayer.key = key; vidPlayer.sound = false;
+    vidPlayer.el = v; vidPlayer.key = key; vidPlayer.sound = Boolean(withSound); vidPlayer.holdPause = Boolean(withSound);
     tile.appendChild(v);
-    const pr = v.play();
+    const pr = withSound ? unmuteVideoEl(v) : v.play();
     if (pr && pr.catch) pr.catch(() => { if (vidPlayer.el === v) { stopVideo(); toast("Tap the video again to play it."); } });
+    if (withSound) setTimeout(() => { if (vidPlayer.key === key) vidPlayer.holdPause = false; }, 400);
     paintVideoTiles();
+  }
+  function videoTap(key) {
+    if (vidPlayer.key === key && vidPlayer.el) { stopVideo(); return; }
+    startVideo(key, false);
+  }
+  function videoSound(key) {
+    if (vidPlayer.key === key && vidPlayer.el) {
+      if (vidPlayer.sound) {
+        vidPlayer.sound = false;
+        vidPlayer.holdPause = true;
+        const v = vidPlayer.el;
+        v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
+        setTimeout(() => { if (vidPlayer.key === key) vidPlayer.holdPause = false; }, 400);
+        paintVideoTiles();
+        return;
+      }
+      startVideo(key, true);
+      return;
+    }
+    startVideo(key, true);
   }
   // After every render: keep the playing video in its tile, or stop it if the tile is gone.
   function syncVideo() {
@@ -5237,6 +5285,7 @@
         render(); return;
       }
       if (act === "video-tap") { videoTap(el.getAttribute("data-key") || ""); return; }
+      if (act === "video-sound") { videoSound(el.getAttribute("data-key") || ""); return; }
       if (act === "song-up" || act === "song-down") {
         const d = state.editDraft; const i = Number(id) || 0; const j = act === "song-up" ? i - 1 : i + 1;
         if (d && d.songs && j >= 0 && j < d.songs.length) { const t = d.songs[i]; d.songs[i] = d.songs[j]; d.songs[j] = t; }
@@ -6793,7 +6842,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
