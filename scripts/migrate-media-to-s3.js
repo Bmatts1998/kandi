@@ -15,7 +15,9 @@
  *
  * Safe to re-run: rows that already have object_key (and empty data) are skipped.
  * After a successful upload, data/thumb_data/selfie_data are cleared so Neon
- * shrinks. The /uploads/:id and auth media routes then redirect to signed URLs.
+ * storage can shrink, unless --keep-data is passed (copy to the bucket and
+ * set object_key, but leave the original blobs in the database).
+ * The /uploads/:id and auth media routes then redirect to signed URLs.
  */
 
 require("../src/load-env");
@@ -31,6 +33,7 @@ function arg(name, fallback) {
 }
 
 const dryRun = process.argv.includes("--dry-run");
+const keepData = process.argv.includes("--keep-data");
 const limit = Math.max(1, Number(arg("limit", 500)) || 500);
 const kinds = String(arg("kind", "photos,chat,selfies")).split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -59,7 +62,10 @@ async function migratePhotos(db) {
         await store.putObject({ key, body: buf, contentType: row.mime || "application/octet-stream" });
         const thumb = decode(row.thumb_data);
         if (thumb && thumbKey) await store.putObject({ key: thumbKey, body: thumb, contentType: row.thumb_mime || "image/webp" });
-        await db.prepare(`UPDATE photo_files SET storage='s3', object_key=?, thumb_key=?, data='', thumb_data=NULL WHERE id=?`).run(key, thumbKey, row.id);
+        const photoSql = keepData
+          ? `UPDATE photo_files SET storage='s3', object_key=?, thumb_key=? WHERE id=?`
+          : `UPDATE photo_files SET storage='s3', object_key=?, thumb_key=?, data='', thumb_data=NULL WHERE id=?`;
+        await db.prepare(photoSql).run(key, thumbKey, row.id);
         ok++;
       } catch (err) {
         failed++;
@@ -86,7 +92,10 @@ async function migrateChat(db) {
         await store.putObject({ key, body: buf, contentType: row.mime || "application/octet-stream" });
         const thumb = decode(row.thumb_data);
         if (thumb && thumbKey) await store.putObject({ key: thumbKey, body: thumb, contentType: row.thumb_mime || "image/webp" });
-        await db.prepare(`UPDATE chat_files SET storage='s3', object_key=?, thumb_key=?, data='', thumb_data=NULL WHERE id=?`).run(key, thumbKey, row.id);
+        const chatSql = keepData
+          ? `UPDATE chat_files SET storage='s3', object_key=?, thumb_key=? WHERE id=?`
+          : `UPDATE chat_files SET storage='s3', object_key=?, thumb_key=?, data='', thumb_data=NULL WHERE id=?`;
+        await db.prepare(chatSql).run(key, thumbKey, row.id);
         ok++;
       } catch (err) {
         failed++;
@@ -111,7 +120,10 @@ async function migrateSelfies(db) {
     if (!dryRun) {
       try {
         await store.putObject({ key, body: buf, contentType: row.selfie_mime || "image/jpeg" });
-        await db.prepare(`UPDATE verification_requests SET selfie_storage='s3', selfie_key=?, selfie_data='' WHERE id=?`).run(key, row.id);
+        const selfieSql = keepData
+          ? `UPDATE verification_requests SET selfie_storage='s3', selfie_key=? WHERE id=?`
+          : `UPDATE verification_requests SET selfie_storage='s3', selfie_key=?, selfie_data='' WHERE id=?`;
+        await db.prepare(selfieSql).run(key, row.id);
         ok++;
       } catch (err) {
         failed++;

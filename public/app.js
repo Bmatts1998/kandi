@@ -3359,8 +3359,7 @@
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         ${cfg.passwordReset ? `<button class="btn ghost" data-act="show-forgot" style="margin-top:8px">Forgot password?</button>` : ""}
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
-        ${isNativeIos() ? "" : `<p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>`}
-        <p class="tiny" style="margin-top:${isNativeIos() ? 16 : 10}px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
+        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
         ${iosTip()}
       `}
     </div></div>`;
@@ -4898,16 +4897,17 @@
       const ageMax = f.ageMax != null ? f.ageMax : 99;
       const evf = parseEventFilter(f.event);
       const eventBlock = isPlus()
-        ? `<div class="label" style="margin-top:14px">Shows</div>
+        ? `<div class="label">Shows</div>
         <div class="chips" style="margin-bottom:8px">
           <button type="button" class="chip${evf.type === "all" ? " on" : ""}" data-act="set-event-filter" data-id="all">All events</button>
           <button type="button" class="chip${evf.type === "same" ? " on" : ""}" data-act="set-event-filter" data-id="same">Shows I'm going to</button>
         </div>
         ${showPickerField("filter")}`
-        : `<div class="label" style="margin-top:14px">Shows</div><p class="tiny">${isNativeIos() ? "Event filters aren't in this version." : `Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button>`}</p>`;
+        : `<div class="label">Shows</div><p class="tiny">${isNativeIos() ? "Event filters aren't in this version." : `Event filters are a Kandi+ feature. <button type="button" class="tiny" data-act="paywall" data-reason="filters" style="color:var(--orange2);font-weight:700">See Kandi+</button>`}</p>`;
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2" style="font-size:22px">Filters</h2>
-        <div class="label">Age range</div>
+        ${eventBlock}
+        <div class="label" style="margin-top:14px">Age range</div>
         <div class="row height-row"><input data-field="filterAgeMin" type="number" min="18" max="99" inputmode="numeric" aria-label="Minimum age" value="${esc(String(ageMin))}" />
           <span class="muted">to</span>
           <input data-field="filterAgeMax" type="number" min="18" max="99" inputmode="numeric" aria-label="Maximum age" value="${esc(String(ageMax))}" /></div>
@@ -4915,7 +4915,6 @@
         ${GENDERS.map((g) => `<button type="button" class="chip${f.gender === g.id ? " on" : ""}" data-act="set-gender-filter" data-id="${g.id}">${esc(g.label)}</button>`).join("")}</div>
         <div class="label" style="margin-top:14px">Music genre</div><div class="chips"><button type="button" class="chip${(f.genre || "all") === "all" ? " on" : ""}" data-act="set-genre" data-id="all">All genres</button>
         ${genreCatalog().map((g) => `<button type="button" class="chip genre-pick g-${esc(g.id)}${f.genre === g.id ? " on" : ""}" data-act="set-genre" data-id="${esc(g.id)}">${esc(g.name)}</button>`).join("")}</div>
-        ${eventBlock}
         <button type="button" class="btn primary" style="margin-top:16px" data-act="apply-filters">Done</button></div></div>`;
     }
     if (o.type === "event") {
@@ -5398,6 +5397,7 @@
     bindVoiceControls();
     scheduleMarkRead();
     document.body.classList.toggle("chat-open", !!(state.view === "app" && state.overlay && state.overlay.type === "chat"));
+    document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-bg"));
   }
   let lastRenderKey = "";
   const busyActs = new Set();

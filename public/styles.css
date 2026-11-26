@@ -816,6 +816,11 @@
 .chat-video { aspect-ratio: 3 / 4; height: auto; }
 /* Hide the blurred tab bar while a chat is open so keyboard resize doesn't composite it. */
 body.chat-open .tabbar { visibility: hidden; pointer-events: none; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+body.sheet-open .tabbar,
+body.sheet-open .fab-post { display: none !important; }
+body.sheet-open .screen.has-tabs { padding-bottom: 0; }
+body.sheet-open .screen.has-tabs .sheet-bg { bottom: 0; }
+body.sheet-open .sheet { padding-bottom: calc(18px + var(--safe-b)); }
 
 /* Long words, links, and emoji runs wrap instead of running off the screen. */
 .bubble, .bubble-cap, .prompt .a, .prof-bio, .caption, .cap, .post-text-inner, .crew-msg, .wrap-text,

@@ -414,7 +414,10 @@ async function sendUploadedMedia(req, res, db) {
   const variant = variantForQuery(req.query);
   const cacheKey = id + ":" + variant;
   const cached = mediaCache.get(cacheKey);
-  if (cached) {
+  // When the file lives in the bucket, always redirect to a signed URL. The
+  // in-memory cache is filled on upload and would otherwise serve the bytes
+  // through Render (and skip CORS-ready signed access) on the same instance.
+  if (cached && !objectStore.enabled()) {
     sendMedia(req, res, cached.buffer, cached.mime, { etag: etagFor(id, variant, cached.buffer) });
     return true;
   }
@@ -496,14 +499,16 @@ async function savePhotoFile(db, { id, userId, buffer, mime, ext, uploadDir } = 
     objectKey,
     thumbKey
   );
-  if (uploadDir) {
+  if (uploadDir && !objectKey) {
     try { fs.writeFileSync(path.join(uploadDir, fileId), outBuf); } catch (_) { /* ephemeral disk is ok */ }
   }
-  if (ready === 1) {
-    mediaCache.set(fileId + ":full", { buffer: outBuf, mime: outMime });
-    if (thumbBuf) mediaCache.set(fileId + ":thumb", { buffer: thumbBuf, mime: thumbMime });
-  } else if (isVideoOrAudioMime(outMime)) {
-    mediaCache.set(fileId + ":full", { buffer: outBuf, mime: outMime });
+  if (!objectKey) {
+    if (ready === 1) {
+      mediaCache.set(fileId + ":full", { buffer: outBuf, mime: outMime });
+      if (thumbBuf) mediaCache.set(fileId + ":thumb", { buffer: thumbBuf, mime: thumbMime });
+    } else if (isVideoOrAudioMime(outMime)) {
+      mediaCache.set(fileId + ":full", { buffer: outBuf, mime: outMime });
+    }
   }
   return fileId;
 }
