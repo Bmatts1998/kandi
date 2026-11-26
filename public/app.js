@@ -3427,10 +3427,13 @@
 
   function viewDiscover() {
     const p = state.feed[0];
-    const right = `<span class="pill">${isPlus() ? "Unlimited likes" : ((state.likesLeft == null ? "" : state.likesLeft + " likes left") || "Likes")}</span>
+    const likePill = isNativeIos()
+      ? ""
+      : `<span class="pill">${isPlus() ? "Unlimited likes" : ((state.likesLeft == null ? "" : state.likesLeft + " likes left") || "Likes")}</span>`;
+    const right = `${likePill}
       ${p ? `<button type="button" class="icon-btn" data-act="rewind" aria-label="Rewind last pass">↺</button>
-      <button type="button" class="icon-btn" data-act="report" data-id="${p.id}" aria-label="More">⋯</button>` : ""}
-      <button class="icon-btn" data-act="filters" title="Filters" aria-label="Filters">✺</button>`;
+      <button type="button" class="icon-btn more-btn" data-act="report" data-id="${p.id}" aria-label="Report or block" title="Report or block">⋯</button>` : ""}
+      <button type="button" class="icon-btn" data-act="filters" title="Filters" aria-label="Filters">✺</button>`;
     const evf = parseEventFilter(state.filters && state.filters.event);
     const sameOn = evf.type !== "all";
     let sameBar = `<div class="same-show-bar"><button type="button" class="chip${sameOn ? " on" : ""}" data-act="same-show">Going to the same show</button></div>`;
@@ -7032,7 +7035,12 @@
         state.locationShare = { with: (state.overlay && state.overlay.with) || "Riley", event: evName };
         state.overlay = null; render(); return;
       }
-      if (act === "report") { state.overlay = { type: "report", id: Number(id), reason: "" }; render(); return; }
+      if (act === "report") {
+        state.overlay = { type: "report", id: Number(id), reason: "" };
+        // Open on the next tick so the same iOS tap cannot fall through and close the sheet.
+        setTimeout(() => { if (state.overlay && state.overlay.type === "report") render(); }, 0);
+        return;
+      }
       if (act === "report-reason") { state.overlay.reason = id; render(); return; }
       if (act === "confirm-block") {
         await api("/api/report", { method: "POST", body: { userId: state.overlay.id, reason: state.overlay.reason || "Something else" } });

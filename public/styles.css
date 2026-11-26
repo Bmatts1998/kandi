@@ -66,10 +66,12 @@
     .chip.on { border-color: transparent; background: linear-gradient(90deg, #ff8a1a, #ff5c00); color: #000; }
     .chip.soft { background: rgba(255,92,0,.12); border-color: rgba(255,92,0,.3); color: var(--orange2); font-size: 11px; padding: 4px 9px; }
     .header { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      padding: calc(10px + var(--safe-t)) 14px 10px; min-height: calc(52px + var(--safe-t)); flex-wrap: wrap; }
-    .header .left, .header .right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      padding: calc(10px + var(--safe-t)) 14px 10px; min-height: calc(52px + var(--safe-t)); flex-wrap: nowrap; position: relative; z-index: 20; }
+    .header .left, .header .right { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+    .header .right { flex-shrink: 0; }
     .icon-btn { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.06);
-      display: grid; place-items: center; font-size: 16px; border: 1px solid var(--line); }
+      display: grid; place-items: center; font-size: 16px; border: 1px solid var(--line); flex-shrink: 0; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+    .icon-btn.more-btn { font-size: 22px; letter-spacing: 0; position: relative; z-index: 2; }
     .pill { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 5px 10px; border-radius: 999px;
       background: rgba(255,92,0,.16); color: #ffb07a; border: 1px solid rgba(255,92,0,.35); }
     .tabbar { display: flex; border-top: 1px solid var(--line); background: rgba(0,0,0,.94);
