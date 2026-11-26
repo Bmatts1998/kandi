@@ -5625,12 +5625,11 @@
           const i = (state.chat || []).findIndex((m) => Number(m.id) === Number(data.message.id));
           if (i >= 0) state.chat[i] = data.message;
         }
-        if (answer === "in") {
-          toast("You're going");
-          try { await loadEvents(); } catch (_) {}
-        } else {
-          toast("Got it");
-        }
+        const eventId = (data.message && data.message.showInvite && (data.message.showInvite.eventId || data.message.showInvite.id)) || "";
+        applyRsvpResult(eventId, answer === "in", data);
+        if (answer === "in") toast("You're going");
+        else toast("Got it");
+        try { await loadEvents(); } catch (_) {}
         render();
         return;
       }

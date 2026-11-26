@@ -1,6 +1,6 @@
 "use strict";
 
-const { resolveEvent, setRsvp } = require("./meetup");
+const { resolveEvent, setRsvp, listUpcomingForProfile } = require("./meetup");
 
 function publicShowCard(e) {
   if (!e) return null;
@@ -161,10 +161,12 @@ function installShowInvites({ app, getDb, auth, publicUser, blockedSet, broadcas
     if (!status) return res.status(400).json({ error: "Choose I'm in or Maybe not." });
 
     let going = null;
+    const ev = await resolveEvent(db(), inv.eventId) || (inv.eventKey ? await resolveEvent(db(), inv.eventKey) : null);
     if (status === "in") {
-      const ev = await resolveEvent(db(), inv.eventId) || (inv.eventKey ? await resolveEvent(db(), inv.eventKey) : null);
       if (!ev) return res.status(404).json({ error: "That show isn't listed anymore." });
       going = await setRsvp(db(), req.user, ev, { going: true });
+    } else if (ev) {
+      going = await setRsvp(db(), req.user, ev, { going: false });
     }
     const next = encodeInvite({ ...inv, status });
     await db().prepare(`UPDATE messages SET text=? WHERE id=?`).run(next, row.id);
@@ -174,7 +176,10 @@ function installShowInvites({ app, getDb, auth, publicUser, blockedSet, broadcas
     const payload = { type: "message-update", matchId: match.id, message: msg };
     broadcastToUser(match.a_id, payload);
     broadcastToUser(match.b_id, payload);
-    res.json({ ok: true, message: msg, going });
+    const fresh = await db().prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+    const goingIds = (await db().prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
+    const upcoming = await listUpcomingForProfile(db(), fresh, req.user);
+    res.json({ ok: true, message: msg, going, events: goingIds, upcomingShows: upcoming.shows });
   });
 }
 
