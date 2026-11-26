@@ -356,7 +356,13 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 .invite-actions .btn { flex: 1; min-width: 0; }
 .invite-status { margin-top: 8px; opacity: .8; }
 .bubble.show_invite { min-width: 220px; max-width: 86%; }
-.show-land-art { width: 100%; height: 160px; border-radius: 16px; margin-top: 18px; background: #1a0a00 center/cover no-repeat; display: grid; place-items: center; font-size: 42px; overflow: hidden; }
+.show-land-art { width: 100%; height: 220px; border-radius: 16px; margin-top: 18px; background: linear-gradient(160deg, #140800, #3a1400 55%, #ff5c00); display: grid; place-items: center; font-size: 42px; overflow: hidden; position: relative; }
+.show-land-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.show-land-fallback { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; background: linear-gradient(160deg, #140800, #3a1400 50%, #ff5c00); }
+.show-land-fallback[hidden] { display: none !important; }
+.show-land-k { letter-spacing: .28em; text-transform: uppercase; font-size: 11px; font-weight: 800; color: #ffb07a; }
+.show-land-name { font-size: 22px; font-weight: 700; margin-top: 8px; line-height: 1.2; color: #fff7f0; }
+.show-land-meta { font-size: 13px; color: rgba(255,247,240,.8); margin-top: 4px; }
 
 .trust-note { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 0; padding: 11px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.03); color: var(--muted); font-size: 12.5px; line-height: 1.45; text-align: left; font-weight: 400; }
 .trust-note svg, .trust-note .kic { width: 15px; height: 15px; flex: 0 0 15px; margin-top: 1px; opacity: .65; color: #c4c4c4; }

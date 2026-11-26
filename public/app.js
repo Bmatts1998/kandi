@@ -3138,9 +3138,18 @@
     }
     const when = ev.date || ev.startsAt || "";
     const place = [ev.venue, ev.city].filter(Boolean).join(" · ");
+    const fallback = `<div class="show-land-fallback">
+        <div class="show-land-k">Kandi</div>
+        <div class="show-land-name">${esc(ev.name || "Show")}</div>
+        ${when ? `<div class="show-land-meta">${esc(when)}</div>` : ""}
+        ${place ? `<div class="show-land-meta">${esc(place)}</div>` : ""}
+      </div>`;
     const art = ev.imageUrl
-      ? `<div class="show-land-art" style="background-image:url('${esc(ev.imageUrl)}')"></div>`
-      : `<div class="show-land-art" style="background:${esc(ev.color || "#1a0a00")}"><span>${esc(ev.emoji || "✺")}</span></div>`;
+      ? `<div class="show-land-art">
+          <img class="show-land-img" src="${esc(ev.imageUrl)}" alt="${esc(ev.name || "Show flyer")}" onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.hidden=false">
+          ${fallback.replace('<div class="show-land-fallback">', '<div class="show-land-fallback" hidden>')}
+        </div>`
+      : `<div class="show-land-art">${fallback}</div>`;
     return `<div class="screen splash top-pad"><div class="inner auth-card">
       ${beads(8, "lg")}
       <h1 class="wordmark grad">Kandi</h1>
