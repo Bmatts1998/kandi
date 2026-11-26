@@ -16,6 +16,7 @@ const { installFeed } = require("./feed-routes");
 const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
 const { installShowInvites } = require("./show-invites");
 const { installVerification, isAdminUser, maybeStaleVerification, publicStatus } = require("./verification");
+const referrals = require("./referrals");
 const { normalizeMeetIntent, canConnect, visibleInMode, resolveMode, allowedModes, matchKindFromMode, backfillMatchKinds } = require("./meet-intent");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
@@ -150,15 +151,16 @@ function noStore(res) {
   res.setHeader("Expires", "0");
 }
 let indexHtmlCache = null;
-function sendIndex(res) {
+function sendIndex(req, res) {
   if (!indexHtmlCache) {
     indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
       .replace(/(href|src)="\/(styles\.css|design\.css|app\.js|video-prep\.js)"/g, `$1="/$2?v=${BUILD}"`);
   }
   noStore(res);
+  try { referrals.stamp(req, res); } catch (_) {}
   res.type("html").send(indexHtmlCache);
 }
-app.get(["/", "/index.html"], (_req, res) => sendIndex(res));
+app.get(["/", "/index.html"], (req, res) => sendIndex(req, res));
 app.get("/api/version", (_req, res) => { noStore(res); res.json({ build: BUILD }); });
 app.get("/api/badges", (_req, res) => { noStore(res); res.json({ genres: genreCatalog() }); });
 app.get("/api/genres", (_req, res) => { noStore(res); res.json({ genres: genreCatalog(), max: MAX_GENRES }); });
@@ -224,10 +226,10 @@ function isHttps(req) {
 }
 function setSessionCookie(res, token, req) {
   const secure = isHttps(req) ? "; Secure" : "";
-  res.setHeader("Set-Cookie", `kandi_sid=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000${secure}`);
+  referrals.appendSetCookie(res, `kandi_sid=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000${secure}`);
 }
 function clearSessionCookie(res) {
-  res.setHeader("Set-Cookie", "kandi_sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+  referrals.appendSetCookie(res, "kandi_sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
 }
 
 async function getUserFromReq(req) {
@@ -258,6 +260,7 @@ async function auth(req, res, next) {
     }
     req.user = await expireComplimentaryIfNeeded(user);
     engagement.recordActivity(user.id).catch(() => {});
+    referrals.touchUser(db, req, res, req.user).catch(() => {});
     next();
   } catch (err) { next(err); }
 }
@@ -294,7 +297,9 @@ async function saveUserPhotos(userId, photos) {
   const current = await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId);
   await maybeStaleVerification(db, current, photos);
   await db.prepare(`UPDATE users SET photos=? WHERE id=?`).run(JSON.stringify(photos), userId);
-  return publicUser(await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId));
+  const fresh = await db.prepare(`SELECT * FROM users WHERE id=?`).get(userId);
+  await referrals.maybeQualifyReferral(db, fresh);
+  return publicUser(fresh);
 }
 
 async function deletePhotoFileIfOwned(fileId, userId) {
@@ -362,6 +367,7 @@ function publicUser(u, extra) {
     foundingNumber: u.founding_number ? Number(u.founding_number) : null,
     homeLocation: u.home_location || "",
     verified: publicStatus(u) === "approved",
+    ambassador: Boolean(u.ambassador_at),
     meetIntent: normalizeMeetIntent(u.meet_intent),
     ...(extra || {}),
   };
@@ -424,6 +430,7 @@ function selfEmailExtra(user) {
     isAdmin: isAdminUser(user),
     verificationStatus: publicStatus(user),
     verified: publicStatus(user) === "approved",
+    ...referrals.publicSelf(user),
   };
 }
 
@@ -508,6 +515,10 @@ app.post("/api/signup", async (req, res) => {
   setSessionCookie(res, token, req);
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(Number(info.lastInsertRowid));
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on signup failed:", err && err.message); }
+  try {
+    await referrals.touchUser(db, req, res, user);
+    await referrals.attributeSignup(db, { user, code: req.body.referralCode || req.body.referral_code, req, res });
+  } catch (err) { console.error("Referral attribute on signup failed:", err && err.message); }
   let emailSent = false;
   if (mustVerify) {
     try { emailSent = (await sendVerification(user, req)).sent; } catch (err) { console.error("Verification email on signup failed:", err && err.message); }
@@ -537,6 +548,7 @@ app.post("/api/login", async (req, res) => {
   const token = crypto.randomBytes(24).toString("hex");
   await db.prepare(`INSERT INTO sessions (token, user_id) VALUES (?,?)`).run(token, user.id);
   setSessionCookie(res, token, req);
+  try { await referrals.touchUser(db, req, res, user); } catch (_) {}
   res.json({ user: publicUser(user, selfEmailExtra(user)), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
 });
 
@@ -582,6 +594,7 @@ app.delete("/api/account", auth, async (req, res) => {
     try { await db.prepare(sql).run(...(sql.includes("other_id") ? [id, id] : [id])); } catch (_) { /* table not created yet */ }
   }
   try { await db.prepare(`DELETE FROM verification_requests WHERE user_id=?`).run(id); } catch (_) { /* table may not exist yet */ }
+  try { await referrals.voidInvitee(db, id); } catch (_) { /* table may not exist yet */ }
   await db.prepare(`DELETE FROM photo_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
@@ -758,6 +771,8 @@ app.put("/api/me", auth, async (req, res) => {
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
+  user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  await referrals.maybeQualifyReferral(db, user);
   user = await expireComplimentaryIfNeeded(await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id));
   const upcoming = await listUpcomingForProfile(db, user, user);
   res.json({ user: publicUser(user, { upcomingShows: upcoming.shows, ...selfBillingExtra(user, req) }), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
@@ -1734,6 +1749,12 @@ installVerification({
   upload,
 });
 
+referrals.installReferrals({
+  app,
+  getDb: () => db,
+  auth,
+});
+
 
 installGroups({
   app,
@@ -1767,7 +1788,7 @@ app.get(["/reset-password", "/reset-password.html"], (_req, res) => {
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/ws")) return next();
-  sendIndex(res);
+  sendIndex(req, res);
 });
 
 app.use((err, req, res, _next) => {

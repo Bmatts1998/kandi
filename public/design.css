@@ -159,7 +159,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .badge { background: var(--accent); color: #000; font-weight: var(--fw-bold); font-size: 10px; box-shadow: 0 0 0 2px #000; }
 
 /* ---------- Less glow, calmer accents ---------- */
-.genre-badge, .chip.genre-pick, .raver-badge, .social-btn, .song-card, .badge-explain.on, .founder-badge, .cam-badge, .round.like,
+.genre-badge, .chip.genre-pick, .raver-badge, .social-btn, .song-card, .badge-explain.on, .founder-badge, .ambassador-badge, .cam-badge, .round.like,
 .fab-post, .song-play, .playing .song-play, .song-progress i, .share-av .av, .genre-badge .gb-ic, .genre-badge .gb-ic.ring, .genre-badge .gb-ic.spark {
   box-shadow: none !important; }
 .genre-badge .gb-ic.bars { filter: none; }
@@ -203,7 +203,7 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 
 /* Weights: keep everything in the 400–650 range */
 .post-hd .who .nm, .post-body .likes, .chat-head .nm, .prof-hero .nm, .crew-hero .nm, .crew-list-item .nm,
-.story-text, .story-chrome .nm, .rec-time, .vip, .unread-pill, .founder-badge, .story-ring .demo-tag, .photo-slot .main-tag,
+.story-text, .story-chrome .nm, .rec-time, .vip, .unread-pill, .founder-badge, .ambassador-badge, .story-ring .demo-tag, .photo-slot .main-tag,
 .raver-badge, .genre-badge { font-weight: var(--fw-semi); }
 .prof-hero .nm { font-size: var(--fs-h2); letter-spacing: -.02em; }
 .post-hd .who .nm { font-size: var(--fs-callout); }
@@ -384,3 +384,14 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 .mode-toggle button.on, .mode-toggle span.on { background: rgba(255,255,255,.12); color: #fff; }
 .mode-toggle.single { max-width: 180px; }
 .match-kind { margin-left: 6px; font-weight: 500; font-size: 11px; vertical-align: 1px; }
+
+.invite-banner { margin-top: 16px; padding: 14px 14px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(255,255,255,.03); text-align: left; }
+.invite-card { margin-top: 8px; padding: 20px 16px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(255,255,255,.03); text-align: center; }
+.invite-code-wrap { margin-top: 18px; }
+.invite-code { font-size: 28px; font-weight: 700; letter-spacing: 0.14em; margin-top: 6px; }
+.invite-progress { margin-top: 18px; }
+.invite-progress-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.invite-progress-bar span { display: block; height: 100%; border-radius: 99px; background: #fff; }
+.ambassador-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; vertical-align: 1px; border: 1px solid rgba(255,255,255,.28); color: #f2f2f2; }
+.ambassador-badge.lg { display: inline-block; margin: 0 0 10px; padding: 5px 12px; font-size: 13px; }
+.admin-ref-list { display: flex; flex-direction: column; gap: 10px; }

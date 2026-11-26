@@ -1757,7 +1757,10 @@
     render();
   }
   function isAdminPath() {
-    return /^\/admin\/verify\/?$/.test(location.pathname || "");
+    return /^\/admin\/(verify|invites)\/?$/.test(location.pathname || "");
+  }
+  function adminSectionFromPath() {
+    return /\/admin\/invites\/?$/.test(location.pathname || "") ? "invites" : "verify";
   }
   async function loadAdminVerifications(status) {
     const st = status || "pending";
@@ -1773,18 +1776,61 @@
     }
     render();
   }
+  async function loadAdminReferrals() {
+    state.adminReferrals = Object.assign({}, state.adminReferrals || {}, { loading: true, referrers: (state.adminReferrals && state.adminReferrals.referrers) || [] });
+    render();
+    try {
+      const data = await api("/api/admin/referrals");
+      state.adminReferrals = { loading: false, goal: (data && data.goal) || 10, referrers: (data && data.referrers) || [] };
+    } catch (err) {
+      state.adminReferrals = { loading: false, referrers: [], error: err.message || "Couldn't load referrers." };
+      toast(err.message || "Couldn't load referrers.", "err");
+      if (err.status === 404) { state.view = "app"; history.replaceState({}, "", "/"); }
+    }
+    render();
+  }
+  async function openAdminSection(section) {
+    const sec = section === "invites" ? "invites" : "verify";
+    state.adminSection = sec;
+    state.view = "adminVerify";
+    history.replaceState({}, "", sec === "invites" ? "/admin/invites" : "/admin/verify");
+    render();
+    if (sec === "invites") await loadAdminReferrals();
+    else await loadAdminVerifications((state.adminVerify && state.adminVerify.status) || "pending");
+  }
   async function maybeOpenAdmin() {
     if (!(state.pendingAdmin || isAdminPath())) return false;
+    const section = state.pendingAdminSection || adminSectionFromPath();
     state.pendingAdmin = false;
+    state.pendingAdminSection = "";
     if (state.me && state.me.isAdmin) {
-      state.view = "adminVerify";
-      history.replaceState({}, "", "/admin/verify");
-      render();
-      await loadAdminVerifications("pending");
+      await openAdminSection(section);
       return true;
     }
     if (isAdminPath()) history.replaceState({}, "", "/");
     return false;
+  }
+  async function loadReferral() {
+    try {
+      state.referral = await api("/api/referral");
+    } catch (err) {
+      state.referral = { error: err.message || "Couldn't load your invite." };
+    }
+  }
+  async function loadJoinFromUrl() {
+    const m = (location.pathname || "").match(/^\/join\/([^/]+)\/?$/);
+    if (!m) return false;
+    const code = decodeURIComponent(m[1] || "").trim();
+    try {
+      const data = await api("/api/referral/preview/" + encodeURIComponent(code), { timeout: 20000 });
+      state.pendingReferral = { code: data.code, name: data.name };
+      state.drafts.referralCode = data.code;
+      return "ok";
+    } catch (e) {
+      state.pendingReferral = null;
+      state.err = e.message || "That invite code isn't valid.";
+      return "invalid";
+    }
   }
   async function loadShowFromUrl() {
     const m = (location.pathname || "").match(/^\/s\/([^/]+)\/?$/);
@@ -1837,6 +1883,25 @@
       if (!meOk) { state.view = "showLanding"; render(); return; }
       toast(state.err || "That show link isn't working anymore.", "err"); state.err = "";
     }
+    const joinLink = await loadJoinFromUrl();
+    if (joinLink === "ok" || joinLink === "invalid") {
+      let meOk = false;
+      try { const me0 = await api("/api/me", { timeout: 20000 }); applyMe(me0); meOk = true; } catch (_) {}
+      if (!meOk) {
+        state.view = "joinLanding";
+        render();
+        return;
+      }
+      if (joinLink === "invalid") {
+        toast(state.err || "That invite code isn't valid.", "err");
+        state.err = "";
+      } else if (state.pendingReferral && state.me) {
+        history.replaceState({}, "", "/");
+        const mine = state.referral && state.referral.code;
+        toast("Invite codes are for new accounts.");
+        state.pendingReferral = null;
+      }
+    }
     const share = await loadShareFromUrl();
     if (share === "signed-out" || share === "invalid") {
       let meOk = false;
@@ -1878,7 +1943,7 @@
     } catch (e) {
       clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
       state.view = e && e.status === 401 ? "auth" : "offline";
-      if (state.view === "auth" && isAdminPath()) state.pendingAdmin = true;
+      if (state.view === "auth" && isAdminPath()) { state.pendingAdmin = true; state.pendingAdminSection = adminSectionFromPath(); }
       state.err = state.view === "offline" ? (e.message || "Can't reach Kandi right now.") : "";
       render();
       return;
@@ -1887,10 +1952,8 @@
     applyMe(me);
     if (state.me && state.me.emailLocked) { enterVerify(); return; }
     if (isAdminPath() && state.me && state.me.isAdmin) {
-      state.view = "adminVerify";
       connectWs();
-      render();
-      await loadAdminVerifications(state.adminVerify && state.adminVerify.status || "pending");
+      await openAdminSection(adminSectionFromPath());
       return;
     }
     if (isAdminPath()) history.replaceState({}, "", "/");
@@ -1924,6 +1987,7 @@
         else await handle("open-profile", { getAttribute: (k) => (k === "data-id" ? qs.get("u") : null) });
       } catch (_) {}
     }
+    if (maybeShowAmbassadorNotice()) render();
   }
   function applyMe(data) {
     state.me = data.user;
@@ -1960,9 +2024,20 @@
     if (!person || !person.verified) return "";
     return ` <span class="verified-badge" title="Selfie-verified">${kIcon("shield")}</span>`;
   }
+  function ambassadorBadge(person) {
+    if (!person || !person.ambassador) return "";
+    return ` <span class="ambassador-badge">Ambassador</span>`;
+  }
   function personName(person) {
     if (!person) return "";
-    return `${esc(person.name)}${person.age ? ", " + person.age : ""}${verifiedBadge(person)}${founderBadge(person)}`;
+    return `${esc(person.name)}${person.age ? ", " + person.age : ""}${verifiedBadge(person)}${ambassadorBadge(person)}${founderBadge(person)}`;
+  }
+  function maybeShowAmbassadorNotice() {
+    if (!state.me || !state.me.ambassadorNotice) return false;
+    if (state.view !== "app") return false;
+    if (state.overlay && state.overlay.type === "ambassadorNotice") return true;
+    state.overlay = { type: "ambassadorNotice", returnTo: state.overlay };
+    return true;
   }
   function trustNote() {
     return `<p class="trust-note">${kIcon("shield")}<span>Real people only. Every profile can be selfie-verified, and we review reports and remove fakes and scammers fast.</span></p>`;
@@ -2440,7 +2515,7 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans(), loadFounding()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans(), loadFounding(), loadReferral()]);
     state.loaded.home = true;
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
@@ -2878,6 +2953,33 @@
     </div></div>`;
   }
 
+  function viewJoinLanding() {
+    const inv = state.pendingReferral;
+    if (!inv) {
+      return `<div class="screen splash top-pad"><div class="inner auth-card">
+        ${beads(8, "lg")}
+        <h1 class="wordmark grad">Kandi</h1>
+        <p class="sub" style="margin-top:18px">${esc(state.err || "That invite code isn't valid.")}</p>
+        <button class="btn primary" style="margin-top:16px" data-act="show-login">Go to Kandi</button>
+        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+      </div></div>`;
+    }
+    return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      <p class="tagline">Find your rave crew.</p>
+      <p class="sub tag-sub">Make friends, find a date, go to shows together.</p>
+      <div class="invite-banner">
+        <div class="nm">${esc(inv.name || "A friend")} invited you</div>
+        <p class="tiny" style="margin-top:6px">Create an account with their code <strong>${esc(inv.code)}</strong> to join them on Kandi.</p>
+      </div>
+      ${trustNote()}
+      <button class="btn primary" style="margin-top:16px" data-act="share-signup">Create an account</button>
+      <button class="btn ghost" style="margin-top:8px" data-act="share-login">I already have an account</button>
+      <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+    </div></div>`;
+  }
+
   function viewVerify() {
     const me = state.me || {};
     return `<div class="screen splash top-pad"><div class="inner auth-card">
@@ -2945,6 +3047,23 @@
   }
 
   function viewAdminVerify() {
+    const section = state.adminSection || adminSectionFromPath() || "verify";
+    const sectionBar = `<div class="mode-toggle" style="margin:0 0 14px"><button type="button" class="${section === "verify" ? "on" : ""}" data-act="admin-section" data-id="verify">Verifications</button><button type="button" class="${section === "invites" ? "on" : ""}" data-act="admin-section" data-id="invites">Invites</button></div>`;
+    if (section === "invites") {
+      const r = state.adminReferrals || { loading: true, referrers: [] };
+      let list;
+      if (r.loading) list = `<p class="muted">Loading…</p>`;
+      else if (!(r.referrers || []).length) list = `<div class="empty"><p>No referrals yet.</p></div>`;
+      else list = `<div class="admin-ref-list">${r.referrers.map((row) => {
+        const badge = row.ambassador ? `<span class="ambassador-badge">Ambassador</span>` : "";
+        return `<div class="admin-verify-card">
+          <div class="nm">${esc(row.name || "")} ${badge} <span class="muted">@${esc(row.username || "")}</span></div>
+          <p class="tiny" style="margin-top:6px">${row.qualified} of ${r.goal || 10} qualifying · ${row.pending} pending · code ${esc(row.code || "—")}${row.plusUntil ? " · Plus through " + esc(formatPlusUntil(row.plusUntil)) : ""}</p>
+        </div>`;
+      }).join("")}</div>`;
+      return `<div class="screen top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="admin-verify-close" aria-label="Back">‹</button><span style="font-weight:600">Invite leaderboard</span></div></div>
+        <div class="scroll pad">${sectionBar}${list}</div></div>`;
+    }
     const o = state.adminVerify || { status: "pending", requests: [], loading: true };
     const tabs = [["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]];
     const tabBar = `<div class="chips" style="margin:4px 0 14px">${tabs.map(([id, label]) => `<button type="button" class="chip${o.status === id ? " on" : ""}" data-act="admin-verify-filter" data-id="${id}">${label}</button>`).join("")}</div>`;
@@ -2969,7 +3088,7 @@
       </div>`;
     }).join("");
     return `<div class="screen top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="admin-verify-close" aria-label="Back">‹</button><span style="font-weight:600">Review verifications</span></div></div>
-      <div class="scroll pad">${tabBar}${list}</div></div>`;
+      <div class="scroll pad">${sectionBar}${tabBar}${list}</div></div>`;
   }
 
   function viewAuth() {
@@ -3006,11 +3125,14 @@
           `<button type="button" class="chip${state.drafts.meetIntent === v.id ? " on" : ""}" data-act="set-signup-intent" data-id="${v.id}">${esc(v.label)}</button>`
         ).join("")}</div>
         <p class="tiny" style="margin-top:6px">You can change this later in your profile.</p>
+        ${state.pendingReferral && state.pendingReferral.name ? `<div class="invite-banner"><div class="nm">${esc(state.pendingReferral.name)} invited you</div></div>` : ""}
+        <input id="f-ref" data-field="referralCode" aria-label="Invite code (optional)" placeholder="Invite code (optional)" value="${esc(state.drafts.referralCode || (state.pendingReferral && state.pendingReferral.code) || "")}" style="margin-top:12px" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" />
         <label class="agree-row">
           <input type="checkbox" data-act="toggle-agree-terms" ${state.drafts.agreeTerms ? "checked" : ""} />
           <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I confirm I am 18 or older.</span>
         </label>
         ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
         <button class="btn primary" data-act="signup" style="margin-top:16px">Create account</button>
         <button class="btn ghost" data-act="show-login" style="margin-top:8px">I already have an account</button>
         <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
@@ -3584,6 +3706,67 @@
     return html;
   }
 
+  function inviteSettingsSub(p) {
+    if (p && p.ambassador) return "Ambassador";
+    const r = state.referral;
+    if (r && typeof r.qualified === "number") return r.qualified + " of " + (r.goal || 10) + " sign-ups";
+    return "Share your invite link or code";
+  }
+  function viewInvite() {
+    const r = state.referral || {};
+    const qualified = Number(r.qualified) || 0;
+    const goal = Number(r.goal) || 10;
+    const pct = Math.max(0, Math.min(100, Math.round((qualified / goal) * 100)));
+    const ios = isNativeIos();
+    const code = r.code || "";
+    const path = r.path || (code ? "/join/" + code : "");
+    const url = path ? (location.origin + path) : "";
+    let reward;
+    if (r.ambassador) {
+      reward = ios
+        ? "You're an Ambassador. You unlocked the Ambassador reward."
+        : ("You're an Ambassador." + (r.plusUntil ? " Kandi Plus is on through " + formatPlusUntil(r.plusUntil) + "." : " You have 12 months of Kandi Plus."));
+    } else if (ios) {
+      reward = "Reach 10 to unlock an Ambassador reward. Sign-ups count after a new friend finishes their profile with a photo and is 18+.";
+    } else {
+      reward = "Reach 10 qualifying sign-ups to get 12 months of Kandi Plus and an Ambassador badge. Sign-ups count after a new friend finishes their profile with a photo and is 18+.";
+    }
+    const progressLabel = qualified + " of " + goal + " sign-ups";
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Invite friends</span></div></div>
+      <div class="scroll pad">
+        <div class="invite-card">
+          ${r.ambassador ? `<div class="ambassador-badge lg">Ambassador</div>` : ""}
+          <p class="sub">${esc(reward)}</p>
+          <div class="invite-progress" role="img" aria-label="${esc(progressLabel)}">
+            <div class="invite-progress-bar"><span style="width:${pct}%"></span></div>
+            <div class="nm" style="margin-top:10px">${esc(progressLabel)}</div>
+          </div>
+          ${r.error ? `<div class="err">${esc(r.error)}</div>` : ""}
+          ${code ? `<div class="invite-code-wrap">
+            <div class="label">Your invite code</div>
+            <div class="invite-code">${esc(code)}</div>
+            <div class="tiny" style="margin-top:8px;word-break:break-all">${esc(url)}</div>
+          </div>` : `<p class="muted">Loading your invite…</p>`}
+          <button type="button" class="btn primary" style="margin-top:18px" data-act="share-invite" ${code ? "" : "disabled"}>Share invite</button>
+          <button type="button" class="btn ghost" style="margin-top:8px" data-act="copy-invite-code" ${code ? "" : "disabled"}>Copy code</button>
+        </div>
+      </div></div>`;
+  }
+  function viewAmbassadorNotice() {
+    const ios = isNativeIos();
+    const until = state.me && state.me.plusUntil;
+    const body = ios
+      ? "You reached 10 qualifying sign-ups and unlocked the Ambassador reward. The Ambassador badge is on your profile."
+      : ("You reached 10 qualifying sign-ups. You now have 12 months of Kandi Plus" + (until ? " through " + formatPlusUntil(until) : "") + ", and an Ambassador badge on your profile.");
+    return `<div class="overlay top-pad"><div class="header"><div class="left"><span style="font-weight:600">You're an Ambassador</span></div></div>
+      <div class="scroll pad">
+        <div class="invite-card">
+          <div class="ambassador-badge lg">Ambassador</div>
+          <p class="sub" style="margin-top:12px">${esc(body)}</p>
+          <button type="button" class="btn primary" style="margin-top:18px" data-act="dismiss-ambassador-notice">Got it</button>
+        </div>
+      </div></div>`;
+  }
   function settingsBody() {
     const p = state.me || {};
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
@@ -3614,6 +3797,7 @@
         ${plusRow}
       </div>` : ""}
       <div class="label">Community</div><div class="set-group">
+        ${row("open-invite", "Invite friends", inviteSettingsSub(p))}
         ${row("open-groups", "Rave Groups", "Form a crew or join one")}
       </div>
       <div class="label">Notifications</div><div class="set-group">
@@ -3622,6 +3806,7 @@
       <div class="label">Safety &amp; privacy</div><div class="set-group">
         ${row("open-get-verified", p.verified ? "You're verified" : "Get verified", p.verified ? "Selfie-verified badge is on your profile" : (p.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : (p.verificationStatus === "stale" ? "Your main photo changed — verify again" : "Take a live selfie so people know you're real")))}
         ${p.isAdmin ? row("open-admin-verify", "Review verifications", "Approve or reject selfie checks") : ""}
+        ${p.isAdmin ? row("open-admin-invites", "Invite leaderboard", "Top referrers") : ""}
         <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
           <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
@@ -4252,6 +4437,12 @@
     if (o.type === "getVerified") {
       return viewGetVerified(o);
     }
+    if (o.type === "invite") {
+      return viewInvite();
+    }
+    if (o.type === "ambassadorNotice") {
+      return viewAmbassadorNotice();
+    }
     if (o.type === "post") {
       const p = state.openPost || findPost(o.id);
       if (!p) return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button></div></div><div class="empty">Couldn't load this post.</div></div>`;
@@ -4828,6 +5019,7 @@
     else if (state.view === "verify") html = viewVerify();
     else if (state.view === "shareLanding") html = viewShareLanding();
     else if (state.view === "showLanding") html = viewShowLanding();
+    else if (state.view === "joinLanding") html = viewJoinLanding();
     else if (state.view === "adminVerify") html = viewAdminVerify();
     else if (state.view === "onboard") { html = viewOnboard(); if (state.showPicker) html = html.replace(/<\/div>\s*$/, viewShowPicker() + "</div>"); }
     else {
@@ -5065,7 +5257,7 @@
         }
         return;
       }
-      if (act === "open-settings") { state.overlay = { type: "settings" }; render(); quiet(loadBlocks()); return; }
+      if (act === "open-settings") { state.overlay = { type: "settings" }; render(); quiet(Promise.all([loadBlocks(), loadReferral()]).then(() => render())); return; }
       if (act === "chat-menu") {
         state.overlay = { type: "chatMenu", weMet: null, returnTo: state.overlay };
         render();
@@ -5155,7 +5347,10 @@
       }
       if (act === "share-login" || act === "share-signup") {
         state.view = "auth"; state.err = "";
-        if (state.pendingShow && state.pendingShow.event) {
+        if (state.pendingReferral && state.pendingReferral.code) {
+          state.info = (state.pendingReferral.name || "A friend") + " invited you to Kandi.";
+          state.drafts.referralCode = state.drafts.referralCode || state.pendingReferral.code;
+        } else if (state.pendingShow && state.pendingShow.event) {
           state.info = "Log in or create an account to join " + (state.pendingShow.event.name || "this show") + " on Kandi.";
         } else {
           state.info = "Log in or create an account to follow " + ((state.pendingShare && state.pendingShare.profile && state.pendingShare.profile.name) || "them") + ".";
@@ -5239,7 +5434,7 @@
         state.overlay = { type: "editProfile", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : null };
         render(); return;
       }
-      if (act === "settings") { state.overlay = { type: "settings" }; render(); quiet(loadBlocks()); return; }
+      if (act === "settings") { state.overlay = { type: "settings" }; render(); quiet(Promise.all([loadBlocks(), loadReferral()]).then(() => render())); return; }
       if (act === "profile-tab") { state.profileTab = id === "about" ? "about" : "posts"; render(); return; }
       if (act === "post-view") { state.profilePostView = id === "list" ? "list" : "grid"; render(); return; }
       if (act === "edit-set-gender") { state.editDraft = state.editDraft || {}; state.editDraft.gender = state.editDraft.gender === id ? "" : id; render(); return; }
@@ -5413,7 +5608,7 @@
         state.info = data.sent ? "Saved. We sent a confirmation link to " + email + "." : "Email saved.";
         render(); return;
       }
-      if (act === "show-login") { state.overlay = null; state.info = ""; if (state.view === "shareLanding" || state.view === "showLanding") state.view = "auth"; render(); return; }
+      if (act === "show-login") { state.overlay = null; state.info = ""; if (state.view === "shareLanding" || state.view === "showLanding" || state.view === "joinLanding") state.view = "auth"; render(); return; }
       if (act === "toggle-agree-terms") {
         state.drafts.agreeTerms = !state.drafts.agreeTerms;
         state.err = "";
@@ -5426,7 +5621,7 @@
         }
         if (!(state.drafts.email || "").trim()) { state.err = "Enter your email address."; render(); return; }
         if (!state.drafts.meetIntent) { state.err = "Choose whether you're here for friends, dating, or both."; render(); return; }
-        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent } });
+        const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent, referralCode: (state.drafts.referralCode || (state.pendingReferral && state.pendingReferral.code) || "").trim() } });
         applyMe({ user: data.user, likesLeft: DAILY });
         state.drafts.pass = "";
         if (state.me && state.me.emailLocked) {
@@ -5452,6 +5647,7 @@
         if (state.view === "onboard") await loadEvents(); else await refreshAll();
         await openPendingShow();
         if (await maybeOpenAdmin()) return;
+        maybeShowAmbassadorNotice();
         render(); return;
       }
       if (act === "logout") {
@@ -5529,10 +5725,54 @@
       if (act === "open-admin-verify") {
         if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
         state.overlay = null;
-        state.view = "adminVerify";
-        history.replaceState({}, "", "/admin/verify");
+        await openAdminSection("verify");
+        return;
+      }
+      if (act === "open-admin-invites") {
+        if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
+        state.overlay = null;
+        await openAdminSection("invites");
+        return;
+      }
+      if (act === "admin-section") {
+        if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
+        await openAdminSection(id === "invites" ? "invites" : "verify");
+        return;
+      }
+      if (act === "open-invite") {
+        const returnTo = state.overlay && state.overlay.type === "settings" ? state.overlay : null;
+        state.overlay = { type: "invite", returnTo, loading: true };
         render();
-        await loadAdminVerifications("pending");
+        await loadReferral();
+        if (state.overlay && state.overlay.type === "invite") state.overlay.loading = false;
+        render();
+        return;
+      }
+      if (act === "share-invite") {
+        const r = state.referral || {};
+        const path = r.path || (r.code ? "/join/" + r.code : "");
+        if (!path) return;
+        const url = location.origin + path;
+        const text = r.code ? "Join me on Kandi — find your rave crew. Use my code " + r.code + " or this link:" : "Join me on Kandi — find your rave crew.";
+        try {
+          if (navigator.share) { await navigator.share({ title: "Join me on Kandi", text, url }); return; }
+        } catch (e) { if (e && e.name === "AbortError") return; }
+        try { await navigator.clipboard.writeText(url + (r.code ? "  (" + r.code + ")" : "")); toast("Invite link copied"); }
+        catch (_) { toast(url); }
+        return;
+      }
+      if (act === "copy-invite-code") {
+        const code = state.referral && state.referral.code;
+        if (!code) return;
+        try { await navigator.clipboard.writeText(code); toast("Code copied"); }
+        catch (_) { toast(code); }
+        return;
+      }
+      if (act === "dismiss-ambassador-notice") {
+        try { await api("/api/referral/notice-seen", { method: "POST", body: {} }); } catch (_) {}
+        if (state.me) state.me.ambassadorNotice = false;
+        state.overlay = (state.overlay && state.overlay.returnTo) || null;
+        render();
         return;
       }
       if (act === "admin-verify-close") {
@@ -5597,7 +5837,7 @@
       }
       if (act === "onboard-next") {
         if (state.onboardStep < 5) { state.onboardStep += 1; if (state.onboardStep === 2 && !state.events.length) await loadEvents(); render(); return; }
-        state.view = "app"; state.tab = "home"; render(); await refreshAll(); await openPendingShow(); render(); return;
+        state.view = "app"; state.tab = "home"; render(); await refreshAll(); await openPendingShow(); maybeShowAmbassadorNotice(); render(); return;
       }
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
@@ -5618,6 +5858,10 @@
         return;
       }
       if (act === "close") {
+        if (state.overlay && state.overlay.type === "ambassadorNotice") {
+          try { api("/api/referral/notice-seen", { method: "POST", body: {} }); } catch (_) {}
+          if (state.me) state.me.ambassadorNotice = false;
+        }
         if (state.chatLightbox) { state.chatLightbox = null; render(); return; }
         if (state.chatSheet) { state.chatSheet = null; render(); return; }
         if (state.badgeSheet) { state.badgeSheet = null; render(); return; }
