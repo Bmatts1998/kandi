@@ -3359,7 +3359,8 @@
         <button class="btn primary" data-act="login" style="margin-top:16px">Log in</button>
         ${cfg.passwordReset ? `<button class="btn ghost" data-act="show-forgot" style="margin-top:8px">Forgot password?</button>` : ""}
         <button class="btn ghost" data-act="show-signup" style="margin-top:8px">Create an account</button>
-        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
+        ${isNativeIos() ? "" : `<p class="tiny" style="margin-top:16px">Demo ravers (example profiles): nova, hex, luna, riot, vesper, sol, ember, pixel, jade, orion — password <strong>plur-demo</strong></p>`}
+        <p class="tiny" style="margin-top:${isNativeIos() ? 16 : 10}px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · <a href="/support" style="color:var(--muted)">Support</a> · 18+ only</p>
         ${iosTip()}
       `}
     </div></div>`;
