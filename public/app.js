@@ -1288,7 +1288,8 @@
     const gcal = e.googleCalendarUrl
       ? `<a class="btn sm ghost event-cal-btn" href="${esc(e.googleCalendarUrl)}" target="_blank" rel="noopener noreferrer">Google Calendar</a>`
       : "";
-    return `<div class="event-actions">${tix}${ics}${gcal}</div>`;
+    const invite = `<button type="button" class="btn sm ghost" data-act="show-invite-open" data-id="${esc(e.id)}">Invite</button>`;
+    return `<div class="event-actions">${invite}${tix}${ics}${gcal}</div>`;
   }
 
   function eventChipLabel(e) {
@@ -1552,7 +1553,11 @@
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && Number(msg.from.id) === Number(state.chatWith.id)) {
+      if (msg.type === "message-update" && msg.message) {
+        const i = (state.chat || []).findIndex((m) => Number(m.id) === Number(msg.message.id));
+        if (i >= 0) state.chat[i] = msg.message;
+        render();
+      } else if (msg.type === "message" && state.overlay && state.overlay.type === "chat" && state.chatWith && msg.from && Number(msg.from.id) === Number(state.chatWith.id)) {
         if (!state.chat.some((m) => m.id === msg.message.id)) state.chat.push(msg.message);
         render();
         scrollChatToEnd();
@@ -1681,6 +1686,33 @@
     if (ws) { try { ws.close(); } catch (_) {} ws = null; }
     render();
   }
+  async function loadShowFromUrl() {
+    const m = (location.pathname || "").match(/^\/s\/([^/]+)\/?$/);
+    if (!m) return false;
+    const id = decodeURIComponent(m[1] || "");
+    history.replaceState({}, "", "/");
+    try {
+      const data = await api("/api/shows/" + encodeURIComponent(id), { timeout: 20000 });
+      state.pendingShow = { event: data.show };
+      return data.signedIn ? "signed-in" : "signed-out";
+    } catch (e) {
+      state.pendingShow = null;
+      state.err = e.message || "That show link isn't working anymore.";
+      return "invalid";
+    }
+  }
+  async function openPendingShow() {
+    const ev = state.pendingShow && state.pendingShow.event;
+    if (!ev || !state.me || state.view !== "app") return;
+    if (!(state.events || []).some((x) => String(x.id) === String(ev.id))) {
+      state.events = [ev].concat(state.events || []);
+    }
+    state.pendingShow = null;
+    state.tab = "events";
+    state.overlay = { type: "event", id: ev.id };
+    try { await loadEventPosts(ev.id); } catch (_) {}
+    render();
+  }
   async function loadShareFromUrl() {
     const m = (location.pathname || "").match(/^\/u\/([A-Za-z0-9_]{3,20})\/?$/);
     if (!m) return false;
@@ -1698,6 +1730,13 @@
   }
   async function boot() {
     loadAuthConfig();
+    const showLink = await loadShowFromUrl();
+    if (showLink === "signed-out" || showLink === "invalid") {
+      let meOk = false;
+      if (showLink === "invalid") { try { const me0 = await api("/api/me", { timeout: 20000 }); applyMe(me0); meOk = true; } catch (_) {} }
+      if (!meOk) { state.view = "showLanding"; render(); return; }
+      toast(state.err || "That show link isn't working anymore.", "err"); state.err = "";
+    }
     const share = await loadShareFromUrl();
     if (share === "signed-out" || share === "invalid") {
       let meOk = false;
@@ -1752,6 +1791,7 @@
     render();
     await refreshAll();
     if (state.me) render();
+    await openPendingShow();
     // Shared links: /?post=123 opens the post, /?u=5 opens a profile.
     // Stripe Checkout returns to /?billing=success|cancel.
     const qs = new URLSearchParams(location.search);
@@ -2679,6 +2719,36 @@
     </div></div>`;
   }
 
+  function viewShowLanding() {
+    const ev = state.pendingShow && state.pendingShow.event;
+    if (!ev) {
+      return `<div class="screen splash top-pad"><div class="inner auth-card">
+        ${beads(8, "lg")}
+        <h1 class="wordmark grad">Kandi</h1>
+        <p class="sub" style="margin-top:18px">${esc(state.err || "That show link isn't working anymore.")}</p>
+        <button class="btn primary" style="margin-top:16px" data-act="show-login">Go to Kandi</button>
+        <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+      </div></div>`;
+    }
+    const when = ev.date || ev.startsAt || "";
+    const place = [ev.venue, ev.city].filter(Boolean).join(" · ");
+    const art = ev.imageUrl
+      ? `<div class="show-land-art" style="background-image:url('${esc(ev.imageUrl)}')"></div>`
+      : `<div class="show-land-art" style="background:${esc(ev.color || "#1a0a00")}"><span>${esc(ev.emoji || "✺")}</span></div>`;
+    return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      ${art}
+      <div class="nm" style="font-size:24px;font-weight:600;margin-top:14px">${esc(ev.name)}</div>
+      ${when ? `<div class="muted" style="margin-top:6px">${esc(when)}</div>` : ""}
+      ${place ? `<div class="muted">${esc(place)}</div>` : ""}
+      <p class="sub" style="margin-top:14px">Someone invited you to this show. Create an account or log in to join them on Kandi.</p>
+      <button class="btn primary" style="margin-top:16px" data-act="share-signup">Create an account</button>
+      <button class="btn ghost" style="margin-top:8px" data-act="share-login">I already have an account</button>
+      <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+    </div></div>`;
+  }
+
   function viewVerify() {
     const me = state.me || {};
     return `<div class="screen splash top-pad"><div class="inner auth-card">
@@ -3508,6 +3578,30 @@
   function isChatStack(type) {
     return type === "chat" || type === "meetSpot" || type === "chatMusic" || type === "chatDisappear";
   }
+  function showInviteCard(m, mine) {
+    const inv = m.showInvite || {};
+    const place = [inv.venue, inv.city].filter(Boolean).join(" · ");
+    const status = inv.status || "pending";
+    const canRespond = !mine && status === "pending";
+    let actions = "";
+    if (canRespond) {
+      actions = `<div class="invite-actions">
+        <button type="button" class="btn sm primary" data-act="show-invite-respond" data-id="${m.id}" data-answer="in">I'm in</button>
+        <button type="button" class="btn sm ghost" data-act="show-invite-respond" data-id="${m.id}" data-answer="out">Maybe not</button>
+      </div>`;
+    } else if (status === "in") {
+      actions = `<div class="tiny invite-status">${mine ? "They're in" : "You're going"}</div>`;
+    } else if (status === "out") {
+      actions = `<div class="tiny invite-status">${mine ? "They passed" : "Maybe not"}</div>`;
+    } else if (mine) {
+      actions = `<div class="tiny invite-status">Waiting for a reply</div>`;
+    }
+    return `<button type="button" class="invite-card-hit" data-act="event" data-id="${esc(inv.eventId || "")}">
+        <div class="invite-card-name">${inv.emoji ? esc(inv.emoji) + " " : ""}${esc(inv.name || "Show")}</div>
+        ${inv.date ? `<div class="tiny">${esc(inv.date)}</div>` : ""}
+        ${place ? `<div class="tiny">${esc(place)}</div>` : ""}
+      </button>${actions}`;
+  }
   function lastPreview(m) {
     if (!m) return "You matched. Say hi.";
     if (m.preview) return m.preview;
@@ -3516,6 +3610,7 @@
     if (typ === "photo") return "📷 Photo";
     if (typ === "video") return "🎬 Video";
     if (typ === "music") return "🎵 Music";
+    if (typ === "show_invite") return (m.preview || (m.showInvite && ("📩 " + m.showInvite.name)) || "📩 Show invite");
     return m.text || "";
   }
   function waveHtml(peaks, duration) {
@@ -3545,6 +3640,8 @@
       const prov = m.music.source || m.music.provider || "spotify";
       const hgt = (typeof tuneFrameHeight === "function") ? tuneFrameHeight(m.music) : 152;
       inner = `<div class="chat-music ${esc(prov)}"><iframe src="${esc(m.music.embedUrl)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" title="Music" style="height:${hgt}px"></iframe></div>${m.text ? `<div class="bubble-cap">${esc(m.text)}</div>` : ""}`;
+    } else if (typ === "show_invite" && m.showInvite) {
+      inner = showInviteCard(m, mine);
     } else {
       inner = esc(m.text);
     }
@@ -3953,6 +4050,31 @@
         </div></div>`;
     }
 
+    if (o.type === "inviteShow") {
+      const ev = findEvent(o.id) || o.event;
+      const matches = (state.matches || []).filter((m) => m && m.user);
+      const name = ev ? ev.name : "this show";
+      let list;
+      if (!matches.length) {
+        list = `<p class="muted" style="margin-top:12px">When you match with someone, you can invite them here. Until then, share the link.</p>`;
+      } else {
+        list = `<div class="label" style="margin-top:14px">Your matches</div>` + matches.map((m) => {
+          const p = m.user;
+          return `<button type="button" class="nearby card row" style="margin-bottom:8px;width:100%;text-align:left" data-act="show-invite-send" data-id="${p.id}">
+            ${personAvatar(p, "av sm")}
+            <div class="grow"><div style="font-weight:600">${esc(p.name)}${p.age ? ", " + p.age : ""}</div>
+            <div class="tiny">Send a chat invite</div></div></button>`;
+        }).join("");
+      }
+      return `<div class="sheet-bg invite-show-bg" data-act="show-invite-close"><div class="sheet" data-stop="1" role="dialog" aria-modal="true" aria-label="Invite to ${esc(name)}"><div class="grab"></div>
+        <h2 class="h2">Invite to ${esc(name)}</h2>
+        <p class="muted" style="margin-top:6px">Send a chat invite to someone you've matched with, or share a link for friends who aren't on Kandi yet.</p>
+        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+        <button type="button" class="btn primary" style="margin-top:14px;width:100%" data-act="show-invite-share" data-id="${esc(o.id || "")}">Share link</button>
+        ${list}
+        <button type="button" class="btn ghost" style="margin-top:10px" data-act="show-invite-close">Close</button>
+      </div></div>`;
+    }
     if (o.type === "shareCard" && state.pendingShare) {
       return `<div class="sheet-bg" data-act="share-close"><div class="sheet" data-stop="1"><div class="grab"></div>${shareCardHtml(state.pendingShare, true)}</div></div>`;
     }
@@ -4478,6 +4600,7 @@
     else if (state.view === "auth") html = viewAuth();
     else if (state.view === "verify") html = viewVerify();
     else if (state.view === "shareLanding") html = viewShareLanding();
+    else if (state.view === "showLanding") html = viewShowLanding();
     else if (state.view === "onboard") { html = viewOnboard(); if (state.showPicker) html = html.replace(/<\/div>\s*$/, viewShowPicker() + "</div>"); }
     else {
       let body = "";
@@ -4602,8 +4725,64 @@
       render();
       return;
     }
+    if (act === "show-invite-open") {
+      const ev = findEvent(id);
+      if (!ev) { toast("Couldn't load that show.", "err"); return; }
+      const prev = state.overlay;
+      state.err = "";
+      state.overlay = { type: "inviteShow", id: ev.id, event: ev, returnTo: prev && prev.type === "event" ? prev : (prev && prev.type === "inviteShow" ? prev.returnTo : null) };
+      render();
+      if (!(state.matches || []).length) {
+        try { await loadMatches(); } catch (_) {}
+        render();
+      }
+      return;
+    }
+    if (act === "show-invite-close") {
+      state.err = "";
+      state.overlay = (state.overlay && state.overlay.returnTo) || null;
+      render();
+      return;
+    }
+    if (act === "show-invite-share") {
+      const ev = (state.overlay && state.overlay.event) || findEvent(id);
+      if (!ev) { toast("Couldn't load that show.", "err"); return; }
+      const url = location.origin + "/s/" + encodeURIComponent(ev.id);
+      const text = "Come to " + ev.name + (ev.venue ? " at " + ev.venue : "") + " — join me on Kandi.";
+      try {
+        if (navigator.share) { await navigator.share({ title: ev.name, text, url }); return; }
+      } catch (e) { if (e && e.name === "AbortError") return; }
+      try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+      catch (_) { toast(url); }
+      return;
+    }
     try {
       state.err = "";
+      if (act === "show-invite-send") {
+        const evId = state.overlay && state.overlay.id;
+        if (!evId) return;
+        const data = await api("/api/events/" + encodeURIComponent(evId) + "/invite", { method: "POST", body: { userId: Number(id) } });
+        const name = (data.to && data.to.name) || "your match";
+        toast("Invite sent to " + name);
+        render();
+        return;
+      }
+      if (act === "show-invite-respond") {
+        const answer = (el && el.getAttribute("data-answer")) || "";
+        const data = await api("/api/events/invites/" + encodeURIComponent(id) + "/respond", { method: "POST", body: { response: answer } });
+        if (data.message) {
+          const i = (state.chat || []).findIndex((m) => Number(m.id) === Number(data.message.id));
+          if (i >= 0) state.chat[i] = data.message;
+        }
+        if (answer === "in") {
+          toast("You're going");
+          try { await loadEvents(); } catch (_) {}
+        } else {
+          toast("Got it");
+        }
+        render();
+        return;
+      }
       if (act === "song-search") {
         const q = String(state.drafts.songQuery || "").trim();
         const ss = state.songSearch = state.songSearch || { results: [], open: true };
@@ -4747,7 +4926,12 @@
         render(); return;
       }
       if (act === "share-login" || act === "share-signup") {
-        state.view = "auth"; state.err = ""; state.info = "Log in or create an account to follow " + ((state.pendingShare && state.pendingShare.profile && state.pendingShare.profile.name) || "them") + ".";
+        state.view = "auth"; state.err = "";
+        if (state.pendingShow && state.pendingShow.event) {
+          state.info = "Log in or create an account to join " + (state.pendingShow.event.name || "this show") + " on Kandi.";
+        } else {
+          state.info = "Log in or create an account to follow " + ((state.pendingShare && state.pendingShare.profile && state.pendingShare.profile.name) || "them") + ".";
+        }
         state.overlay = act === "share-signup" ? { type: "signup" } : null;
         render(); return;
       }
@@ -4974,7 +5158,7 @@
         state.info = data.sent ? "Saved. We sent a confirmation link to " + email + "." : "Email saved.";
         render(); return;
       }
-      if (act === "show-login") { state.overlay = null; state.info = ""; if (state.view === "shareLanding") state.view = "auth"; render(); return; }
+      if (act === "show-login") { state.overlay = null; state.info = ""; if (state.view === "shareLanding" || state.view === "showLanding") state.view = "auth"; render(); return; }
       if (act === "toggle-agree-terms") {
         state.drafts.agreeTerms = !state.drafts.agreeTerms;
         state.err = "";
@@ -5010,6 +5194,7 @@
         connectWs();
         render();
         if (state.view === "onboard") await loadEvents(); else await refreshAll();
+        await openPendingShow();
         render(); return;
       }
       if (act === "logout") {
@@ -5059,7 +5244,7 @@
       }
       if (act === "onboard-next") {
         if (state.onboardStep < 5) { state.onboardStep += 1; if (state.onboardStep === 2 && !state.events.length) await loadEvents(); render(); return; }
-        state.view = "app"; state.tab = "home"; render(); await refreshAll(); render(); return;
+        state.view = "app"; state.tab = "home"; render(); await refreshAll(); await openPendingShow(); render(); return;
       }
       if (act === "onboard-back") { state.onboardStep = Math.max(0, state.onboardStep - 1); render(); return; }
       if (act === "tab") {
@@ -6012,7 +6197,7 @@
 
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
-  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
+  const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-gender-filter", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",

@@ -106,12 +106,35 @@ function sanitizeWaveform(raw) {
   });
 }
 
+function parseShowInvite(row) {
+  const typ = row.attach_type || row.attachType || "";
+  if (typ !== "show_invite") return null;
+  try {
+    const data = JSON.parse(String(row.text || ""));
+    if (!data || !data.eventId) return null;
+    return {
+      eventId: String(data.eventId),
+      eventKey: String(data.eventKey || ""),
+      name: String(data.name || "Show"),
+      date: String(data.date || ""),
+      venue: String(data.venue || ""),
+      city: String(data.city || ""),
+      emoji: String(data.emoji || ""),
+      status: data.status === "in" || data.status === "out" ? data.status : "pending",
+    };
+  } catch (_) { return null; }
+}
+
 function previewText(row) {
   const typ = row.attach_type || row.attachType || "";
   if (typ === "voice") return "🎤 Voice message";
   if (typ === "photo") return "📷 Photo";
   if (typ === "video") return "🎬 Video";
   if (typ === "music") return "🎵 Music";
+  if (typ === "show_invite") {
+    const inv = parseShowInvite(row);
+    return inv ? "📩 " + inv.name : "📩 Show invite";
+  }
   if (typ === "system") return row.text || "";
   return row.text || "";
 }
@@ -140,6 +163,8 @@ function publicMessage(row) {
     posterId: posterId || null,
     posterUrl: posterId ? "/api/chats/media/" + encodeURIComponent(posterId) : null,
     music: music || null,
+    showInvite: typ === "show_invite" ? parseShowInvite(row) : null,
+    preview: typ === "show_invite" ? previewText(row) : undefined,
     disappear: Boolean(Number(row.disappear)),
     readAt: readAt || null,
   };

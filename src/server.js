@@ -14,6 +14,7 @@ const { WebSocketServer } = require("ws");
 const { open } = require("./db");
 const { installFeed } = require("./feed-routes");
 const { installChat, startDisappearSweeper, previewText } = require("./chat-routes");
+const { installShowInvites } = require("./show-invites");
 const { installGroups } = require("./group-routes");
 const { installSocialExtras } = require("./social-extras");
 const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, MAX_UPLOAD_BYTES } = require("./photo");
@@ -1686,6 +1687,16 @@ installChat({
   broadcastToUser,
   sharedShows,
   getDemoChat: () => demoChat,
+});
+
+installShowInvites({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  broadcastToUser,
+  getUserFromReq,
 });
 
 
