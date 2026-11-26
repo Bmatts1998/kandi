@@ -83,8 +83,11 @@
       display: grid; place-items: center; }
   
 
-    .splash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 24px 24px calc(28px + var(--safe-b)); position: relative; overflow: hidden; }
+    .splash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      text-align: center; padding: 24px 24px calc(28px + var(--safe-b)); position: relative; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    @media (min-height: 900px) {
+      .splash { justify-content: center; }
+    }
     .splash::before { content: ""; position: absolute; width: 420px; height: 420px; border-radius: 50%;
       background: radial-gradient(circle, rgba(255,61,154,.35), transparent 65%); top: -80px; left: -80px; filter: blur(10px); }
     .splash::after { content: ""; position: absolute; width: 360px; height: 360px; border-radius: 50%;
