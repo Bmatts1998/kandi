@@ -1855,6 +1855,12 @@ async function boot() {
     console.error("Demo meet intent seed failed:", err.message || err);
   }
   try {
+    const n = await require("./seed").ensureDemoDetails(db);
+    if (n) console.log("Updated gender preferences on " + n + " demo profiles.");
+  } catch (err) {
+    console.error("Demo details seed failed:", err.message || err);
+  }
+  try {
     const n = await backfillMatchKinds(db);
     if (n) console.log("Labeled " + n + " existing match(es) as friend or date.");
   } catch (err) {

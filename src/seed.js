@@ -201,6 +201,7 @@ async function seed(existingDb) {
   // Attach demo accounts to upcoming real imported shows (not the retired sample festivals).
   await seedDemoMeetups(db);
   await ensureDemoMeetIntent(db);
+  await ensureDemoDetails(db);
 
   // Some demo-to-demo likes so mutual matches can happen among seeds if needed
   const incoming = [
@@ -521,6 +522,18 @@ const DEMO_MEET_INTENT = {
   vesper: "both",
   sol: "both",
 };
+
+async function ensureDemoDetails(db) {
+  let n = 0;
+  for (const u of USERS) {
+    const d = DETAILS[u.username] || {};
+    const info = await db.prepare(
+      `UPDATE users SET gender=?, pronouns=?, interested_in=? WHERE lower(username)=? AND is_demo=1`
+    ).run(d.gender || "", d.pronouns || "", JSON.stringify(d.interestedIn || []), u.username);
+    if (info && Number(info.changes)) n += 1;
+  }
+  return n;
+}
 
 async function ensureDemoMeetIntent(db) {
   let n = 0;
@@ -916,4 +929,4 @@ async function ensureDemoSongs(db) {
   return n;
 }
 
-module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, ensureDemoMeetIntent, ensureDemoSongs, DEMO_SONGS, DEMO_MEET_INTENT, DEMO_PASSWORD, EVENTS, USERS };
+module.exports = { seed, seedSocial, seedStories, seedDemoMeetups, seedCrews, ensureDemoGenres, ensureDemoMeetIntent, ensureDemoDetails, ensureDemoSongs, DEMO_SONGS, DEMO_MEET_INTENT, DEMO_PASSWORD, EVENTS, USERS };
