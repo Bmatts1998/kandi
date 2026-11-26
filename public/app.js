@@ -3512,6 +3512,15 @@
         <div class="grow"><div style="font-weight:600">${personName(p)}</div>${genreRow(p, { compact: true, max: 2 })}
           <div class="muted">Liked you</div>
           ${info.comment ? `<div class="muted" style="margin-top:4px">“${esc(info.comment)}”</div>` : ""}</div></div>
+        ${(() => {
+          const err = state.likeBackError && Number(state.likeBackError.id) === Number(p.id) ? state.likeBackError : null;
+          if (!err) return "";
+          const cur = discoverMode();
+          const other = err.suggestedMode || (cur === "dating" ? "friends" : "dating");
+          const canSwitch = allowedDiscoverModes(state.me).includes(other) && other !== cur;
+          return `<div class="notice warn" style="margin-top:12px">They're not in ${cur === "dating" ? "Dating" : "Friends"} mode, or you're looking for different things.${canSwitch ? ` Switch to ${other === "dating" ? "Dating" : "Friends"} to like them back.` : ""}</div>
+            ${canSwitch ? `<button type="button" class="btn sm primary" style="margin-top:8px" data-act="like-back-switch" data-id="${p.id}" data-mode="${other}">Switch to ${other === "dating" ? "Dating" : "Friends"} and like back</button>` : ""}`;
+        })()}
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn sm primary" data-act="like-back" data-id="${p.id}">Like back</button>
           <button class="btn sm ghost" data-act="pass" data-id="${p.id}">Pass</button>
@@ -6562,6 +6571,11 @@
         await loadFeed();
         render(); return;
       }
+      if (act === "like-back-switch") {
+        const mode = el.getAttribute("data-mode") || "";
+        if (mode) setDiscoverMode(mode, true);
+        return handle("like-back", el);
+      }
       if (act === "want-like" || act === "like-back" || act === "send-like") {
         const o = state.overlay && state.overlay.type === "likeSheet" ? state.overlay : null;
         const toId = act === "send-like" ? (o && o.id) : Number(id);
@@ -6574,8 +6588,25 @@
           || state.feed.find((x) => String(x.id) === String(toId))
           || (state.inbound.people || []).find((x) => String(x.id) === String(toId))
           || (state.nearby || []).find((x) => String(x.id) === String(toId));
-        const result = await api("/api/like", { method: "POST", body: { userId: Number(toId), type: "photo", targetId: "0", comment: "", mode: discoverMode() } });
+        let result;
+        try {
+          result = await api("/api/like", { method: "POST", body: { userId: Number(toId), type: "photo", targetId: "0", comment: "", mode: discoverMode() } });
+        } catch (e) {
+          if (act === "like-back" && e && e.data && e.data.code === "mode_mismatch") {
+            const cur = (e.data.currentMode || discoverMode());
+            const suggested = e.data.suggestedMode || (cur === "dating" ? "friends" : "dating");
+            state.likeBackError = { id: Number(toId), message: e.message, suggestedMode: suggested };
+            render();
+            return;
+          }
+          throw e;
+        }
+        state.likeBackError = null;
         state.likesLeft = result.likesLeft;
+        if (act === "like-back" && state.inbound && Array.isArray(state.inbound.people)) {
+          state.inbound.people = state.inbound.people.filter((x) => Number(x.id) !== Number(toId));
+          if (state.inbound.count) state.inbound.count = Math.max(0, Number(state.inbound.count) - 1);
+        }
         if (result.matched) {
           let who = person;
           if (!who) {
@@ -6589,9 +6620,14 @@
         }
         render();
         await Promise.allSettled([loadFeed(), loadInbound(), loadMatches()]);
-        if (result.matched && state.overlay && state.overlay.type === "match" && !state.overlay.person.name) {
-          const m = (state.matches || []).find((x) => String(x.user.id) === String(toId));
-          if (m) state.overlay.person = m.user;
+        if (result.matched) {
+          if (!(state.overlay && state.overlay.type === "match")) {
+            const who = person || ((state.matches || []).find((x) => String(x.user.id) === String(toId)) || {}).user;
+            state.overlay = { type: "match", person: who || { id: Number(toId), name: "them", photos: [] }, matchKind: result.matchKind || "" };
+          } else if (!state.overlay.person.name) {
+            const m = (state.matches || []).find((x) => String(x.user.id) === String(toId));
+            if (m) state.overlay.person = m.user;
+          }
         }
         render(); return;
       }

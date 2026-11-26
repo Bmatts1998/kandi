@@ -1082,7 +1082,13 @@ app.post("/api/like", auth, async (req, res) => {
   if (!targetUser) return res.status(404).json({ error: "That profile isn't available." });
   const mode = resolveMode(req.user, req.body.mode || req.body.meetMode);
   if (!visibleInMode(req.user, targetUser, mode)) {
-    return res.status(400).json({ error: "They're not in this Discover mode, or you're looking for different things." });
+    const suggestedMode = allowedModes(req.user).find((m) => m !== mode && visibleInMode(req.user, targetUser, m)) || "";
+    return res.status(400).json({
+      error: "They're not in this Discover mode, or you're looking for different things.",
+      code: "mode_mismatch",
+      currentMode: mode,
+      suggestedMode,
+    });
   }
   if (!isPlus(req.user) && await likesUsedToday(req.user.id) >= DAILY_LIKES) {
     return res.status(402).json({ error: "You're out of free likes today.", code: "plus_required", reason: "likes" });
