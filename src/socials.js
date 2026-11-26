@@ -1,6 +1,6 @@
 "use strict";
 
-// Instagram / Facebook profile links on a Kandi profile.
+// Instagram / Facebook / Spotify profile links on a Kandi profile.
 // We only ever store a normalized handle (never a raw URL) and build the https link ourselves,
 // so nothing like javascript: or a look-alike domain can reach another user's screen.
 
@@ -64,6 +64,34 @@ function normalizeFacebook(raw) {
   return { value: name.toLowerCase() };
 }
 
+const SP_HOSTS = new Set(["open.spotify.com", "play.spotify.com"]);
+
+function normalizeSpotify(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  if (!s) return { value: "" };
+  let id = "";
+  const uri = s.match(/^spotify:user:([A-Za-z0-9._-]+)$/i);
+  if (uri) id = uri[1];
+  else {
+    const parsed = parseMaybeUrl(s);
+    if (parsed) {
+      if (parsed.bad || !SP_HOSTS.has(parsed.url.hostname.toLowerCase())) {
+        return { error: "Spotify must be your profile link (open.spotify.com/user/…) or a spotify:user: link." };
+      }
+      const parts = parsed.url.pathname.split("/").filter(Boolean);
+      if ((parts[0] || "").toLowerCase() !== "user" || !parts[1]) {
+        return { error: "Use the link to your Spotify profile, not a playlist or track." };
+      }
+      id = parts[1];
+    } else {
+      return { error: "Paste your Spotify profile URL (open.spotify.com/user/…) or a spotify:user: link." };
+    }
+  }
+  id = String(id).trim();
+  if (!/^[A-Za-z0-9._-]{2,80}$/.test(id)) return { error: "That Spotify profile link doesn't look right." };
+  return { value: id };
+}
+
 function instagramUrl(handle) {
   return handle && /^[a-z0-9._]{1,30}$/.test(handle) ? `https://www.instagram.com/${handle}/` : "";
 }
@@ -72,13 +100,18 @@ function facebookUrl(value) {
   if (/^id:\d{3,20}$/.test(value)) return `https://www.facebook.com/profile.php?id=${value.slice(3)}`;
   return /^[a-z0-9.]{3,50}$/.test(value) ? `https://www.facebook.com/${value}` : "";
 }
+function spotifyUrl(id) {
+  return id && /^[A-Za-z0-9._-]{2,80}$/.test(id) ? ("https://open.spotify.com/user/" + encodeURIComponent(id)) : "";
+}
 function publicSocials(u) {
   const ig = String((u && u.instagram) || "");
   const fb = String((u && u.facebook) || "");
+  const sp = String((u && u.spotify) || "");
   return {
     instagram: ig, instagramUrl: instagramUrl(ig),
     facebook: fb, facebookLabel: fb.startsWith("id:") ? "Facebook" : fb, facebookUrl: facebookUrl(fb),
+    spotify: sp, spotifyUrl: spotifyUrl(sp),
   };
 }
 
-module.exports = { normalizeInstagram, normalizeFacebook, instagramUrl, facebookUrl, publicSocials };
+module.exports = { normalizeInstagram, normalizeFacebook, normalizeSpotify, instagramUrl, facebookUrl, spotifyUrl, publicSocials };

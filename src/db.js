@@ -756,6 +756,8 @@ async function migrate(db) {
       ["favorite_tunes", "TEXT DEFAULT '[]'"],
       ["instagram", "TEXT DEFAULT ''"],
       ["facebook", "TEXT DEFAULT ''"],
+      ["spotify", "TEXT DEFAULT ''"],
+      ["top_artists", "TEXT DEFAULT '[]'"],
     ];
     for (const [col, typ] of userDetailCols) {
       await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
@@ -855,6 +857,8 @@ async function migrate(db) {
       ["favorite_tunes", "TEXT DEFAULT '[]'"],
       ["instagram", "TEXT DEFAULT ''"],
       ["facebook", "TEXT DEFAULT ''"],
+      ["spotify", "TEXT DEFAULT ''"],
+      ["top_artists", "TEXT DEFAULT '[]'"],
     ];
     for (const [col, typ] of userDetailCols) {
       try { await db.exec(`ALTER TABLE users ADD COLUMN ${col} ${typ}`); } catch (_) {}

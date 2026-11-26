@@ -355,6 +355,7 @@ function publicUser(u, extra) {
     favoriteTunes: parseTunes(parseJsonList(u.favorite_tunes, [])).tunes,
     songs: songs.parseStoredSongs(u.songs, u.favorite_song),
     favoriteSong: songs.parseStoredSongs(u.songs, u.favorite_song)[0] || null,
+    topArtists: songs.parseStoredArtists(u.top_artists),
     isDemo: Boolean(u.is_demo),
     needsProfile: Boolean(Number(u.needs_profile)),
     showUpcoming: u.show_upcoming == null ? true : Boolean(Number(u.show_upcoming)),
@@ -742,6 +743,21 @@ app.put("/api/me", auth, async (req, res) => {
     if (r.error) return res.status(400).json({ error: r.error, field: "facebook" });
     facebook = r.value;
   }
+  let spotify = req.user.spotify || "";
+  if (body.spotify != null) {
+    const r = socials.normalizeSpotify(body.spotify);
+    if (r.error) return res.status(400).json({ error: r.error, field: "spotify" });
+    spotify = r.value;
+  }
+  let artistList = songs.parseStoredArtists(req.user.top_artists);
+  if (body.topArtists !== undefined) {
+    if (body.topArtists !== null && !Array.isArray(body.topArtists)) return res.status(400).json({ error: "Pick your top artists from the search results.", field: "topArtists" });
+    const raw = body.topArtists || [];
+    if (raw.length > songs.MAX_ARTISTS) return res.status(400).json({ error: "You can add up to " + songs.MAX_ARTISTS + " top artists.", field: "topArtists" });
+    const clean = songs.normalizeArtistList(raw);
+    if (clean.length !== new Set(raw.map((x) => x && Number(x.artistId))).size) return res.status(400).json({ error: "Pick your top artists from the search results.", field: "topArtists" });
+    artistList = clean;
+  }
   // My songs: up to 5 picks from /api/music/search, in order. Omitted = unchanged.
   let songList = songs.parseStoredSongs(req.user.songs, req.user.favorite_song);
   let favoriteSong = req.user.favorite_song || "";
@@ -766,8 +782,8 @@ app.put("/api/me", auth, async (req, res) => {
     songList = first ? [first, ...songList.slice(1).filter((x) => x.trackId !== first.trackId)].slice(0, songs.MAX_SONGS) : songList.slice(1);
     if (!first && songList[0]) favoriteSong = JSON.stringify(songList[0]);
   }
-  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, favorite_song=?, songs=?, meet_intent=? WHERE id=?`).run(
-    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, favoriteSong, JSON.stringify(songList), meetIntent, req.user.id
+  await db.prepare(`UPDATE users SET name=?, bio=?, vibes=?, looking=?, prompts=?, age=?, gender=?, pronouns=?, interested_in=?, favorite_artists=?, favorite_festival=?, favorite_venue=?, favorite_hangout=?, kandi_trades=?, rave_totem=?, years_raving=?, sex=?, height_in=?, hobbies=?, favorite_tunes=?, show_upcoming=?, date_of_birth=?, home_location=?, instagram=?, facebook=?, spotify=?, top_artists=?, favorite_song=?, songs=?, meet_intent=? WHERE id=?`).run(
+    name, bio, vibes, looking, prompts, age, gender, pronouns, interestedIn, favoriteArtists, favoriteFestival, favoriteVenue, favoriteHangout, kandiTrades, raveTotem, yearsRaving, sex, heightIn, hobbies, favoriteTunes, showUpcoming, dateOfBirth, homeLocation, instagram, facebook, spotify, JSON.stringify(artistList), favoriteSong, JSON.stringify(songList), meetIntent, req.user.id
   );
   let user = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   try { await founding.claimFounding(db, user); } catch (err) { console.error("Founding claim on profile save failed:", err && err.message); }
@@ -1563,11 +1579,15 @@ app.get("/api/share/:username", async (req, res) => {
 // Song search for the "Favorite song" picker (Apple iTunes Search API, cached + rate-limited).
 app.get("/api/music/search", auth, async (req, res) => {
   try {
-    const out = await songs.searchSongs(req.query.q || req.query.term || "", { userId: req.user.id });
+    const kind = String(req.query.type || req.query.entity || "song").toLowerCase();
+    const q = req.query.q || req.query.term || "";
+    const out = (kind === "artist" || kind === "musicartist")
+      ? await songs.searchArtists(q, { userId: req.user.id })
+      : await songs.searchSongs(q, { userId: req.user.id });
     res.setHeader("Cache-Control", "private, max-age=300");
     res.json({ results: out.results });
   } catch (err) {
-    res.status(err.status || 502).json({ error: err.message || "Song search failed." });
+    res.status(err.status || 502).json({ error: err.message || "Search failed." });
   }
 });
 

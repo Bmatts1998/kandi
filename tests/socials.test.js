@@ -23,3 +23,20 @@ test("facebook usernames, profile.php ids, and links normalize", () => {
   assert.strictEqual(s.facebookUrl("id:1000123"), "https://www.facebook.com/profile.php?id=1000123");
   assert.strictEqual(s.facebookUrl("javascript:x"), "");
 });
+
+test("spotify profile urls and uris normalize", () => {
+  for (const [input, out] of [
+    ["https://open.spotify.com/user/kandi_rave", "kandi_rave"],
+    ["https://open.spotify.com/user/kandi_rave?si=abc", "kandi_rave"],
+    ["spotify:user:kandi_rave", "kandi_rave"],
+    ["open.spotify.com/user/31abcdef", "31abcdef"],
+    ["", ""],
+  ]) {
+    assert.deepStrictEqual(s.normalizeSpotify(input), { value: out }, input);
+  }
+  for (const bad of ["javascript:alert(1)", "https://evil.com/user/x", "https://open.spotify.com/playlist/abc", "https://open.spotify.com/track/xyz", "not a link"]) {
+    assert.ok(s.normalizeSpotify(bad).error, bad);
+  }
+  assert.strictEqual(s.spotifyUrl("kandi_rave"), "https://open.spotify.com/user/kandi_rave");
+  assert.strictEqual(s.spotifyUrl("javascript:x"), "");
+});

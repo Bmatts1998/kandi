@@ -157,4 +157,99 @@ function parseStoredSongs(listVal, singleVal) {
   return one ? [one] : [];
 }
 
-module.exports = { normalizeSong, parseStoredSong, normalizeSongList, parseStoredSongs, searchSongs, bigArtwork, MAX_SONGS };
+async function searchArtists(term, { userId, fetchImpl } = {}) {
+  const q = clip(term, 80).toLowerCase();
+  if (q.length < 2) return { results: [] };
+  const key = "artist:" + q;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    cache.delete(key); cache.set(key, hit);
+    return { results: hit.results, cached: true };
+  }
+  if (!allow(userHits, String(userId || "anon"), USER_PER_MIN)) {
+    const err = new Error("Slow down a sec — too many searches. Try again in a minute.");
+    err.status = 429;
+    throw err;
+  }
+  const now = Date.now();
+  upstreamHits = upstreamHits.filter((t) => now - t < 60000);
+  if (upstreamHits.length >= UPSTREAM_PER_MIN) {
+    const err = new Error("Artist search is busy right now. Try again in a few seconds.");
+    err.status = 429;
+    throw err;
+  }
+  upstreamHits.push(now);
+  const params = new URLSearchParams({ term: q, media: "music", entity: "musicArtist", limit: "12", country: "US" });
+  const f = fetchImpl || fetch;
+  let data;
+  try {
+    const res = await f(SEARCH_URL + "?" + params.toString(), {
+      headers: { Accept: "application/json", "User-Agent": "Kandi/1.0 (+https://kandi-6rih.onrender.com)" },
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
+    });
+    if (res.status === 403 || res.status === 429) {
+      const err = new Error("Artist search is busy right now. Try again in a few seconds.");
+      err.status = 429;
+      throw err;
+    }
+    if (!res.ok) throw new Error("iTunes search failed: " + res.status);
+    data = await res.json();
+  } catch (err) {
+    if (err.status) throw err;
+    const e = new Error("Couldn't reach artist search. Try again.");
+    e.status = 502;
+    throw e;
+  }
+  const seen = new Set();
+  const results = [];
+  for (const r of (data && data.results) || []) {
+    const a = normalizeArtist(r);
+    if (!a || seen.has(a.artistId)) continue;
+    seen.add(a.artistId);
+    results.push(a);
+  }
+  cache.set(key, { at: Date.now(), results });
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  return { results };
+}
+
+const MAX_ARTISTS = 5;
+
+function normalizeArtist(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const artistId = Number(raw.artistId);
+  if (!Number.isSafeInteger(artistId) || artistId <= 0) return null;
+  const name = clip(raw.name != null ? raw.name : raw.artistName, 160);
+  if (!name) return null;
+  const artRaw = raw.artworkUrl || raw.artworkUrl100 || raw.artworkUrl60 || "";
+  const artworkUrl = artRaw ? httpsUrl(bigArtwork(artRaw, 300), ART_HOST) : "";
+  const artistUrl = httpsUrl(raw.artistUrl != null ? raw.artistUrl : raw.artistLinkUrl, STORE_HOST);
+  return { artistId, name, artworkUrl, artistUrl };
+}
+
+function normalizeArtistList(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const a = normalizeArtist(raw);
+    if (!a || seen.has(a.artistId)) continue;
+    seen.add(a.artistId);
+    out.push(a);
+    if (out.length >= MAX_ARTISTS) break;
+  }
+  return out;
+}
+
+function parseStoredArtists(val) {
+  if (!val) return [];
+  try {
+    const arr = typeof val === "string" ? JSON.parse(val) : val;
+    return Array.isArray(arr) ? normalizeArtistList(arr) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+module.exports = { normalizeSong, parseStoredSong, normalizeSongList, parseStoredSongs, searchSongs, searchArtists, normalizeArtist, normalizeArtistList, parseStoredArtists, bigArtwork, MAX_SONGS, MAX_ARTISTS };
+

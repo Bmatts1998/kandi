@@ -679,6 +679,7 @@
   }
 
   const MAX_SONGS = 5;
+  const MAX_ARTISTS = 5;
   function mySongs(p) {
     const list = p && Array.isArray(p.songs) ? p.songs : (p && p.favoriteSong ? [p.favoriteSong] : []);
     return list.filter((x) => x && x.title).slice(0, MAX_SONGS);
@@ -709,6 +710,35 @@
       <div class="grow song-row-meta"><div class="song-title">${esc(song.title)}</div><div class="song-artist">${esc(song.artist)}</div><div class="song-progress" aria-hidden="true"><i></i></div></div>
       ${right}
     </div>`;
+  }
+  function myArtists(p) {
+    const list = (p && p.topArtists) || [];
+    return list.filter((x) => x && x.name).slice(0, MAX_ARTISTS);
+  }
+  function artistTiles(list, opts) {
+    opts = opts || {};
+    if (!(list && list.length)) return "";
+    return `<div class="artist-tiles">${list.map((a, i) => {
+      const art = a.artworkUrl ? `<span class="artist-av" style="background-image:url('${esc(songArt(a.artworkUrl, 200))}')"></span>` : `<span class="artist-av letter">${esc((a.name || "?").charAt(0))}</span>`;
+      const inner = `${art}<span class="artist-nm">${esc(a.name)}</span>`;
+      if (opts.edit) {
+        return `<span class="artist-tile">${inner}<button type="button" class="artist-x" data-act="artist-remove" data-id="${i}" aria-label="Remove ${esc(a.name)}">×</button></span>`;
+      }
+      const href = a.artistUrl && /^https:\/\/music\.apple\.com\//.test(a.artistUrl) ? a.artistUrl : "";
+      return href
+        ? `<a class="artist-tile" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+        : `<span class="artist-tile">${inner}</span>`;
+    }).join("")}</div>`;
+  }
+  function profileArtists(p) {
+    const list = myArtists(p);
+    if (!list.length) return "";
+    return `<section class="prof-artists"><div class="label">Top artists</div>${artistTiles(list)}<p class="tiny song-credit">From Apple Music search</p></section>`;
+  }
+  function discoverArtists(p) {
+    const list = myArtists(p);
+    if (!list.length) return "";
+    return `<div class="disco-artists"><div class="label">Top artists</div>${artistTiles(list)}</div>`;
   }
   function profileSongs(p, keyPrefix) {
     const list = mySongs(p);
@@ -760,6 +790,27 @@
     return html;
   }
 
+  function editArtistPicker() {
+    const d = state.editDraft || {};
+    const list = d.artists || [];
+    const ss = state.artistSearch || { results: [] };
+    let html = `<div class="label" style="margin-top:16px">Top artists</div>
+      <p class="tiny" style="margin-bottom:8px">Add up to ${MAX_ARTISTS}. They show as small tiles next to My songs on your profile and Discover card.</p>`;
+    if (list.length) html += artistTiles(list, { edit: true });
+    if (list.length >= MAX_ARTISTS) return html + `<p class="tiny" style="margin-top:8px">That's ${MAX_ARTISTS}. Remove one to add another.</p>`;
+    html += `<div class="row" style="margin-top:10px"><input data-field="artistQuery" type="search" enterkeyhint="search" placeholder="Search an artist or DJ" aria-label="Search an artist" value="${esc(state.drafts.artistQuery || "")}" autocomplete="off" autocorrect="off" spellcheck="false" />
+      <button type="button" class="btn sm primary" data-act="artist-search">Search</button></div>`;
+    if (ss.loading) html += `<p class="tiny" style="margin-top:8px"><span class="spin"></span> Searching…</p>`;
+    if (ss.error) html += `<div class="err">${esc(ss.error)}</div>`;
+    if (!ss.loading && ss.q && !ss.error && !(ss.results || []).length) html += `<p class="tiny" style="margin-top:8px">No artists found for “${esc(ss.q)}”.</p>`;
+    if ((ss.results || []).length) html += `<div class="artist-results">${ss.results.map((a, i) => {
+      const on = list.some((x) => x.artistId === a.artistId);
+      const art = a.artworkUrl ? `<span class="artist-av" style="background-image:url('${esc(songArt(a.artworkUrl, 200))}')"></span>` : `<span class="artist-av letter">${esc((a.name || "?").charAt(0))}</span>`;
+      return `<button type="button" class="artist-result${on ? " on" : ""}" data-act="artist-pick" data-id="${i}" ${on ? "disabled" : ""}>${art}<span class="grow">${esc(a.name)}</span>${on ? "<span class=\"tiny\">Added</span>" : ""}</button>`;
+    }).join("")}</div><p class="tiny" style="margin-top:6px">Artist info from Apple Music search.</p>`;
+    return html;
+  }
+
   function profileTunes(tunes) {
     const list = (tunes || []).filter((t) => t && t.embedUrl);
     if (!list.length) return "";
@@ -808,9 +859,12 @@
       hobbies: (me.hobbies || []).slice(),
       kandiTrades: me.kandiTrades || "",
       songs: mySongs(me).slice(),
+      artists: myArtists(me).slice(),
     };
     state.songSearch = { q: "", results: [], loading: false, error: "", open: false };
+    state.artistSearch = { q: "", results: [], loading: false, error: "" };
     state.drafts.songQuery = "";
+    state.drafts.artistQuery = "";
     state.drafts.editName = me.name || "";
     state.drafts.editBio = me.bio || "";
     state.drafts.editAge = me.age != null ? String(me.age) : "";
@@ -826,6 +880,7 @@
     state.drafts.editYearsRaving = me.yearsRaving || "";
     state.drafts.editInstagram = me.instagram ? "@" + me.instagram : "";
     state.drafts.editFacebook = me.facebook && !String(me.facebook).startsWith("id:") ? me.facebook : (me.facebookUrl || "");
+    state.drafts.editSpotify = me.spotifyUrl || (me.spotify ? ("https://open.spotify.com/user/" + me.spotify) : "");
     state.drafts.editCustomHobby = "";
     const tuneUrls = (me.favoriteTunes || []).map((x) => x.url || "");
     for (let i = 0; i < MAX_TUNES; i++) state.drafts["editTune" + i] = tuneUrls[i] || "";
@@ -880,8 +935,10 @@
       songs: (d.songs || []).slice(0, MAX_SONGS),
       instagram: String(state.drafts.editInstagram || "").trim(),
       facebook: String(state.drafts.editFacebook || "").trim(),
+      spotify: String(state.drafts.editSpotify || "").trim(),
+      topArtists: (d.artists || []).slice(0, MAX_ARTISTS),
     };
-    const socialErr = socialFieldError("instagram", body.instagram) || socialFieldError("facebook", body.facebook);
+    const socialErr = socialFieldError("instagram", body.instagram) || socialFieldError("facebook", body.facebook) || socialFieldError("spotify", body.spotify);
     if (socialErr) return { error: socialErr };
     return { body, parsedTunes };
   }
@@ -890,6 +947,17 @@
   function socialHandle(kind, raw) {
     const s = String(raw || "").trim();
     if (!s) return "";
+    if (kind === "spotify") {
+      const uri = s.match(/^spotify:user:([A-Za-z0-9._-]+)$/i);
+      if (uri) return uri[1];
+      if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^https?:\/\//i.test(s)) return null;
+      if (!s.includes("/") && !/^https?:/i.test(s) && !/^spotify:/i.test(s)) return null;
+      let u; try { u = new URL(/^https?:\/\//i.test(s) ? s : "https://" + s); } catch (_) { return null; }
+      if (!/^(open|play)\.spotify\.com$/i.test(u.hostname)) return null;
+      const parts = u.pathname.split("/").filter(Boolean);
+      if ((parts[0] || "").toLowerCase() !== "user" || !parts[1]) return null;
+      return /^[A-Za-z0-9._-]{2,80}$/.test(parts[1]) ? parts[1] : null;
+    }
     const hosts = kind === "instagram" ? /^(www\.|m\.)?(instagram\.com|instagr\.am)$/i : /^(www\.|m\.|web\.|mbasic\.)?(facebook\.com|fb\.com)$/i;
     if (/^[a-z][a-z0-9+.-]*:/i.test(s) || s.includes("/") || /\.(com|net|org|am|co|io|me|app|link)$/i.test(s)) {
       if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^https?:\/\//i.test(s)) return null;
@@ -906,17 +974,27 @@
   }
   function socialFieldError(kind, raw) {
     if (socialHandle(kind, raw) !== null) return "";
-    return kind === "instagram" ? "Instagram must be your @handle or an instagram.com profile link." : "Facebook must be your username or a facebook.com profile link.";
+    if (kind === "instagram") return "Instagram must be your @handle or an instagram.com profile link.";
+    if (kind === "spotify") return "Spotify must be your profile link (open.spotify.com/user/…) or a spotify:user: link.";
+    return "Facebook must be your username or a facebook.com profile link.";
   }
-  function socialLinksHtml(p) {
+  function socialLinksHtml(p, opts) {
+    opts = opts || {};
     const ig = p.instagramUrl || (p.instagram ? "https://www.instagram.com/" + p.instagram + "/" : "");
     const fb = p.facebookUrl || (p.facebook ? (String(p.facebook).startsWith("id:") ? "https://www.facebook.com/profile.php?id=" + String(p.facebook).slice(3) : "https://www.facebook.com/" + p.facebook) : "");
-    const safe = (u, host) => /^https:\/\/www\.(instagram|facebook)\.com\//.test(u) && u.includes(host) ? u : "";
-    const igU = safe(ig, "instagram.com"), fbU = safe(fb, "facebook.com");
-    if (!igU && !fbU) return "";
+    const sp = p.spotifyUrl || (p.spotify ? "https://open.spotify.com/user/" + encodeURIComponent(p.spotify) : "");
+    const safe = (u, re) => { try { const x = new URL(u); return x.protocol === "https:" && re.test(x.hostname) ? x.toString() : ""; } catch (_) { return ""; } };
+    const igU = safe(ig, /^(www\.)?instagram\.com$/i);
+    const fbU = safe(fb, /^(www\.)?facebook\.com$/i);
+    const spU = safe(sp, /^(open|play)\.spotify\.com$/i);
+    if (!igU && !fbU && !spU) return "";
+    const compact = Boolean(opts.compact);
     const igIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.4" cy="6.6" r="1.3" fill="currentColor"/></svg>`;
     const fbIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.6-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.9v3h2.6V21h3z"/></svg>`;
-    return `<div class="social-links">${igU ? `<a class="social-btn ig" href="${esc(igU)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(p.name || "their")}'s Instagram">${igIcon}<span>@${esc(p.instagram || "")}</span></a>` : ""}${fbU ? `<a class="social-btn fb" href="${esc(fbU)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(p.name || "their")}'s Facebook">${fbIcon}<span>${esc(p.facebook && !String(p.facebook).startsWith("id:") ? p.facebook : "Facebook")}</span></a>` : ""}</div>`;
+    const spIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.52 17.34c-.24.36-.66.48-1.02.24-2.82-1.74-6.36-2.1-10.56-1.14-.42.12-.78-.18-.9-.54-.12-.42.18-.78.54-.9 4.56-1.02 8.52-.6 11.64 1.32.42.18.48.66.3 1.02zm1.44-3.18c-.3.42-.84.54-1.26.24-3.24-1.98-8.16-2.58-11.94-1.38-.48.12-.96-.18-1.08-.66-.12-.48.18-.96.66-1.08 4.32-1.32 9.72-.66 13.38 1.62.36.18.54.78.24 1.26zm.12-3.3C15.24 8.4 8.82 8.16 5.16 9.3c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.48-1.02.66-1.56.36z"/></svg>`;
+    const btn = (cls, url, label, icon, text) =>
+      `<a class="social-btn ${cls}${compact ? " icon-only" : ""}" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(label)}">${icon}${compact ? "" : `<span>${esc(text)}</span>`}</a>`;
+    return `<div class="social-links${compact ? " compact" : ""}">${igU ? btn("ig", igU, "Open " + (p.name || "their") + "'s Instagram", igIcon, "@" + (p.instagram || "")) : ""}${spU ? btn("sp", spU, "Open " + (p.name || "their") + "'s Spotify", spIcon, "Spotify") : ""}${fbU && !compact ? btn("fb", fbU, "Open " + (p.name || "their") + "'s Facebook", fbIcon, (p.facebook && !String(p.facebook).startsWith("id:") ? p.facebook : "Facebook")) : ""}</div>`;
   }
 
   function draftPreviewUser() {
@@ -940,6 +1018,9 @@
       instagramUrl: "",
       facebook: socialHandle("facebook", b.facebook) || "",
       facebookUrl: "",
+      spotify: socialHandle("spotify", b.spotify) || "",
+      spotifyUrl: "",
+      topArtists: b.topArtists || [],
     });
     return { user: preview };
   }
@@ -1236,6 +1317,7 @@
       <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
     </div>`;
     html += profileSongs(p, (opts.asOthers ? "pv" : "p") + p.id);
+    html += profileArtists(p);
     html += profileVideos(p, (opts.asOthers ? "pv" : "p") + p.id);
     html += profileCrewSlot();
     const shows = p.upcomingShows || (isMe ? (p.upcomingShows || (state.events || []).filter((e) => e.imGoing)) : []);
@@ -3299,6 +3381,7 @@
     const prompts = p.prompts || [];
     if (prompts[0]) parts.push(promptEl(p, prompts[0]));
     if (mySongs(p).length) parts.push(`<div class="disco-song">${discoverSongs(p)}</div>`);
+    if (myArtists(p).length) parts.push(discoverArtists(p));
     const dv = videosOf(p);
     dv.forEach((v, i) => parts.push(videoTileHtml(v, "d" + p.id + "-v" + i, { big: i === 0 })));
     photos.slice(1).forEach((_, i) => parts.push(photoEl(p, i + 1, false)));
@@ -3316,6 +3399,7 @@
     const showsHidden = Boolean(p.upcomingHidden) || p.showUpcoming === false;
     const shows = showsHidden ? [] : (p.upcomingShows || []);
     parts.push(`<div class="meta-card">${genreRow(p)}<div class="chips" style="margin:8px 0">${discoChips.join("")}</div>
+      ${socialLinksHtml(p, { compact: true })}
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
       ${crewBadgesHtml(p.id)}
       ${upcomingBlock(shows, { hidden: showsHidden })}
@@ -3968,6 +4052,7 @@
       <div class="label" style="margin-top:14px">Favorite artists / DJs</div>
       <input data-field="editFavoriteArtists" placeholder="Who do you play on repeat?" value="${esc(state.drafts.editFavoriteArtists || "")}" />
       ${editSongPicker()}
+      ${editArtistPicker()}
       <div class="label" style="margin-top:14px">Shows I'm going to</div>
       <p class="tiny" style="margin-bottom:6px">Saves right away. These show as Upcoming shows on your profile.</p>
       ${showPickerField("edit")}
@@ -3983,8 +4068,9 @@
       <div class="label" style="margin-top:12px">Years raving</div>
       <input data-field="editYearsRaving" placeholder="e.g. 6" value="${esc(state.drafts.editYearsRaving || "")}" />
       <div class="label" style="margin-top:18px">Socials (optional)</div>
-      <p class="tiny">Show small Instagram and Facebook buttons on your profile.</p>
+      <p class="tiny">Show Instagram and Spotify buttons on your profile and Discover card. Facebook is optional too. We don't import Instagram photos or connect to Spotify.</p>
       <input data-field="editInstagram" aria-label="Instagram handle" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" placeholder="Instagram @handle or link" value="${esc(state.drafts.editInstagram || "")}" style="margin-top:6px" />
+      <input data-field="editSpotify" aria-label="Spotify profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Spotify profile URL or spotify:user:…" value="${esc(state.drafts.editSpotify || "")}" style="margin-top:8px" />
       <input data-field="editFacebook" aria-label="Facebook profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Facebook username or profile link" value="${esc(state.drafts.editFacebook || "")}" style="margin-top:8px" />
       <div class="label" style="margin-top:18px">My Tunes</div>
       <p class="tiny">Paste up to 5 links from Spotify, SoundCloud, or Apple Music — tracks, playlists, or albums. We'll show a player on your profile.</p>
@@ -5344,6 +5430,36 @@
         stopSong();
         const d = state.editDraft;
         if (d && d.songs) d.songs.splice(Number(id) || 0, 1);
+        render(); return;
+      }
+      if (act === "artist-search") {
+        const q = String(state.drafts.artistQuery || "").trim();
+        const ss = state.artistSearch = state.artistSearch || { results: [] };
+        if (q.length < 2) { ss.error = "Type at least 2 letters."; render(); return; }
+        ss.loading = true; ss.error = ""; ss.q = q; render();
+        try {
+          const data = await api("/api/music/search?type=artist&q=" + encodeURIComponent(q));
+          if (state.artistSearch !== ss || ss.q !== q) return;
+          ss.results = data.results || [];
+        } catch (e) {
+          ss.results = []; ss.error = e.message || "Search failed. Try again.";
+        }
+        ss.loading = false; render(); return;
+      }
+      if (act === "artist-pick") {
+        const ss = state.artistSearch || { results: [] };
+        const artist = (ss.results || [])[Number(id)];
+        const d = state.editDraft;
+        if (artist && d) {
+          d.artists = d.artists || [];
+          if (d.artists.length >= MAX_ARTISTS) toast("You can add up to " + MAX_ARTISTS + " top artists.", "warn");
+          else if (!d.artists.some((x) => x.artistId === artist.artistId)) { d.artists.push(artist); toast("Added “" + artist.name + "”"); }
+        }
+        render(); return;
+      }
+      if (act === "artist-remove") {
+        const d = state.editDraft;
+        if (d && d.artists) d.artists.splice(Number(id) || 0, 1);
         render(); return;
       }
       if (act === "video-tap") { videoTap(el.getAttribute("data-key") || ""); return; }
@@ -7037,6 +7153,11 @@
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "crewSearch") {
       e.preventDefault();
       handle("search-people", e.target);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "artistQuery") {
+      e.preventDefault();
+      handle("artist-search", e.target);
+      return;
     }
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "songQuery") {
       e.preventDefault();

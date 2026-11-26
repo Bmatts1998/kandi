@@ -888,3 +888,17 @@ html { height: 100%; height: -webkit-fill-available; }
 .share-av .av { width: 112px; height: 112px; box-shadow: 0 0 0 3px var(--orange), 0 0 26px rgba(255,92,0,.45); }
 .share-url { padding: 12px 14px; border-radius: 14px; background: #111; border: 1px solid rgba(255,92,0,.35); color: #ffb07a;
   font: 600 13px/1.4 ui-monospace, Menlo, monospace; word-break: break-all; }
+
+.social-links.compact { gap: 10px; margin: 10px 0 4px; }
+.social-btn.icon-only { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50%; }
+.social-btn.sp { color: #1db954; }
+.artist-tiles { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 4px; }
+.artist-tile { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; color: inherit; text-decoration: none; }
+.artist-av { width: 56px; height: 56px; border-radius: 50%; background: #1c1c1c center/cover no-repeat; display: grid; place-items: center; border: 1px solid var(--line); }
+.artist-av.letter { font-weight: 700; font-size: 18px; color: var(--orange2); }
+.artist-nm { font-size: 10px; text-align: center; line-height: 1.2; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.artist-x { position: absolute; top: -4px; right: -2px; width: 22px; height: 22px; border-radius: 50%; background: #111; border: 1px solid var(--line); font-size: 14px; line-height: 1; }
+.artist-results { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.artist-result { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.artist-result.on { opacity: .55; }
+.disco-artists { padding: 4px 16px 8px; }
