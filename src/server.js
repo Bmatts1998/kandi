@@ -1391,18 +1391,18 @@ app.post("/api/plus/claim-founding", auth, async (req, res) => {
     user: publicUser(user, selfBillingExtra(user, req)),
     likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)),
     message: result.granted
-      ? "You're a founding member. Kandi+ is on for a year."
+      ? (result.leftPaid
+        ? "You're a founding member. Your existing paid plan was left as-is."
+        : "You're a founding member. Kandi+ is on for a year.")
       : result.already
         ? "You're already a founding member."
         : result.reason === "full"
           ? "Founding spots are all claimed."
-          : result.reason === "location"
-            ? "Founding membership is for verified 18+ ravers in the Salt Lake / Utah County area."
-            : result.reason === "dob"
-              ? "Add your date of birth so we can confirm you're 18+."
-              : result.reason === "demo"
-                ? "Demo profiles can't become founding members."
-                : "We couldn't claim a founding spot with the details on your profile.",
+          : result.reason === "demo" || result.reason === "review"
+            ? "This account isn't eligible for founding membership."
+            : result.reason === "unverified"
+              ? "Confirm your email and founding membership will be applied automatically."
+              : "We couldn't apply founding membership just now.",
   });
 });
 
@@ -1909,7 +1909,14 @@ async function boot() {
   engagement.startPeriodicRefresh();
   try {
     const filled = await founding.backfillFounders(db);
-    if (filled && filled.granted) console.log("Founding backfill granted " + filled.granted + " members (" + filled.claimed + "/" + filled.cap + ").");
+    if (filled) {
+      const paid = (filled.leftPaid || []).map((u) => u.username || ("id:" + u.id)).join(", ");
+      console.log(
+        "Founding backfill granted " + filled.granted + " members (" + filled.claimed + "/" + filled.cap +
+        ", already " + (filled.already || 0) + ")." +
+        (paid ? " Left paid Stripe subscribers alone (no refund): " + paid + "." : "")
+      );
+    }
   } catch (err) {
     console.error("Founding backfill failed:", err && err.message);
   }

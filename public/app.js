@@ -2017,8 +2017,16 @@
   }
   function founderBadge(person) {
     if (!person || !person.isFounder) return "";
+    if (isNativeIos()) return ` <span class="founder-badge">Founding member</span>`;
     const n = person.foundingNumber ? " #" + person.foundingNumber : "";
     return ` <span class="founder-badge">Founding${n}</span>`;
+  }
+  function foundingStatusLine(person, cap) {
+    if (!person || !person.isFounder) return "";
+    const months = 12;
+    const n = person.foundingNumber ? "#" + person.foundingNumber : "";
+    const of = " of " + (cap || 3000);
+    return "Founding member: Plus free for " + months + " months" + (n ? ", " + n + of : "");
   }
   function verifiedBadge(person) {
     if (!person || !person.verified) return "";
@@ -2571,23 +2579,13 @@
     let status = "";
     if (me.isFounder) {
       status = `<div class="notice ok" style="text-align:center;margin:12px 0">
-        <div>${founderBadge(me)} You're founding member${me.foundingNumber ? " #" + esc(String(me.foundingNumber)) : ""}.</div>
+        <div>${founderBadge(me)} ${esc(foundingStatusLine(me, cap))}</div>
         <p class="tiny" style="margin-top:6px">${me.complimentaryActive || (me.plusUntil && Date.parse(me.plusUntil) > Date.now())
-          ? "Kandi+ is included free until " + esc(formatPlusUntil(me.plusUntil)) + ". After that, your founding rate is " + esc(foundingOffer.label) + "."
+          ? "Plus is included free until " + esc(formatPlusUntil(me.plusUntil)) + ". After that, your founding rate is " + esc(foundingOffer.label) + "."
           : "Your founding rate is " + esc(foundingOffer.label) + " after the complimentary year."}</p>
       </div>`;
     } else if (founding.open !== false) {
-      status = `<div class="card founding-card" style="margin:12px 0">
-        <div class="tiny" style="letter-spacing:.08em;font-weight:600;color:var(--orange2)">FOUNDING MEMBERS</div>
-        <p style="margin:8px 0 0">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get Kandi+ free for 12 months, a founding badge, and then ${esc(foundingOffer.label)} for life.</p>
-        ${spots}
-        <div class="label" style="margin-top:12px">Birthday</div>
-        <input data-field="upgradeDob" type="date" value="${esc(state.drafts.upgradeDob || me.dateOfBirth || "")}" />
-        <div class="label" style="margin-top:10px">Home city</div>
-        <input data-field="upgradeLocation" placeholder="Salt Lake City, Springville, Provo, or a local ZIP" value="${esc(state.drafts.upgradeLocation || me.homeLocation || "")}" />
-        ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
-        <button type="button" class="btn primary" style="margin-top:12px" data-act="claim-founding">Check my founding spot</button>
-      </div>`;
+      status = `<div class="notice" style="text-align:center;margin:12px 0">Founding membership is granted automatically to the first ${esc(String(cap))} members. ${spots}</div>`;
     } else {
       status = `<div class="notice" style="text-align:center;margin:12px 0">Founding spots are all claimed. You can still get Kandi+ below.</div>`;
     }
@@ -3772,16 +3770,18 @@
     const plan = p.subscription ? (p.subscription === "vip" ? "Kandi VIP" : "Kandi+") : "Free";
     const row = (act, label, sub, extra) => `<button type="button" class="set-row" data-act="${act}" ${extra || ""}><div class="grow"><div>${label}</div>${sub ? `<div class="tiny">${sub}</div>` : ""}</div><span aria-hidden="true">›</span></button>`;
     const billingFlags = p.billing || {};
-    const spots = state.founding && state.founding.left != null ? state.founding.left + " of 3,000 founding spots left" : "Founding member perks and plans";
+    const cap = (state.founding && state.founding.cap) || 3000;
     let plusRow;
     if (isNativeIos()) {
       plusRow = "";
+    } else if (p.isFounder) {
+      plusRow = row("upgrade", foundingStatusLine(p, cap), (p.plusUntil && Date.parse(p.plusUntil) > Date.now()) ? "On through " + formatPlusUntil(p.plusUntil) : "View your founding status", 'data-reason="upgrade"');
     } else if (isPlus() && billingFlags.managed) {
       plusRow = row("upgrade", plan + " is on", "View plans or manage your membership", 'data-reason="upgrade"');
     } else if (isPlus()) {
-      plusRow = row("upgrade", plan + " is on", p.isFounder ? "Founding member — view your status and plans" : "View your plan", 'data-reason="upgrade"');
+      plusRow = row("upgrade", plan + " is on", "View your plan", 'data-reason="upgrade"');
     } else {
-      plusRow = row("upgrade", "Upgrade to Kandi Plus", spots, 'data-reason="upgrade"');
+      plusRow = row("upgrade", "Upgrade to Kandi Plus", "View plans", 'data-reason="upgrade"');
     }
     let html = `<div class="label">Account</div><div class="set-group">
         ${row("edit-profile", "Edit profile", "Name, bio, photos and prompts")}
@@ -3873,10 +3873,9 @@
       <input data-field="editAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Age" value="${esc(state.drafts.editAge || "")}" />
       <div class="label" style="margin-top:12px">Birthday</div>
       <input data-field="editDob" type="date" value="${esc(state.drafts.editDob || "")}" />
-      <p class="tiny">${isNativeIos() ? "Used to confirm you're 18+." : "Used to confirm you're 18+ for founding membership."}</p>
+      <p class="tiny">Used to confirm you're 18+.</p>
       <div class="label" style="margin-top:12px">Home city</div>
       <input data-field="editHomeLocation" placeholder="e.g. Salt Lake City, Springville, or a local ZIP" value="${esc(state.drafts.editHomeLocation || "")}" />
-      ${isNativeIos() ? "" : `<p class="tiny">The first 3,000 verified 18+ ravers in the Salt Lake / Utah County area get a founding badge and a year of Kandi+ free.</p>`}
       <div class="label" style="margin-top:12px">Bio</div>
       <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
       ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}

@@ -108,23 +108,48 @@ describe("founding cap", () => {
     assert.equal(status.open, false);
   });
 
-  test("backfill awards remaining eligible users in signup order", async () => {
-    // Cap already full from the previous test in this file's shared DB? Reset meta and users for this case via a second cap window is hard.
-    // Create a fresh scenario by opening spots: this test file uses cap=3 and previous test filled it.
-    // Reset claimed for this assertion by using leftover-none + already founders skipped.
-    const status = await founding.spots(db, process.env);
+  test("backfill grants the first accounts by sign-up order, skips demos and appreview, and leaves paid Stripe alone", async () => {
+    await db.prepare(`UPDATE founding_meta SET claimed=0, cap=3 WHERE id=1`).run();
+    await db.prepare(`UPDATE users SET is_founder=0, founding_number=NULL`).run();
+    const demo = await addUser({ username: "bfdemo", is_demo: 1, created_at: "2019-01-01T00:00:00.000Z" });
+    let review = await db.prepare(`SELECT * FROM users WHERE lower(username)='appreview'`).get();
+    if (!review) review = await addUser({ username: "appreview", created_at: "2019-01-02T00:00:00.000Z" });
+    else await db.prepare(`UPDATE users SET created_at='2019-01-02T00:00:00.000Z', is_demo=0, is_founder=0, founding_number=NULL WHERE id=?`).run(review.id);
+
+    const early = await addUser({ username: "earlybird", created_at: "2019-01-03T00:00:00.000Z" });
+    const paid = await addUser({ username: "paying", created_at: "2019-01-04T00:00:00.000Z" });
+    const mid = await addUser({ username: "midbird", created_at: "2019-01-05T00:00:00.000Z" });
+    const after = await addUser({ username: "aftercap", created_at: "2019-01-06T00:00:00.000Z" });
+    try { await db.exec(`ALTER TABLE users ADD COLUMN subscription_status TEXT`); } catch (_) {}
+    await db.prepare(`UPDATE users SET subscription_status='active', subscription='plus' WHERE id=?`).run(paid.id);
     const result = await founding.backfillFounders(db, { env: process.env });
-    assert.equal(result.granted, 0);
-    assert.equal(status.left, 0);
+    assert.equal(result.granted, 3);
+    assert.ok((result.leftPaid || []).some((u) => u.username === "paying"));
+    const earlyRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(early.id);
+    const paidRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(paid.id);
+    const midRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(mid.id);
+    const afterRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(after.id);
+    const reviewRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(review.id);
+    const demoRow = await db.prepare(`SELECT * FROM users WHERE id=?`).get(demo.id);
+    assert.equal(Number(earlyRow.is_founder), 1);
+    assert.ok(Date.parse(earlyRow.plus_until) > Date.now());
+    assert.equal(Number(paidRow.is_founder), 1);
+    assert.equal(paidRow.subscription_status, "active");
+    assert.ok(!paidRow.plus_until);
+    assert.equal(Number(midRow.is_founder), 1);
+    assert.equal(Number(afterRow.is_founder) || 0, 0);
+    assert.equal(Number(reviewRow.is_founder) || 0, 0);
+    assert.equal(Number(demoRow.is_founder) || 0, 0);
   });
 
-  test("demo accounts and non-SLC users are not eligible", async () => {
+  test("demo and App Review accounts are not eligible; location is not required", async () => {
     const demo = await addUser({ username: "demodude", date_of_birth: "1995-01-01", home_location: "Salt Lake City", is_demo: 1 });
-    const away = await addUser({ username: "denver", date_of_birth: "1995-01-01", home_location: "Denver, CO" });
+    let review = await db.prepare(`SELECT * FROM users WHERE lower(username)='appreview'`).get();
+    if (!review) review = await addUser({ username: "appreview", date_of_birth: "1995-01-01", home_location: "Salt Lake City" });
     const rDemo = await founding.claimFounding(db, demo, { env: process.env });
-    const rAway = await founding.claimFounding(db, away, { env: process.env });
+    const rReview = await founding.claimFounding(db, review, { env: process.env });
     assert.equal(rDemo.reason, "demo");
-    assert.equal(rAway.reason, "location");
+    assert.equal(rReview.reason, "review");
   });
 });
 

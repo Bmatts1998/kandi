@@ -106,12 +106,25 @@ function hasActiveComp(user, now = new Date()) {
   return Number.isFinite(t) && t > now.getTime();
 }
 
-function isEligible(user, now = new Date()) {
-  if (!user) return false;
-  if (Number(user.is_demo)) return false;
+function isReviewAccount(user) {
+  return String((user && user.username) || "").toLowerCase() === "appreview";
+}
+
+function isFoundingExcluded(user) {
+  if (!user) return true;
+  if (Number(user.is_demo)) return true;
+  if (isReviewAccount(user)) return true;
+  return false;
+}
+
+function isPayingStripe(user) {
+  const status = String((user && user.subscription_status) || "").toLowerCase();
+  return status === "active" || status === "trialing" || status === "past_due" || status === "paused";
+}
+
+function isEligible(user, _now = new Date()) {
+  if (isFoundingExcluded(user)) return false;
   if (Number(user.is_founder) && user.founding_number) return false;
-  if (!isAdultDob(user.date_of_birth || user.dateOfBirth, now)) return false;
-  if (!isSlcMetro(user.home_location || user.homeLocation)) return false;
   return true;
 }
 
@@ -144,10 +157,12 @@ async function claimFounding(db, user, opts = {}) {
     return { ok: true, already: true, foundingNumber: Number(user.founding_number), plusUntil: user.plus_until };
   }
   if (Number(user.is_demo)) return { ok: false, reason: "demo" };
-  // Founding spots go to verified sign-ups: wait until the email is confirmed.
-  if (require("./email").isLocked(user, env)) return { ok: false, reason: "unverified" };
-  if (!isAdultDob(user.date_of_birth || user.dateOfBirth, now)) return { ok: false, reason: "dob" };
-  if (!isSlcMetro(user.home_location || user.homeLocation)) return { ok: false, reason: "location" };
+  if (isReviewAccount(user)) return { ok: false, reason: "review" };
+  // New sign-ups: wait until email is confirmed so unverified accounts don't use a slot.
+  // Backfill of existing accounts can skip this.
+  if (opts.requireVerified !== false && require("./email").isLocked(user, env)) {
+    return { ok: false, reason: "unverified" };
+  }
 
   const cap = foundingCap(env);
   const run = async (tx) => {
@@ -157,13 +172,31 @@ async function claimFounding(db, user, opts = {}) {
     ).get();
     if (!slot || slot.claimed == null) return { ok: false, reason: "full" };
     const foundingNumber = Number(slot.claimed);
-    const plusUntil = plusUntilFrom(now);
-    const existing = await tx.prepare(`SELECT is_founder, founding_number, subscription FROM users WHERE id=?`).get(user.id);
+    const existing = await tx.prepare(`SELECT is_founder, founding_number, subscription, plus_until, subscription_status FROM users WHERE id=?`).get(user.id);
     if (existing && Number(existing.is_founder) && existing.founding_number) {
       // Lost a slot to a race with ourselves; put it back.
       await tx.prepare(`UPDATE founding_meta SET claimed = claimed - 1 WHERE id=1 AND claimed > 0`).run();
       return { ok: true, already: true, foundingNumber: Number(existing.founding_number), plusUntil: user.plus_until };
     }
+    const paying = isPayingStripe(existing || user);
+    if (paying) {
+      // Badge and number only — leave Stripe and plus_until alone so we don't
+      // change a paid subscription. Boston can decide on any refund later.
+      await tx.prepare(`UPDATE users SET is_founder=1, founding_number=? WHERE id=?`).run(foundingNumber, user.id);
+      return {
+        ok: true,
+        granted: true,
+        leftPaid: true,
+        foundingNumber,
+        plusUntil: (existing && existing.plus_until) || user.plus_until || null,
+        subscriptionStatus: (existing && existing.subscription_status) || user.subscription_status || null,
+      };
+    }
+    const grantedUntil = plusUntilFrom(now);
+    const current = Date.parse((existing && existing.plus_until) || user.plus_until);
+    const plusUntil = Number.isFinite(current) && current > Date.parse(grantedUntil)
+      ? ((existing && existing.plus_until) || user.plus_until)
+      : grantedUntil;
     await tx.prepare(
       `UPDATE users SET is_founder=1, founding_number=?, plus_until=?, subscription=CASE WHEN subscription='vip' THEN subscription ELSE 'plus' END WHERE id=?`
     ).run(foundingNumber, plusUntil, user.id);
@@ -181,20 +214,52 @@ async function backfillFounders(db, opts = {}) {
   const now = opts.now || new Date();
   const cap = foundingCap(env);
   await ensureMeta(db, cap);
-  const status = await spots(db, env);
-  if (!status.open) return { granted: 0, left: 0, cap: status.cap };
   const rows = await db.prepare(
-    `SELECT * FROM users WHERE (is_demo IS NULL OR is_demo=0) AND (is_founder IS NULL OR is_founder=0) AND date_of_birth IS NOT NULL AND date_of_birth != '' AND home_location IS NOT NULL AND home_location != '' ORDER BY created_at ASC, id ASC`
+    `SELECT * FROM users WHERE (is_demo IS NULL OR is_demo=0) AND lower(username) != 'appreview' ORDER BY created_at ASC, id ASC`
   ).all();
+  const first = (rows || []).slice(0, cap);
   let granted = 0;
-  for (const user of rows) {
-    if (!isEligible({ ...user, is_founder: 0 }, now)) continue;
-    const result = await claimFounding(db, user, { now, env });
-    if (result && result.granted) granted += 1;
-    else if (result && result.reason === "full") break;
+  let already = 0;
+  const leftPaid = [];
+  for (const user of first) {
+    if (Number(user.is_founder) && user.founding_number) {
+      already += 1;
+      if (isPayingStripe(user)) {
+        leftPaid.push({
+          id: Number(user.id),
+          username: user.username || "",
+          name: user.name || "",
+          subscriptionStatus: user.subscription_status || null,
+          already: true,
+        });
+      }
+      continue;
+    }
+    const result = await claimFounding(db, user, { now, env, requireVerified: false });
+    if (result && result.granted) {
+      granted += 1;
+      if (result.leftPaid) {
+        leftPaid.push({
+          id: Number(user.id),
+          username: user.username || "",
+          name: user.name || "",
+          subscriptionStatus: result.subscriptionStatus || user.subscription_status || null,
+        });
+      }
+    } else if (result && result.reason === "full") {
+      break;
+    }
   }
   const after = await spots(db, env);
-  return { granted, left: after.left, cap: after.cap, claimed: after.claimed };
+  return {
+    granted,
+    already,
+    leftPaid,
+    left: after.left,
+    cap: after.cap,
+    claimed: after.claimed,
+    considered: first.length,
+  };
 }
 
 function publicFounding(user) {
@@ -218,6 +283,9 @@ module.exports = {
   plusUntilFrom,
   hasActiveComp,
   isEligible,
+  isReviewAccount,
+  isFoundingExcluded,
+  isPayingStripe,
   spots,
   ensureMeta,
   claimFounding,
