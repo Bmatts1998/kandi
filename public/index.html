@@ -30,24 +30,52 @@
 <body>
   <div id="app"></div>
   <script>
-    // Boot watchdog: if the app script never starts (bad network, stale cache), offer a clean reload instead of a frozen black screen.
-    setTimeout(function () {
-      if (window.__kandiBooted) return;
-      var a = document.getElementById("app");
-      if (!a) return;
-      a.innerHTML = '<div style="color:#fff;font-family:-apple-system,system-ui,sans-serif;text-align:center;padding:120px 24px"><h1 style="color:#ff6a00;margin:0 0 12px">Kandi</h1><p>Kandi is taking too long to load.</p><button id="kandi-reload" style="margin-top:18px;padding:14px 28px;border:0;border-radius:14px;background:#ff5c00;color:#fff;font-size:16px;font-weight:700">Reload</button></div>';
-      document.getElementById("kandi-reload").onclick = function () {
-        var go = function () { location.reload(); };
-        try {
-          var jobs = [];
-          if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
-          if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
-          Promise.all(jobs).then(go, go); setTimeout(go, 2500);
-        } catch (e) { go(); }
+    (function () {
+      var OFFLINE = '<div style="color:#fff7f0;font-family:-apple-system,system-ui,sans-serif;text-align:center;padding:120px 24px 40px">'
+        + '<div style="display:flex;justify-content:center;gap:8px;margin-bottom:16px" aria-hidden="true">'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:#ff5c00;display:inline-block"></span>'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:#ff8a1a;display:inline-block"></span>'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:#ffc14d;display:inline-block"></span>'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:#ff3b00;display:inline-block"></span>'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:#ffb020;display:inline-block"></span></div>'
+        + '<div style="letter-spacing:.28em;text-transform:uppercase;font-size:18px;font-weight:800;color:#ff6a00;margin:0 0 16px">Kandi</div>'
+        + '<h1 style="font-size:24px;margin:0 0 8px">Can\'t reach Kandi</h1>'
+        + '<p style="margin:0 auto;max-width:280px;color:rgba(255,247,240,.78)">Check your connection, then try again.</p>'
+        + '<button id="kandi-retry" type="button" style="margin-top:24px;height:52px;padding:0 28px;border:0;border-radius:999px;background:linear-gradient(90deg,#ff8a1a,#ff5c00);color:#fff;font-size:16px;font-weight:700">Try again</button></div>';
+      function bindRetry() {
+        var b = document.getElementById("kandi-retry") || document.getElementById("kandi-reload");
+        if (!b) return;
+        b.onclick = function () {
+          var go = function () { location.reload(); };
+          try {
+            var jobs = [];
+            if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+            if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+            Promise.all(jobs).then(go, go); setTimeout(go, 2500);
+          } catch (e) { go(); }
+        };
+      }
+      window.__kandiShowOffline = function () {
+        if (window.__kandiBooted) return;
+        var a = document.getElementById("app");
+        if (!a) return;
+        a.setAttribute("data-offline", "1");
+        a.innerHTML = OFFLINE;
+        bindRetry();
       };
-    }, 20000);
+      // First paint: if the device is already offline, don't wait for app.js or the 20s watchdog.
+      if (navigator.onLine === false) window.__kandiShowOffline();
+      window.addEventListener("offline", function () { window.__kandiShowOffline(); });
+      // Boot watchdog: if the app script never starts (bad network, stale cache), offer a clean reload instead of a frozen black screen.
+      setTimeout(function () {
+        if (window.__kandiBooted) return;
+        window.__kandiShowOffline();
+        var h = document.querySelector("#app h1");
+        if (h && navigator.onLine !== false) h.textContent = "Kandi is taking too long to load.";
+      }, 20000);
+    })();
   </script>
   <script src="/video-prep.js" defer></script>
-  <script src="/app.js" defer></script>
+  <script src="/app.js" defer onerror="if(window.__kandiShowOffline)window.__kandiShowOffline()"></script>
 </body>
 </html>

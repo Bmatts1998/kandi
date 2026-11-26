@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Can't reach Kandi</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #000; color: #fff7f0;
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 32px 24px calc(32px + env(safe-area-inset-bottom, 0px)); }
+    .wordmark { margin: 0; letter-spacing: .28em; text-transform: uppercase; font-size: 18px;
+      font-weight: 800; color: #ff6a00; }
+    h2 { margin: 18px 0 8px; font-size: 24px; font-weight: 700; }
+    p { margin: 0; color: rgba(255,247,240,.78); max-width: 280px; }
+    button { margin-top: 24px; height: 52px; padding: 0 28px; border: 0; border-radius: 999px;
+      background: linear-gradient(90deg, #ff8a1a, #ff5c00); color: #fff;
+      font: 700 16px/1 -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 8px 28px rgba(255,92,0,.4); }
+    .beads { display: flex; justify-content: center; gap: 8px; margin-bottom: 16px; }
+    .bead { width: 10px; height: 10px; border-radius: 50%; }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="beads" aria-hidden="true">
+      <span class="bead" style="background:#ff5c00"></span>
+      <span class="bead" style="background:#ff8a1a"></span>
+      <span class="bead" style="background:#ffc14d"></span>
+      <span class="bead" style="background:#ff3b00"></span>
+      <span class="bead" style="background:#ffb020"></span>
+    </div>
+    <p class="wordmark">Kandi</p>
+    <h2>Can't reach Kandi</h2>
+    <p>Check your connection, then try again.</p>
+    <button type="button" id="kandi-retry">Try again</button>
+  </div>
+  <script>
+    function go() { try { location.href = "/"; } catch (e) { location.reload(); } }
+    document.getElementById("kandi-retry").onclick = go;
+    window.addEventListener("online", go);
+  </script>
+</body>
+</html>

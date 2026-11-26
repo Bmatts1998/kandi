@@ -1871,6 +1871,11 @@ app.get(["/reset-password", "/reset-password.html"], (_req, res) => {
   res.sendFile(path.join(root, "public", "reset-password.html"));
 });
 
+app.get(["/offline", "/offline.html"], (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(root, "public", "offline.html"));
+});
+
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/ws")) return next();
   sendIndex(req, res);

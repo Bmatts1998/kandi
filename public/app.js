@@ -1688,6 +1688,7 @@
     const headers = Object.assign({}, isForm ? {} : { "Content-Type": "application/json" }, opts.headers || {});
     if (isNativeIos() && !headers["X-Kandi-Client"]) headers["X-Kandi-Client"] = "ios";
     const attempts = method === "GET" ? 3 : 2;
+    if (navigator.onLine === false) throw friendlyNetError();
     netStart();
     try {
       for (let i = 0; i < attempts; i++) {
@@ -2025,6 +2026,12 @@
     }
   }
   async function boot() {
+    if (navigator.onLine === false) {
+      state.view = "offline";
+      state.err = "Can't reach Kandi right now.";
+      render();
+      return;
+    }
     loadAuthConfig();
     const showLink = await loadShowFromUrl();
     if (showLink === "signed-out" || showLink === "invalid") {
@@ -5280,7 +5287,8 @@
     let html = "";
     if (state.view === "boot") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1><p class="sub" style="margin-top:12px"><span class="spin"></span> ${state.bootSlow ? "Waking up Kandi…" : "Loading…"}</p>${state.bootSlow ? `<p class="tiny" style="margin-top:8px;opacity:.7">The server naps when nobody's on. This can take up to 30 seconds.</p>${state.bootSlow > 1 ? `<button class="btn primary" style="margin-top:18px;max-width:280px" data-act="hard-reload">Try again</button>` : ""}` : ""}</div></div>`;
     else if (state.view === "offline") html = `<div class="screen splash top-pad"><div class="inner">${beads(8, "lg")}<h1 class="wordmark grad">Kandi</h1>
-      <p style="margin-top:12px">${esc(state.err || "Can't reach Kandi right now.")}</p>
+      <h2 class="h2" style="margin-top:18px">Can't reach Kandi</h2>
+      <p class="sub" style="margin-top:8px">${esc(state.err && state.err !== "Can't reach Kandi right now." ? state.err : "Check your connection, then try again.")}</p>
       <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="retry-boot">Try again</button></div></div>`;
     else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
