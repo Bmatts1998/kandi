@@ -1926,6 +1926,8 @@
         } else {
           toast("New crew message" + (msg.from && msg.from.name ? " from " + msg.from.name : ""));
         }
+      } else if (msg.type === "show-crew") {
+        if (SC) SC.onWs(msg);
       } else if (msg.type === "crew-invite") {
         quiet(loadCrewInbox());
         if (msg.accepted && msg.group) toast("You're in " + msg.group.name);
@@ -2982,6 +2984,7 @@
       api("/api/feed/" + tab),
       tab === "popular" ? api("/api/feed/top-ravers") : Promise.resolve({ people: state.topRavers || [] }),
       loadStories(),
+      SC ? SC.loadToday() : null,
     ]);
     state.homePosts = feed.posts || [];
     if (tab === "popular") state.topRavers = top.people || [];
@@ -3052,6 +3055,7 @@
     return `<button class="icon-btn bell" data-act="open-notifs" aria-label="Notifications${n ? ", " + n + " new" : ""}">🔔${n ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : ""}</button>`;
   }
   function notifText(n) {
+    if (SC && n.kind === "crew_lost") return SC.notifText(n);
     const who = n.user ? `<strong>${esc(n.user.name)}</strong>` : "<strong>Someone</strong>";
     if (n.kind === "like") return n.user ? `${who} liked your ${n.targetType === "prompt" ? "prompt" : (/^v\d/.test(String(n.targetId || "")) ? "video" : "photo")}${n.text ? `: “${esc(n.text)}”` : ""}` : `${who} liked your profile. <span class="tiny">${!isNativeIos() && paymentsEnabled() ? "See who with Kandi+" : "Keep exploring Discover. If you like them back, it's a match."}</span>`;
     if (n.kind === "match") return `${matchKindLabel(n.matchKind) || "You matched"} with ${who}. Say hi!`;
@@ -3061,6 +3065,7 @@
     return who;
   }
   function notifAct(n) {
+    if (SC && n.kind === "crew_lost") return SC.notifAct(n);
     if (n.kind === "like" && !n.user) return `data-act="tab" data-id="likes"`;
     if (n.kind === "like") return `data-act="tab" data-id="likes"`;
     if (n.kind === "match") return `data-act="chat" data-id="${n.user.id}"`;
@@ -3993,6 +3998,7 @@
     </div>`;
     html += `<div class="scroll">`;
     html += storyBarHtml();
+    if (SC) html += SC.homeBannerHtml();
     if (state.me && !state.me.isDemo && !hasRealPhoto(state.me.photos) && !localStorage.getItem("kandi-hide-photo-nudge")) {
       html += `<div class="nudge"><div class="grow"><strong>Add a profile photo</strong><p>Ravers recognize you faster in the feed, in Discover, and in chat.</p></div>
         <button class="btn sm primary" data-act="edit-profile">Add photo</button>
@@ -4847,6 +4853,7 @@
     if (state.storyViewer) return storyViewerHtml();
     const o = state.overlay;
     if (!o) return "";
+    if (o.type === "showCrew") return SC ? SC.overlayHtml(o) : "";
     if (o.type === "storyComposer") return storyComposerHtml();
     if (o.type === "composer") {
       return composerView();
@@ -5076,6 +5083,7 @@
         ${(e.artists || []).length ? `<div class="tiny" style="margin-top:6px">${e.artists.map(esc).join(" · ")}</div>` : ""}
         ${eventActions(e)}
         ${rsvpToggles(e)}
+        ${SC ? SC.eventEntryHtml(e) : ""}
         ${e.imOpenToMeet ? `<div class="meet-note-box"><div class="tiny" style="margin-bottom:8px">Your meetup note</div>
           <div class="chips">${["down to rail", "looking for a crew", "date"].map((n) =>
             `<button type="button" class="chip${(e.meetNote || "") === n ? " on" : ""}" data-act="meet-note" data-id="${esc(e.id)}" data-t="${esc(n)}">${esc(n)}</button>`).join("")}</div>
@@ -5543,15 +5551,23 @@
     else stopStoryPlayback();
     bindVoiceControls();
     scheduleMarkRead();
+    if (SC) { try { SC.afterRender(); } catch (_) {} }
     document.body.classList.toggle("chat-open", !!(state.view === "app" && state.overlay && state.overlay.type === "chat"));
     document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-bg"));
   }
   let lastRenderKey = "";
   const busyActs = new Set();
+  // Find My Crew (public/show-crew.js). Optional: the app works without it.
+  const SC = window.KandiShowCrew || null;
+  if (SC) SC.init({ state, api, render: () => render(), toast, esc, personAvatar });
 
   async function handle(act, el, extra) {
     const id = el && el.getAttribute("data-id");
     if (act === "song-play") { toggleSong(el); return; }
+    if (SC && act && act.indexOf("screw-") === 0) {
+      try { await SC.handle(act, el); } catch (err) { toast((err && err.message) || "Something went wrong.", "err"); }
+      return;
+    }
     if (act === "show-pick-open") {
       if (!state.eventsLoaded && !pickableEvents().length) { try { await loadEvents(); } catch (_) {} }
       const mode = (id === "post" || id === "story" || id === "filter" || id === "live") ? id : "going";
