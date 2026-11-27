@@ -48,6 +48,7 @@ const followRules = require("./follow-rules");
 const ageCheck = require("./age-check");
 const showCrew = require("./show-crew");
 const { installSafety } = require("./safety");
+const { installTrades, deleteTradesForUser } = require("./trade-routes");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -160,7 +161,7 @@ let indexHtmlCache = null;
 function sendIndex(req, res) {
   if (!indexHtmlCache) {
     indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
-      .replace(/(href|src)="\/(styles\.css|design\.css|app\.js|video-prep\.js|show-crew\.js|show-crew\.css)"/g, `$1="/$2?v=${BUILD}"`);
+      .replace(/(href|src)="\/(styles\.css|design\.css|show-crew\.css|trades\.css|app\.js|video-prep\.js|show-crew\.js|trades\.js)"/g, `$1="/$2?v=${BUILD}"`);
   }
   noStore(res);
   try { referrals.stamp(req, res); } catch (_) {}
@@ -640,6 +641,7 @@ app.delete("/api/account", auth, async (req, res) => {
     await db.prepare(`DELETE FROM verification_requests WHERE user_id=?`).run(id);
   } catch (_) { /* table may not exist yet */ }
   try { await referrals.voidInvitee(db, id); } catch (_) { /* table may not exist yet */ }
+  try { await deleteTradesForUser(db, id); } catch (_) { /* tables may not exist yet */ }
   await removePhotoFilesForUser(db, id);
   try {
     const chats = await db.prepare(`SELECT object_key, thumb_key FROM chat_files WHERE user_id=?`).all(id);
@@ -1913,6 +1915,15 @@ installGroups({
 });
 
 installSafety({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  broadcastToUser: (userId, payload) => broadcastToUser(userId, payload),
+});
+
+installTrades({
   app,
   getDb: () => db,
   auth,

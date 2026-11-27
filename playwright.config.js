@@ -23,7 +23,7 @@ module.exports = defineConfig({
   webServer: process.env.KANDI_TEST_URL
     ? undefined
     : {
-        command: `PORT=${PORT} DATABASE_URL= SEED_ON_BOOT=1 node src/server.js`,
+        command: `PORT=${PORT} DATABASE_URL= SEED_ON_BOOT=1 EMAIL_VERIFICATION=off node src/server.js`,
         url: `${baseURL}/api/health`,
         reuseExistingServer: false,
         timeout: 120_000,

@@ -1,0 +1,95 @@
+/* Digital kandi trades — black + neon orange */
+
+.kandi-collection { margin: 18px 0 8px; }
+.kandi-col-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.kandi-col-head .label { margin: 0; }
+.kandi-empty { margin: 0; }
+.kandi-col-list { display: flex; flex-direction: column; gap: 12px; }
+.kandi-col-item { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 14px 10px; color: inherit; }
+.kandi-col-item:active { transform: scale(.99); }
+.kandi-col-item.is-hidden { opacity: .55; }
+.kandi-hidden-note { margin: 8px 0 0; }
+.kandi-br-cap { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: var(--fs-cap); color: var(--muted); }
+
+.kandi-bracelet { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; padding: 8px 4px 6px; filter: drop-shadow(0 0 10px rgba(255,92,0,.18)); max-width: 100%; }
+.kandi-bracelet.sm { gap: 2px; padding: 4px 0; }
+.kandi-bracelet.lg { gap: 5px; padding: 12px 0 10px; }
+.kandi-bracelet.md { gap: 4px; }
+
+.kandi-bead { --bead: #ff5c00; width: 18px; height: 18px; border-radius: 50%; background:
+    radial-gradient(circle at 32% 28%, rgba(255,255,255,.55), transparent 46%),
+    var(--bead);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08);
+  flex: 0 0 auto; padding: 0; border: 0; display: inline-grid; place-items: center;
+  position: relative;
+}
+.kandi-bracelet.sm .kandi-bead { width: 14px; height: 14px; }
+.kandi-bracelet.lg .kandi-bead, .kandi-live .kandi-bead { width: 26px; height: 26px; }
+.kandi-bracelet.md .kandi-bead { width: 22px; height: 22px; }
+.kandi-bead.letter { border-radius: 5px; width: 20px; height: 20px; background:
+    linear-gradient(180deg, rgba(255,255,255,.25), transparent 40%), #f4efe6;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.4);
+  color: #1a120c; font-weight: 800; font-size: 11px; line-height: 1; letter-spacing: 0;
+}
+.kandi-bracelet.sm .kandi-bead.letter { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
+.kandi-bracelet.lg .kandi-bead.letter, .kandi-live .kandi-bead.letter { width: 28px; height: 28px; border-radius: 6px; font-size: 14px; }
+.kandi-bracelet.md .kandi-bead.letter { width: 24px; height: 24px; font-size: 12px; }
+.kandi-bead.letter i { font-style: normal; }
+
+.style-glow .kandi-bead { box-shadow: inset 0 -2px 3px rgba(0,0,0,.25), 0 0 10px color-mix(in srgb, var(--bead) 70%, transparent); }
+.style-uv .kandi-bead { box-shadow: inset 0 -2px 3px rgba(0,0,0,.5), 0 0 8px color-mix(in srgb, var(--bead) 80%, #7a5cff); }
+.style-metallic .kandi-bead { background:
+    linear-gradient(135deg, rgba(255,255,255,.55), transparent 40%, rgba(0,0,0,.25)),
+    var(--bead); }
+.style-pearl .kandi-bead { background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.8), transparent 50%),
+    var(--bead); }
+
+.kandi-bracelet.assemble .kandi-bead { animation: kandi-in .55s var(--ease) both; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(1) { animation-delay: .02s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(2) { animation-delay: .06s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(3) { animation-delay: .10s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(4) { animation-delay: .14s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(5) { animation-delay: .18s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(6) { animation-delay: .22s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(7) { animation-delay: .26s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(8) { animation-delay: .30s; }
+.kandi-bracelet.assemble .kandi-bead:nth-child(n+9) { animation-delay: .34s; }
+@keyframes kandi-in {
+  from { transform: translateY(-16px) scale(.4); opacity: 0; }
+  70% { transform: translateY(2px) scale(1.08); opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+
+.trade-hero, .trade-host, .trade-join, .trade-design, .trade-wait, .trade-done { padding-bottom: 24px; }
+.trade-qr-wrap { display: grid; place-items: center; margin: 18px auto 12px; width: min(260px, 80vw); padding: 14px; background: #fff; border-radius: 22px; box-shadow: 0 0 0 3px var(--accent), 0 0 32px rgba(255,92,0,.35); }
+#trade-qr { width: 100%; height: auto; display: block; border-radius: 8px; }
+.trade-code { font: 800 32px/1.1 ui-monospace, Menlo, monospace; letter-spacing: .22em; text-align: center; color: var(--orange2); margin: 8px 0 4px; padding: 8px; }
+.trade-scan { position: relative; margin: 12px 0; border-radius: 20px; overflow: hidden; background: #111; aspect-ratio: 3/4; max-height: 52vh; }
+#trade-scan-video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+.trade-scan-frame { position: absolute; inset: 16% 12%; border: 2px solid rgba(255,92,0,.9); border-radius: 16px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); pointer-events: none; }
+.kandi-styles { margin-top: 8px; }
+.kandi-bead-edit, .kandi-palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.kandi-palette .kandi-bead, .kandi-bead-edit .kandi-bead { width: 26px; height: 26px; cursor: pointer; }
+.kandi-palette .kandi-bead.sm { width: 22px; height: 22px; }
+.kandi-event-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+.kandi-event-pick .label { width: 100%; margin: 0 0 4px; }
+.kandi-msg { margin: 14px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); border: 1px solid rgba(255,92,0,.25); }
+.kandi-live { min-height: 56px; }
+.kandi-sheet { padding-bottom: 28px; }
+.kandi-sheet-br { margin-top: 8px; }
+.trade-swap { display: flex; flex-direction: column; gap: 16px; margin-top: 18px; }
+.trade-swap .tiny { text-align: center; margin-bottom: 6px; }
+.trade-done { position: relative; overflow: visible; }
+.trade-celebrate { position: absolute; inset: 0; pointer-events: none; }
+.kandi-confetti { position: absolute; left: calc(8% + var(--i) * 6%); top: -12px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--bead); animation: kandi-fall 1.4s ease-in both; animation-delay: calc(var(--i) * .06s);
+  box-shadow: 0 0 8px var(--bead); }
+@keyframes kandi-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(220px) rotate(220deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kandi-bracelet.assemble .kandi-bead, .kandi-confetti { animation: none; }
+}

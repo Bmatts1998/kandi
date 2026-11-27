@@ -1350,6 +1350,7 @@
     const buttons = isMe
       ? `<div class="prof-actions"><button type="button" class="btn sm primary" data-act="edit-profile">Edit Profile</button>
           ${isNativeIos() ? "" : `<button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>`}
+          <button type="button" class="btn sm ghost" data-act="trade-open">Trade kandi</button>
           <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New Post</button></div>`
       : "";
     const soc = opts.counts || {};
@@ -1390,6 +1391,7 @@
       });
     }
     html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
+    if (window.KandiTrades && KandiTrades.collectionHtml) html += KandiTrades.collectionHtml(p, isMe);
     html += `<div class="seg event-cats profile-tabs">
       <button type="button" class="${tab === "posts" ? "on" : ""}" data-act="profile-tab" data-id="posts">Posts</button>
       <button type="button" class="${tab === "about" ? "on" : ""}" data-act="profile-tab" data-id="about">About</button>
@@ -1949,6 +1951,8 @@
           state.overlay = { type: "safetyIncoming", alert: msg, returnTo: state.overlay };
           render();
         }
+      } else if (window.KandiTrades && KandiTrades.onMessage) {
+        KandiTrades.onMessage(msg);
       }
     };
   }
@@ -2303,6 +2307,11 @@
         if (qs.get("post")) await handle("open-comments", { getAttribute: (k) => (k === "data-id" ? qs.get("post") : null) });
         else await handle("open-profile", { getAttribute: (k) => (k === "data-id" ? qs.get("u") : null) });
       } catch (_) {}
+    } else if (window.KandiTrades && KandiTrades.consumeDeepLink) {
+      try { await KandiTrades.consumeDeepLink(); } catch (_) {}
+    }
+    if (window.KandiTrades && KandiTrades.resumePending) {
+      try { await KandiTrades.resumePending(); } catch (_) {}
     }
     if (maybeShowAmbassadorNotice()) render();
   }
@@ -3024,6 +3033,9 @@
       state.profileCrews = crews.crews || [];
     } catch (_) {
       state.profileCrews = [];
+    }
+    if (window.KandiTrades && KandiTrades.loadForProfile) {
+      try { await KandiTrades.loadForProfile(userId); } catch (_) {}
     }
   }
   async function loadFeed() {
@@ -4319,6 +4331,7 @@
       <div class="label">Community</div><div class="set-group">
         ${row("open-invite", "Invite friends", inviteSettingsSub(p))}
         ${row("open-groups", "Rave Groups", "Form a crew or join one")}
+        ${row("trade-open", "Trade kandi", "Swap a digital bracelet when you meet")}
       </div>
       <div class="label">Notifications</div><div class="set-group">
         ${row("open-notifs", "Activity", "Likes, matches, comments and follows")}
@@ -4987,6 +5000,10 @@
     const o = state.overlay;
     if (!o) return "";
     if (o.type === "showCrew") return SC ? SC.overlayHtml(o) : "";
+    if (window.KandiTrades && KandiTrades.overlayHtml) {
+      const tradeHtml = KandiTrades.overlayHtml(state);
+      if (tradeHtml) return tradeHtml;
+    }
     if (o.type === "storyComposer") return storyComposerHtml();
     if (o.type === "composer") {
       return composerView();
@@ -5770,6 +5787,9 @@
       if (busyActs.has(k)) { n.classList.add("busy"); n.setAttribute("aria-busy", "true"); }
     });
     hydrateLazy(root);
+    if (window.KandiTrades && KandiTrades.afterRender) {
+      try { KandiTrades.afterRender(); } catch (_) {}
+    }
     if (state.storyViewer) startStoryPlayback();
     else stopStoryPlayback();
     bindVoiceControls();
@@ -5787,6 +5807,10 @@
 
   async function handle(act, el, extra) {
     const id = el && el.getAttribute("data-id");
+    if (window.KandiTrades && KandiTrades.handle) {
+      const used = await KandiTrades.handle(act, el, extra, id);
+      if (used) return;
+    }
     if (act === "song-play") { toggleSong(el); return; }
     if (SC && act && act.indexOf("screw-") === 0) {
       try { await SC.handle(act, el); } catch (err) { toast((err && err.message) || "Something went wrong.", "err"); }
@@ -7825,7 +7849,7 @@
     if (actEl.disabled || actEl.getAttribute("aria-disabled") === "true") return;
     e.preventDefault();
     const act = actEl.getAttribute("data-act");
-    if (INSTANT.has(act)) { handle(act, actEl); return; }
+    if (INSTANT.has(act) || (window.KandiTrades && KandiTrades.INSTANT && KandiTrades.INSTANT.has(act))) { handle(act, actEl); return; }
     const key = act + ":" + (actEl.getAttribute("data-id") || "");
     if (busyActs.has(key)) return; // ignore double taps while the first one is still working
     busyActs.add(key);
@@ -7948,6 +7972,9 @@
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "songQuery") {
       e.preventDefault();
       handle("song-search", e.target);
+    }
+    if (e.key === "Enter" && e.target.getAttribute("data-field") === "tradeCode") {
+      e.preventDefault(); handle("trade-submit-code", e.target); return;
     }
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "forgotLogin") {
       e.preventDefault();
@@ -8317,5 +8344,8 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.view === "app" && state.me) quiet(loadSafety());
   });
+  if (window.KandiTrades && KandiTrades.attach) {
+    KandiTrades.attach({ getState: () => state, api, esc, toast, render, personAvatar, personName, timeAgo });
+  }
   boot();
 })();
