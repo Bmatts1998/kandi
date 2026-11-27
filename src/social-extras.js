@@ -13,7 +13,7 @@ function toMs(v) {
   return Number.isFinite(t) ? t : 0;
 }
 
-function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadcastToUser }) {
+function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadcastToUser, extraNotifications }) {
   const db = () => getDb();
   let ready = null;
   function ensureTables() {
@@ -143,6 +143,9 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
     for (const r of cm) items.push({ kind: "comment", fromId: Number(r.user_id), at: r.created_at, postId: Number(r.post_id), text: String(r.text || "").slice(0, 120) });
     const fl = await db().prepare(`SELECT follower_id, created_at FROM follows WHERE following_id=? ORDER BY created_at DESC LIMIT 40`).all(me);
     for (const r of fl) items.push({ kind: "follow", fromId: Number(r.follower_id), at: r.created_at });
+    if (extraNotifications) {
+      try { for (const it of (await extraNotifications(me)) || []) items.push(it); } catch (err) { console.error("extra notifications:", err.message || err); }
+    }
     const unread = await unreadFor(me);
     const visible = items.filter((it) => !blocked.has(it.fromId));
     visible.forEach((it) => { it.ts = toMs(it.at); });
@@ -159,6 +162,9 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
         at: it.ts ? new Date(it.ts).toISOString() : null,
         unread: it.ts > seenMs,
         postId: it.postId || null,
+        eventId: it.eventId || null,
+        eventName: it.eventName || "",
+        resolved: Boolean(it.resolved),
         targetType: it.targetType || null,
         text: hidden ? "" : (it.text || it.comment || ""),
         user: hidden || !u ? null : { id: u.id, name: u.name, username: u.username, photos: (u.photos || []).slice(0, 1) },

@@ -46,6 +46,7 @@ const mailer = require("./email");
 const songs = require("./song");
 const followRules = require("./follow-rules");
 const ageCheck = require("./age-check");
+const showCrew = require("./show-crew");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -158,7 +159,7 @@ let indexHtmlCache = null;
 function sendIndex(req, res) {
   if (!indexHtmlCache) {
     indexHtmlCache = fs.readFileSync(path.join(root, "public", "index.html"), "utf8")
-      .replace(/(href|src)="\/(styles\.css|design\.css|app\.js|video-prep\.js)"/g, `$1="/$2?v=${BUILD}"`);
+      .replace(/(href|src)="\/(styles\.css|design\.css|app\.js|video-prep\.js|show-crew\.js|show-crew\.css)"/g, `$1="/$2?v=${BUILD}"`);
   }
   noStore(res);
   try { referrals.stamp(req, res); } catch (_) {}
@@ -645,6 +646,7 @@ app.delete("/api/account", auth, async (req, res) => {
   } catch (err) { console.error("object-store delete chat on account close:", err && err.message); }
   await db.prepare(`DELETE FROM chat_files WHERE user_id=?`).run(id);
   await db.prepare(`DELETE FROM setup_tokens WHERE user_id=?`).run(id);
+  await showCrew.deleteUserCrewData(db, id);
   try { await billing.cancelStripeForUser(req.user, billing.getConfig()); } catch (err) {
     console.error("Stripe cancel on account delete failed:", err && err.message);
   }
@@ -1307,7 +1309,11 @@ app.get("/api/events", auth, async (req, res) => {
   for (const e of raw) {
     if (String(e.status || "active") === "removed") continue;
     const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    if (!Number.isNaN(starts) && starts < now) continue;
+    // Keep a show that already started listed until its Find My Crew window closes (6 AM the next morning).
+    if (!Number.isNaN(starts) && starts < now) {
+      const win = showCrew.crewWindow(e);
+      if (!win || now >= win.expiresAt) continue;
+    }
     if (e.is_example) continue;
     const going = shapeGoers(goingRows, e, req.user, blocked, publicUser);
     const open = going.filter((u) => u.openToMeet);
@@ -1841,6 +1847,16 @@ installStories({
   uploadDir,
 });
 installSocialExtras({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  broadcastToUser: (...args) => broadcastToUser(...args),
+  extraNotifications: (meId) => showCrew.crewNotifications(db, meId, { blockedSet }),
+});
+// Find My Crew (per-show crews). See src/show-crew.js for the reusable API.
+showCrew.installShowCrew({
   app,
   getDb: () => db,
   auth,
