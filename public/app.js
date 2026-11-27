@@ -1478,7 +1478,7 @@
     uploadError: "",
     onboardStep: 0,
     discoverMode: "",
-    filters: { event: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
+    filters: { event: "all", sets: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
     billing: "monthly",
     pendingPlan: "plus",
     plans: null,
@@ -2069,10 +2069,12 @@
     }
   }
   function isAdminPath() {
-    return /^\/admin\/(verify|invites)\/?$/.test(location.pathname || "");
+    return /^\/admin\/(verify|invites|lineups)\/?$/.test(location.pathname || "");
   }
   function adminSectionFromPath() {
-    return /\/admin\/invites\/?$/.test(location.pathname || "") ? "invites" : "verify";
+    if (/\/admin\/invites\/?$/.test(location.pathname || "")) return "invites";
+    if (/\/admin\/lineups\/?$/.test(location.pathname || "")) return "lineups";
+    return "verify";
   }
   async function loadAdminVerifications(status) {
     const st = status || "pending";
@@ -2101,13 +2103,33 @@
     }
     render();
   }
+  async function loadAdminLineups(eventId) {
+    const evId = eventId != null ? eventId : (state.adminLineups && state.adminLineups.eventId) || "";
+    state.adminLineups = Object.assign({}, state.adminLineups || {}, { loading: true, eventId: evId, sets: (state.adminLineups && state.adminLineups.sets) || [], pending: (state.adminLineups && state.adminLineups.pending) || [] });
+    render();
+    try {
+      const pending = await api("/api/admin/sets?status=pending");
+      const q = evId ? "/api/admin/sets?status=all&eventId=" + encodeURIComponent(evId) : "/api/admin/sets?status=all";
+      const all = evId ? await api(q) : { sets: [] };
+      state.adminLineups = { loading: false, eventId: evId, pending: (pending && pending.sets) || [], sets: (all && all.sets) || [] };
+    } catch (err) {
+      state.adminLineups = { loading: false, eventId: evId, pending: [], sets: [], error: err.message || "Couldn't load lineups." };
+      toast(err.message || "Couldn't load lineups.", "err");
+      if (err.status === 404) { state.view = "app"; history.replaceState({}, "", "/"); }
+    }
+    render();
+  }
   async function openAdminSection(section) {
-    const sec = section === "invites" ? "invites" : "verify";
+    const sec = section === "invites" ? "invites" : (section === "lineups" ? "lineups" : "verify");
     state.adminSection = sec;
     state.view = "adminVerify";
-    history.replaceState({}, "", sec === "invites" ? "/admin/invites" : "/admin/verify");
+    history.replaceState({}, "", sec === "invites" ? "/admin/invites" : (sec === "lineups" ? "/admin/lineups" : "/admin/verify"));
     render();
     if (sec === "invites") await loadAdminReferrals();
+    else if (sec === "lineups") {
+      if (!state.eventsLoaded) try { await loadEvents(); } catch (_) {}
+      await loadAdminLineups((state.adminLineups && state.adminLineups.eventId) || "");
+    }
     else await loadAdminVerifications((state.adminVerify && state.adminVerify.status) || "pending");
   }
   async function maybeOpenAdmin() {
@@ -3042,6 +3064,7 @@
     const q = new URLSearchParams();
     if (state.filters.genre && state.filters.genre !== "all") q.set("genre", state.filters.genre);
     if (state.filters.event && state.filters.event !== "all") q.set("event", state.filters.event);
+    if (state.filters.sets && state.filters.sets !== "all") q.set("sets", state.filters.sets);
     if (state.filters.gender && state.filters.gender !== "all") q.set("gender", state.filters.gender);
     q.set("mode", discoverMode());
     const ageMin = Number(state.filters.ageMin);
@@ -3260,6 +3283,19 @@
       state.eventPosts = { id, posts: [] };
     }
   }
+  function applyEventSets(eventId, data) {
+    const ev = findEvent(eventId);
+    if (!ev || !data) return;
+    ev.sets = data.sets || [];
+    ev.pendingSets = data.pending || [];
+    ev.setsCount = (ev.sets || []).length;
+  }
+  async function loadEventSets(id) {
+    try {
+      const data = await api("/api/events/" + encodeURIComponent(id) + "/sets");
+      applyEventSets(id, data);
+    } catch (_) {}
+  }
   async function loadBlocks() {
     const data = await api("/api/blocks");
     state.blocked = data.blocked;
@@ -3355,11 +3391,11 @@
     const liked = false;
     const caption = ph.caption || "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
     }
     return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
-      ${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      ${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
   }
@@ -3550,9 +3586,136 @@
       <div class="scroll pad">${body}</div></div>`;
   }
 
+  function setTimeLabel(s) {
+    if (!s) return "";
+    if (s.startLabel && s.endLabel) return s.startLabel + " – " + s.endLabel;
+    return s.startLabel || s.endLabel || "";
+  }
+  function lineupRow(e, s) {
+    const stages = new Set(((e && e.sets) || []).map((x) => x.stage).filter(Boolean));
+    const meta = [setTimeLabel(s), stages.size && s.stage ? s.stage : ""].filter(Boolean).join(" · ");
+    const people = s.catchers || [];
+    const count = s.catchingCount != null ? s.catchingCount : people.length;
+    const canStar = e && e.imGoing;
+    const star = canStar
+      ? `<button type="button" class="lineup-star${s.imCatching ? " on" : ""}" data-act="toggle-catch" data-id="${s.id}" aria-pressed="${s.imCatching ? "true" : "false"}" aria-label="${s.imCatching ? "Stop catching" : "I'm catching"} ${esc(s.artist)}">★</button>`
+      : "";
+    return `<div class="lineup-card">
+      <div class="grow">
+        <div class="lineup-artist">${esc(s.artist)}</div>
+        ${meta ? `<div class="lineup-meta">${esc(meta)}</div>` : ""}
+        ${count ? `<div class="tiny going-line" style="margin-top:6px">${avatarStack(people)}<span>${count} catching</span></div>` : `<div class="tiny" style="margin-top:6px">No one starred this set yet</div>`}
+        ${s.imCatching ? `<div class="tiny">You're catching this</div>` : ""}
+      </div>
+      ${star}
+    </div>`;
+  }
+  function lineupBlock(e) {
+    const sets = e.sets || [];
+    const pending = (state.me && state.me.isAdmin && e.pendingSets) ? e.pendingSets : [];
+    let html = `<div class="label" style="margin-top:18px">Lineup</div>`;
+    if (!sets.length) {
+      html += `<p class="tiny">${e.imGoing ? "No set times yet. If you know who's playing, suggest a set and we'll review it." : "No set times posted yet."}</p>`;
+    } else {
+      html += `<div class="lineup-list">${sets.map((s) => lineupRow(e, s)).join("")}</div>`;
+    }
+    if (!e.imGoing && sets.length) {
+      html += `<p class="tiny">Mark yourself as going to star the sets you're catching.</p>`;
+    }
+    if (e.imGoing) {
+      const open = state.drafts.suggestSetFor === String(e.id);
+      html += `<button type="button" class="btn sm ghost" data-act="toggle-suggest-set" data-id="${esc(e.id)}">${open ? "Close suggestion" : "Suggest a set"}</button>`;
+      if (open) {
+        html += `<div class="suggest-set">
+          <p class="tiny">Artist, optional stage, and times. Boston will approve it before it shows on the lineup.</p>
+          <input data-field="suggestArtist" placeholder="Artist" value="${esc(state.drafts.suggestArtist || "")}" style="margin-top:8px" />
+          <input data-field="suggestStage" placeholder="Stage (optional)" value="${esc(state.drafts.suggestStage || "")}" style="margin-top:8px" />
+          <div class="row"><input data-field="suggestStart" placeholder="Start (e.g. 11:30 PM)" value="${esc(state.drafts.suggestStart || "")}" />
+            <input data-field="suggestEnd" placeholder="End (optional)" value="${esc(state.drafts.suggestEnd || "")}" /></div>
+          <button type="button" class="btn sm primary" style="margin-top:8px" data-act="suggest-set" data-id="${esc(e.id)}">Send suggestion</button>
+        </div>`;
+      }
+    }
+    if (sets.length) {
+      html += `<button type="button" class="btn ghost" style="margin-top:10px" data-act="discover-same-sets" data-id="${esc(e.id)}">Catching the same sets</button>`;
+    }
+    if (state.me && state.me.isAdmin) {
+      if (pending.length) {
+        html += `<div class="label" style="margin-top:16px">Pending suggestions</div>` + pending.map((s) =>
+          `<div class="admin-lineup-card"><div style="font-weight:700">${esc(s.artist)}</div>
+            <div class="tiny">${esc([setTimeLabel(s), s.stage].filter(Boolean).join(" · ") || "No time yet")}</div>
+            <div class="row" style="margin-top:8px;gap:8px">
+              <button type="button" class="btn sm primary" data-act="admin-set-review" data-id="${s.id}" data-decision="approve">Approve</button>
+              <button type="button" class="btn sm ghost" data-act="admin-set-review" data-id="${s.id}" data-decision="reject">Reject</button>
+            </div></div>`
+        ).join("");
+      }
+      const addOpen = state.drafts.adminSetFor === String(e.id);
+      html += `<button type="button" class="btn sm ghost" style="margin-top:8px" data-act="toggle-admin-set" data-id="${esc(e.id)}">${addOpen ? "Close" : "Add a set"}</button>`;
+      if (addOpen) {
+        html += `<div class="suggest-set">
+          <input data-field="adminSetArtist" placeholder="Artist" value="${esc(state.drafts.adminSetArtist || "")}" />
+          <input data-field="adminSetStage" placeholder="Stage (optional)" value="${esc(state.drafts.adminSetStage || "")}" style="margin-top:8px" />
+          <div class="row"><input data-field="adminSetStart" placeholder="Start (e.g. 11:30 PM)" value="${esc(state.drafts.adminSetStart || "")}" />
+            <input data-field="adminSetEnd" placeholder="End (optional)" value="${esc(state.drafts.adminSetEnd || "")}" /></div>
+          <button type="button" class="btn sm primary" style="margin-top:8px" data-act="admin-add-set" data-id="${esc(e.id)}">Add to lineup</button>
+        </div>`;
+      }
+    }
+    return html;
+  }
+  function viewAdminLineups(sectionBar) {
+    const r = state.adminLineups || { loading: true, pending: [], sets: [], eventId: "" };
+    const evs = pickableEvents();
+    const evId = r.eventId || "";
+    const ev = evId ? evs.find((e) => String(e.id) === String(evId)) : null;
+    const picker = `<div class="label">Edit a show</div>
+      <select data-field="adminLineupEvent" data-act-change="admin-lineup-event" style="width:100%;margin:0 0 14px;padding:12px;border-radius:12px;background:#111;color:inherit;border:1px solid var(--line)">
+        <option value="">Choose a show</option>
+        ${evs.map((e) => `<option value="${esc(e.id)}"${String(e.id) === String(evId) ? " selected" : ""}>${esc(e.name)} — ${esc(e.date || e.startsAt || "")}</option>`).join("")}
+      </select>`;
+    let pending = "";
+    if (r.loading) pending = `<p class="muted">Loading…</p>`;
+    else if (r.error) pending = `<p class="tiny">${esc(r.error)}</p>`;
+    else {
+      const list = r.pending || [];
+      pending = `<div class="label">Pending suggestions (${list.length})</div>` + (list.length
+        ? list.map((s) => `<div class="admin-lineup-card">
+            <div style="font-weight:700">${esc(s.artist)}</div>
+            <div class="tiny">${esc(s.eventName || "")}${s.eventDate ? " · " + esc(s.eventDate) : ""}</div>
+            <div class="tiny">${esc([setTimeLabel(s), s.stage].filter(Boolean).join(" · ") || "No time yet")}${s.suggestedBy && s.suggestedBy.username ? " · @" + esc(s.suggestedBy.username) : ""}</div>
+            <div class="row" style="margin-top:8px;gap:8px">
+              <button type="button" class="btn sm primary" data-act="admin-set-review" data-id="${s.id}" data-decision="approve">Approve</button>
+              <button type="button" class="btn sm ghost" data-act="admin-set-review" data-id="${s.id}" data-decision="reject">Reject</button>
+            </div></div>`).join("")
+        : `<p class="tiny">No suggestions waiting.</p>`);
+    }
+    let editor = "";
+    if (evId && ev) {
+      const sets = (r.sets || []).filter((s) => s.status === "approved" || !s.status);
+      editor = `<div class="label">Lineup for ${esc(ev.name)}</div>` + (sets.length
+        ? sets.map((s) => `<div class="admin-lineup-card">
+            <div style="font-weight:700">${esc(s.artist)}</div>
+            <div class="tiny">${esc([setTimeLabel(s), s.stage].filter(Boolean).join(" · ") || "No time yet")}</div>
+            <button type="button" class="btn sm ghost" style="margin-top:8px" data-act="admin-set-delete" data-id="${s.id}">Remove</button>
+          </div>`).join("")
+        : `<p class="tiny">No approved sets yet.</p>`);
+      editor += `<div class="suggest-set">
+        <div class="tiny" style="margin-bottom:8px">Add a set</div>
+        <input data-field="adminSetArtist" placeholder="Artist" value="${esc(state.drafts.adminSetArtist || "")}" />
+        <input data-field="adminSetStage" placeholder="Stage (optional)" value="${esc(state.drafts.adminSetStage || "")}" style="margin-top:8px" />
+        <div class="row"><input data-field="adminSetStart" placeholder="Start (e.g. 11:30 PM)" value="${esc(state.drafts.adminSetStart || "")}" />
+          <input data-field="adminSetEnd" placeholder="End (optional)" value="${esc(state.drafts.adminSetEnd || "")}" /></div>
+        <button type="button" class="btn sm primary" style="margin-top:8px" data-act="admin-add-set" data-id="${esc(ev.id)}">Add to lineup</button>
+      </div>`;
+    }
+    return `<div class="screen top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="admin-verify-close" aria-label="Back">‹</button><span style="font-weight:600">Show lineups</span></div></div>
+      <div class="scroll pad">${sectionBar}${pending}${picker}${editor}</div></div>`;
+  }
   function viewAdminVerify() {
     const section = state.adminSection || adminSectionFromPath() || "verify";
-    const sectionBar = `<div class="mode-toggle" style="margin:0 0 14px"><button type="button" class="${section === "verify" ? "on" : ""}" data-act="admin-section" data-id="verify">Verifications</button><button type="button" class="${section === "invites" ? "on" : ""}" data-act="admin-section" data-id="invites">Invites</button></div>`;
+    const sectionBar = `<div class="mode-toggle" style="margin:0 0 14px"><button type="button" class="${section === "verify" ? "on" : ""}" data-act="admin-section" data-id="verify">Verifications</button><button type="button" class="${section === "invites" ? "on" : ""}" data-act="admin-section" data-id="invites">Invites</button><button type="button" class="${section === "lineups" ? "on" : ""}" data-act="admin-section" data-id="lineups">Lineups</button></div>`;
+    if (section === "lineups") return viewAdminLineups(sectionBar);
     if (section === "invites") {
       const r = state.adminReferrals || { loading: true, referrers: [] };
       let list;
@@ -3747,7 +3910,7 @@
     const parts = [];
     const photos = p.photos || [];
     if (photos.length) parts.push(photoEl(p, 0, true));
-    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
+    else parts.push(`<div class="photo" style="background:linear-gradient(160deg,#111,#ff5c00);height:260px"><div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}</div>
       <div class="emoji">${esc(initialOf(p))}</div></div>`);
     const prompts = p.prompts || [];
     if (prompts[0]) parts.push(promptEl(p, prompts[0]));
@@ -3856,7 +4019,8 @@
           <div class="grow"><div style="font-weight:600">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}${e.imOpenToMeet ? `<span class="chip soft">Open to meet</span>` : ""}</div>
           <div class="muted">${esc(eventWhen(e))}</div>
           <div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div>
-          <div class="tiny going-line" style="margin-top:6px">${avatarStack(e.going)}<span>${bits.join(" · ")}</span></div></div>
+          <div class="tiny going-line" style="margin-top:6px">${avatarStack(e.going)}<span>${bits.join(" · ")}</span></div>
+          ${(e.sets || []).length ? `<div class="tiny" style="margin-top:4px">${(e.sets || []).length === 1 ? "1 set posted" : (e.sets.length + " sets posted")}${(e.sets || []).some((s) => s.imCatching) ? " · You're catching some" : ""}</div>` : ""}</div>
         </button>
         ${rsvpToggles(e)}
         <div class="event-facts">
@@ -3888,6 +4052,7 @@
         <div class="grow"><div style="font-weight:600">${esc(p.name)}${matchKindChip(m)}${state.unreadByUser[p.id] ? ` <span class="unread-pill">${state.unreadByUser[p.id]} new</span>` : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}
         <div class="muted${state.unreadByUser[p.id] ? " unread-text" : ""}">${esc(last ? (Number(last.fromId) === Number(state.me.id) ? "You: " : "") + lastPreview(last) : (m.matchKind === "friend" ? "Friend match. Say hi." : (m.matchKind === "date" ? "Date match. Say hi." : "You matched. Say hi.")))}</div>
         ${m.sharedEvents && m.sharedEvents[0] ? `<div class="tiny meet-mini">Both going to ${esc(m.sharedEvents[0].name)}</div>` : ""}
+        ${m.sharedSetChip ? `<div class="tiny meet-mini">${esc(m.sharedSetChip)}</div>` : ""}
         ${m.meetPlan && (m.meetPlan.spot || m.meetPlan.time) ? `<div class="tiny meet-mini">Meet: ${esc(m.meetPlan.spot || "")}${m.meetPlan.time ? " at " + esc(m.meetPlan.time) : ""}</div>` : ""}</div></button>`;
     });
     return html + "</div>";
@@ -4341,8 +4506,11 @@
         ${row("open-get-verified", p.verified ? "You're verified" : "Get verified", p.verified ? "Selfie-verified badge is on your profile" : (p.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : (p.verificationStatus === "stale" ? "Your main photo changed — verify again" : "Take a live selfie so people know you're real")))}
         ${p.isAdmin ? row("open-admin-verify", "Review verifications", "Approve or reject selfie checks") : ""}
         ${p.isAdmin ? row("open-admin-invites", "Invite leaderboard", "Top referrers") : ""}
+        ${p.isAdmin ? row("open-admin-lineups", "Show lineups", "Add, edit, or approve set times") : ""}
         <div class="set-row static"><div class="grow"><div>Show upcoming shows on my profile</div><div class="tiny">Turn off to keep your RSVPs private.</div></div>
           <button type="button" class="toggle${p.showUpcoming !== false ? " on" : ""}" data-act="toggle-show-upcoming" aria-pressed="${p.showUpcoming !== false ? "true" : "false"}" aria-label="Show upcoming shows on my profile"><i></i></button></div>
+        <div class="set-row static"><div class="grow"><div>Hide the sets I'm catching</div><div class="tiny">Turn on to keep your starred sets private. You can still star them for yourself.</div></div>
+          <button type="button" class="toggle${p.hideSets ? " on" : ""}" data-act="toggle-hide-sets" aria-pressed="${p.hideSets ? "true" : "false"}" aria-label="Hide the sets I'm catching"><i></i></button></div>
         ${(state.blocked || []).length ? state.blocked.map((b) => `<div class="set-row static"><div class="grow">Blocked: ${esc(b.name)}</div><button type="button" class="btn sm ghost" data-act="unblock" data-id="${b.id}">Unblock</button></div>`).join("") : `<div class="set-row static"><div class="grow"><div>Blocked people</div><div class="tiny">No one blocked</div></div></div>`}
         <a class="set-row" href="/privacy"><div class="grow">Privacy policy</div><span aria-hidden="true">›</span></a>
         <a class="set-row" href="/terms"><div class="grow">Terms of service</div><span aria-hidden="true">›</span></a>
@@ -5210,6 +5378,12 @@
       return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1"><div class="grab"></div>
         <h2 class="h2" style="font-size:22px">Filters</h2>
         ${eventBlock}
+        <div class="label" style="margin-top:14px">Set times</div>
+        <div class="chips">
+          <button type="button" class="chip${(f.sets || "all") === "all" ? " on" : ""}" data-act="set-sets-filter" data-id="all">Any sets</button>
+          <button type="button" class="chip${(f.sets || "all") !== "all" ? " on" : ""}" data-act="set-sets-filter" data-id="same">Catching the same sets</button>
+        </div>
+        <p class="tiny" style="margin-top:6px">Free for everyone — find people starring the same sets at a show you're both going to.</p>
         <div class="label" style="margin-top:14px">Age range</div>
         <div class="row height-row"><input data-field="filterAgeMin" type="number" min="18" max="99" inputmode="numeric" aria-label="Minimum age" value="${esc(String(ageMin))}" />
           <span class="muted">to</span>
@@ -5231,6 +5405,7 @@
         <div class="event-detail-row"><div class="label" style="margin:0">Address</div><div>${eventAddressLine(e)}</div></div>
         <div class="event-detail-row"><div class="label" style="margin:0">Tickets</div><div>${eventTicketLine(e)}</div></div>
         ${(e.artists || []).length ? `<div class="tiny" style="margin-top:6px">${e.artists.map(esc).join(" · ")}</div>` : ""}
+        ${lineupBlock(e)}
         ${eventActions(e)}
         ${rsvpToggles(e)}
         ${SC ? SC.eventEntryHtml(e) : ""}
@@ -6582,7 +6757,12 @@
       }
       if (act === "admin-section") {
         if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
-        await openAdminSection(id === "invites" ? "invites" : "verify");
+        await openAdminSection(id === "invites" ? "invites" : (id === "lineups" ? "lineups" : "verify"));
+        return;
+      }
+      if (act === "open-admin-lineups") {
+        if (!state.me || !state.me.isAdmin) { toast("Not found.", "err"); return; }
+        await openAdminSection("lineups");
         return;
       }
       if (act === "open-invite") {
@@ -7000,6 +7180,10 @@
         }
         state.filters.event = id; render(); return;
       }
+      if (act === "set-sets-filter") {
+        state.filters.sets = id || "all";
+        render(); return;
+      }
       if (act === "event-cat") { state.eventCategory = id || "all"; render(); return; }
       if (act === "apply-filters") {
         const lo = Number(state.drafts.filterAgeMin);
@@ -7139,11 +7323,95 @@
         if (state.overlay && state.overlay.type !== "event") state.overlayBack = state.overlay;
         state.overlay = { type: "event", id };
         render();
-        await loadEventPosts(id);
+        await Promise.all([loadEventPosts(id), loadEventSets(id)]);
         if (state.overlay && state.overlay.type === "event" && state.overlay.id === id) render();
         return;
       }
 
+      if (act === "toggle-catch") {
+        const setId = id;
+        const ev = (state.events || []).find((e) => (e.sets || []).some((s) => String(s.id) === String(setId))) || findEvent(state.overlay && state.overlay.id);
+        const current = ev && (ev.sets || []).find((s) => String(s.id) === String(setId));
+        const next = current ? !current.imCatching : true;
+        const data = await api("/api/sets/" + encodeURIComponent(setId) + "/catch", { method: "POST", body: { catching: next } });
+        if (ev) applyEventSets(ev.id, data);
+        else if (data && data.sets && state.overlay && state.overlay.type === "event") applyEventSets(state.overlay.id, data);
+        render(); return;
+      }
+      if (act === "toggle-suggest-set") {
+        state.drafts.suggestSetFor = state.drafts.suggestSetFor === String(id) ? "" : String(id);
+        render(); return;
+      }
+      if (act === "suggest-set") {
+        const artist = (state.drafts.suggestArtist || "").trim();
+        if (!artist) { toast("Add the artist or set name.", "err"); return; }
+        const data = await api("/api/events/" + encodeURIComponent(id) + "/sets", { method: "POST", body: {
+          artist,
+          stage: state.drafts.suggestStage || "",
+          startsAt: state.drafts.suggestStart || "",
+          endsAt: state.drafts.suggestEnd || "",
+        } });
+        state.drafts.suggestArtist = "";
+        state.drafts.suggestStage = "";
+        state.drafts.suggestStart = "";
+        state.drafts.suggestEnd = "";
+        state.drafts.suggestSetFor = "";
+        toast(data.pending ? "Suggestion sent. It'll show up once it's approved." : "Set added.");
+        await loadEventSets(id);
+        render(); return;
+      }
+      if (act === "discover-same-sets") {
+        state.filters.sets = id || "same";
+        state.tab = "discover";
+        state.overlay = null;
+        render();
+        await loadFeed();
+        render(); return;
+      }
+      if (act === "toggle-admin-set") {
+        state.drafts.adminSetFor = state.drafts.adminSetFor === String(id) ? "" : String(id);
+        render(); return;
+      }
+      if (act === "admin-add-set") {
+        const artist = (state.drafts.adminSetArtist || "").trim();
+        if (!artist) { toast("Add the artist or set name.", "err"); return; }
+        await api("/api/admin/events/" + encodeURIComponent(id) + "/sets", { method: "POST", body: {
+          artist,
+          stage: state.drafts.adminSetStage || "",
+          startsAt: state.drafts.adminSetStart || "",
+          endsAt: state.drafts.adminSetEnd || "",
+        } });
+        state.drafts.adminSetArtist = "";
+        state.drafts.adminSetStage = "";
+        state.drafts.adminSetStart = "";
+        state.drafts.adminSetEnd = "";
+        toast("Set added to the lineup.");
+        if (state.view === "adminVerify") await loadAdminLineups(id);
+        else await Promise.all([loadEvents(), loadEventSets(id)]);
+        render(); return;
+      }
+      if (act === "admin-set-review") {
+        const decision = el.getAttribute("data-decision") || "approve";
+        await api("/api/admin/sets/" + encodeURIComponent(id) + "/review", { method: "POST", body: { decision } });
+        toast(decision.startsWith("approve") ? "Set approved." : "Suggestion rejected.");
+        if (state.view === "adminVerify") await loadAdminLineups();
+        if (state.overlay && state.overlay.type === "event") {
+          await Promise.all([loadEvents(), loadEventSets(state.overlay.id)]);
+        }
+        render(); return;
+      }
+      if (act === "admin-set-delete") {
+        await api("/api/admin/sets/" + encodeURIComponent(id), { method: "DELETE" });
+        toast("Set removed.");
+        if (state.view === "adminVerify") await loadAdminLineups();
+        if (state.overlay && state.overlay.type === "event") await Promise.all([loadEvents(), loadEventSets(state.overlay.id)]);
+        render(); return;
+      }
+      if (act === "admin-lineup-event") {
+        const evId = (el && el.value) || state.drafts.adminLineupEvent || id || "";
+        await loadAdminLineups(evId);
+        return;
+      }
       if (act === "toggle-meet") {
         const ev = findEvent(id);
         if (!ev) return;
@@ -7176,6 +7444,12 @@
         const on = !(state.me && state.me.showUpcoming !== false);
         const data = await api("/api/me", { method: "PUT", body: { showUpcoming: on } });
         state.me = data.user; render(); return;
+      }
+      if (act === "toggle-hide-sets") {
+        const hide = !(state.me && state.me.hideSets);
+        const data = await api("/api/me/sets-privacy", { method: "PUT", body: { hideSets: hide } });
+        if (state.me) state.me.hideSets = Boolean(data.hideSets);
+        render(); return;
       }
       if (act === "pick-meet") {
         const m = state.matches.find((x) => String(x.user.id) === String(id)) || {};
@@ -7828,7 +8102,7 @@
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
   const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
-    "set-genre", "set-event-filter", "set-gender-filter", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
+    "set-genre", "set-event-filter", "set-sets-filter", "set-gender-filter", "toggle-suggest-set", "toggle-admin-set", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
@@ -7940,6 +8214,13 @@
     }
     state.drafts[field] = v;
     if (field === "showPickQ" && state.showPicker) { state.showPicker.q = v; filterShowPicker(); }
+  });
+  root.addEventListener("change", (e) => {
+    const field = e.target.getAttribute("data-field");
+    if (field === "adminLineupEvent") {
+      state.drafts.adminLineupEvent = e.target.value;
+      handle("admin-lineup-event", e.target);
+    }
   });
   root.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.getAttribute("data-field") === "commentText") {
