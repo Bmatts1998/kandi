@@ -40,7 +40,18 @@ const config = {
       style: "DARK",
       backgroundColor: "#000000",
     },
-    // Next native iOS build: install @capacitor/keyboard and cap sync.
+    // Next native iOS build (DAT-20 + Declared Age Range):
+    // - cd mobile && npm ci && npx cap sync ios
+    // - Install @capacitor/keyboard, then cap sync (config is already here).
+    // - In Xcode: Signing & Capabilities → + Capability → Declared Age Range
+    //   (com.apple.developer.declared-age-range is already in App.entitlements).
+    // - Apple Developer portal: App ID com.marshandbarb.kandi → enable
+    //   Declared Age Range, regenerate the provisioning profile, archive
+    //   with Xcode 26+. iOS 26+ is required for the system age sheet;
+    //   older iOS is allowed through and marked unverified.
+    // - AVAudioSession .playback is already in AppDelegate.
+    // - contentInset "never" is already set below.
+    // - Still open: branded cold-start page, StoreKit in-app purchases.
     // resize: "none" stops WKWebView from resizing the whole app when the
     // keyboard opens (that resize fights the chat log). The web chat screen
     // already insets the composer with visualViewport + --kb.

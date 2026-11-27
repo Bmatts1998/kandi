@@ -45,6 +45,7 @@ const iap = require("./iap");
 const mailer = require("./email");
 const songs = require("./song");
 const followRules = require("./follow-rules");
+const ageCheck = require("./age-check");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -251,6 +252,19 @@ function allowedWhileUnverified(req) {
   if (m === "DELETE" && p === "/api/account") return true;
   if (p.startsWith("/api/email/")) return true;
   if (m === "POST" && p === "/api/me/email") return true;
+  if (m === "POST" && p === "/api/age-check") return true;
+  return false;
+}
+
+// Under-18 accounts (from Apple's Declared Age Range) can only load their
+// profile, submit a new age check, log out, or delete the account.
+function allowedWhileAgeBlocked(req) {
+  const p = String(req.originalUrl || req.url || "").split("?")[0];
+  const m = req.method;
+  if (m === "GET" && p === "/api/me") return true;
+  if (m === "POST" && p === "/api/age-check") return true;
+  if (m === "POST" && p === "/api/logout") return true;
+  if (m === "DELETE" && p === "/api/account") return true;
   return false;
 }
 
@@ -258,6 +272,9 @@ async function auth(req, res, next) {
   try {
     const user = await getUserFromReq(req);
     if (!user) return res.status(401).json({ error: "Sign in required" });
+    if (ageCheck.isUnder18(user) && !allowedWhileAgeBlocked(req)) {
+      return res.status(403).json({ error: "Kandi is 18+. Apple's age check shows this Apple ID is under 18, so this account can't be used.", code: "age_blocked" });
+    }
     if (mailer.isLocked(user) && !allowedWhileUnverified(req)) {
       return res.status(403).json({ error: "Confirm your email to start using Kandi.", code: "email_unverified" });
     }
@@ -446,6 +463,7 @@ function selfBillingExtra(user, req) {
     founding: founding.publicFounding(user),
     billing: billing.publicBillingForUser(user, billing.getConfig(), { ios: isNativeIosClient(req) }),
     objectStorage: objectStore.clientConfig(),
+    ageCheck: ageCheck.publicAgeCheck(user),
   };
 }
 function pairIds(a, b) {
@@ -555,6 +573,22 @@ app.post("/api/login", async (req, res) => {
   setSessionCookie(res, token, req);
   try { await referrals.touchUser(db, req, res, user); } catch (_) {}
   res.json({ user: publicUser(user, selfBillingExtra(user, req)), likesLeft: isPlus(user) ? null : Math.max(0, DAILY_LIKES - await likesUsedToday(user.id)) });
+});
+
+app.post("/api/age-check", auth, async (req, res) => {
+  const parsed = ageCheck.resolveSubmission(req.body || {});
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const user = await ageCheck.saveAgeCheck(db, req.user.id, parsed);
+  const payload = {
+    ok: true,
+    blocked: ageCheck.isUnder18(user),
+    ageCheck: ageCheck.publicAgeCheck(user),
+    user: publicUser(user, selfBillingExtra(user, req)),
+  };
+  if (payload.blocked) {
+    return res.status(403).json(Object.assign({ error: "Kandi is 18+. Apple's age check shows this Apple ID is under 18, so this account can't be used.", code: "age_blocked" }, payload));
+  }
+  res.json(payload);
 });
 
 app.post("/api/logout", auth, async (req, res) => {

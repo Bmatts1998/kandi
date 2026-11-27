@@ -1,0 +1,21 @@
+{
+  "name": "@kandi/declared-age-range",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apple Declared Age Range (iOS 26+) for the Kandi Capacitor app.",
+  "main": "src/index.js",
+  "files": [
+    "ios",
+    "src",
+    "KandiDeclaredAgeRange.podspec",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=7.0.0"
+  }
+}

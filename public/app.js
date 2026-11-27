@@ -1778,7 +1778,15 @@
           const err = new Error(data.error || (res.status >= 500 ? "Something went wrong on our side. Try again." : res.statusText || "Request failed"));
           err.status = res.status;
           err.data = data;
-          if (res.status === 403 && data && data.code === "email_unverified" && state.me && state.view !== "verify") {
+          if (res.status === 403 && data && data.code === "age_blocked") {
+            if (data.user) state.me = Object.assign({}, state.me || {}, data.user);
+            else if (state.me) state.me.ageCheck = data.ageCheck || { status: "under18" };
+            if (state.view !== "ageBlocked") {
+              state.view = "ageBlocked"; state.overlay = null; state.err = "";
+              render();
+            }
+          }
+          if (res.status === 403 && data && data.code === "email_unverified" && state.me && state.view !== "verify" && state.view !== "ageBlocked") {
             state.me.emailLocked = true;
             state.view = "verify"; state.overlay = null; state.err = "";
             render();
@@ -1836,7 +1844,7 @@
     return Promise.resolve(promise).then(() => { if (!isTypingInField()) render(); }).catch(() => {});
   }
   function connectWs() {
-    if (!state.me || state.me.emailLocked) return;
+    if (!state.me || state.me.emailLocked || isAgeBlocked(state.me)) return;
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     clearTimeout(wsTimer);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1988,6 +1996,54 @@
     state.drafts.verifyEmail = (state.me && state.me.email) || "";
     if (ws) { try { ws.close(); } catch (_) {} ws = null; }
     render();
+  }
+  function isAgeBlocked(me) {
+    return Boolean(me && me.ageCheck && me.ageCheck.status === "under18");
+  }
+  function enterAgeBlocked() {
+    state.view = "ageBlocked"; state.overlay = null; state.err = ""; state.info = "";
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+    render();
+  }
+  function appleAgePlugin() {
+    try {
+      const cap = window.Capacitor;
+      if (!cap) return null;
+      return (cap.Plugins && cap.Plugins.DeclaredAgeRange) || null;
+    } catch (_) { return null; }
+  }
+  function shouldRequestAppleAge(me) {
+    if (!isNativeIos() || !me) return false;
+    const ac = me.ageCheck || {};
+    return ac.needsCheck !== false && (!ac.status || ac.status === "unavailable");
+  }
+  function applyAgeCheckResult(data) {
+    if (data && data.user) state.me = Object.assign({}, state.me || {}, data.user);
+    else if (data && data.ageCheck && state.me) state.me.ageCheck = data.ageCheck;
+    if (isAgeBlocked(state.me)) enterAgeBlocked();
+  }
+  async function syncAppleAgeCheck(opts) {
+    opts = opts || {};
+    if (!isNativeIos() || !state.me) return;
+    if (!opts.force && !shouldRequestAppleAge(state.me)) return;
+    const plugin = appleAgePlugin();
+    let result;
+    if (!plugin || typeof plugin.requestAgeRange !== "function") {
+      if (!opts.force && state.me.ageCheck && state.me.ageCheck.status === "unavailable") return;
+      result = { status: "unavailable", reason: "plugin_missing" };
+    } else {
+      try {
+        result = await plugin.requestAgeRange({ ageGate: 18 });
+      } catch (_) {
+        result = { status: "unavailable", reason: "plugin_error" };
+      }
+    }
+    try {
+      const data = await api("/api/age-check", { method: "POST", body: result || { status: "unavailable", reason: "empty" } });
+      applyAgeCheckResult(data);
+    } catch (err) {
+      if (err && err.data && err.data.code === "age_blocked") applyAgeCheckResult(err.data);
+    }
   }
   function isAdminPath() {
     return /^\/admin\/(verify|invites)\/?$/.test(location.pathname || "");
@@ -2189,7 +2245,10 @@
     }
     clearTimeout(slow1); clearTimeout(slow2); state.bootSlow = 0;
     applyMe(me);
-    if (state.me && state.me.emailLocked) { enterVerify(); return; }
+    if (isAgeBlocked(state.me)) { enterAgeBlocked(); return; }
+    if (state.me && state.me.emailLocked) { enterVerify(); await syncAppleAgeCheck(); return; }
+    await syncAppleAgeCheck();
+    if (isAgeBlocked(state.me)) return;
     if (isAdminPath() && state.me && state.me.isAdmin) {
       connectWs();
       await openAdminSection(adminSectionFromPath());
@@ -3258,6 +3317,23 @@
       <button class="btn primary" style="margin-top:16px" data-act="share-signup">Create an account</button>
       <button class="btn ghost" style="margin-top:8px" data-act="share-login">I already have an account</button>
       <p class="tiny" style="margin-top:16px"><a href="/privacy" style="color:var(--muted)">Privacy</a> · <a href="/terms" style="color:var(--muted)">Terms</a> · 18+ only</p>
+    </div></div>`;
+  }
+
+  function viewAgeBlocked() {
+    const me = state.me || {};
+    const native = isNativeIos() && appleAgePlugin();
+    return `<div class="screen splash top-pad"><div class="inner auth-card">
+      ${beads(8, "lg")}
+      <h1 class="wordmark grad">Kandi</h1>
+      <h2 class="h2" style="margin-top:18px">Kandi is 18+</h2>
+      <p class="sub">Apple's age check shows this Apple ID is under 18, so this account can't be used on Kandi.</p>
+      <p class="tiny" style="margin-top:8px">If that's a mistake, or once you turn 18, share your age range with Apple again. You can update it in Settings → [your name] → Personal Information → Age Range for Apps.</p>
+      ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+      ${state.info ? `<div class="notice ok" style="margin-top:10px">${esc(state.info)}</div>` : ""}
+      ${native ? `<button class="btn primary" data-act="age-check-retry" style="margin-top:18px"${state.ageCheckBusy ? " disabled" : ""}>${state.ageCheckBusy ? "Checking…" : "Share age with Apple"}</button>` : ""}
+      <button class="btn ghost" data-act="logout" style="margin-top:16px">Log out</button>
+      <p class="tiny" style="margin-top:16px">@${esc(me.username || "")} · <a href="/support" style="color:var(--muted)">Support</a></p>
     </div></div>`;
   }
 
@@ -5411,6 +5487,7 @@
       <button class="btn primary" style="margin-top:20px;max-width:280px" data-act="retry-boot">Try again</button></div></div>`;
     else if (state.view === "claim") html = viewClaim();
     else if (state.view === "auth") html = viewAuth();
+    else if (state.view === "ageBlocked") html = viewAgeBlocked();
     else if (state.view === "verify") html = viewVerify();
     else if (state.view === "shareLanding") html = viewShareLanding();
     else if (state.view === "showLanding") html = viewShowLanding();
@@ -6102,6 +6179,8 @@
         const data = await api("/api/signup", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass, name: state.drafts.name, age: Number(state.drafts.age), email: (state.drafts.email || "").trim(), acceptedTerms: true, meetIntent: state.drafts.meetIntent, gender: state.drafts.gender || "", referralCode: (state.drafts.referralCode || (state.pendingReferral && state.pendingReferral.code) || "").trim() } });
         applyMe({ user: data.user, likesLeft: DAILY });
         state.drafts.pass = "";
+        await syncAppleAgeCheck();
+        if (isAgeBlocked(state.me)) return;
         if (state.me && state.me.emailLocked) {
           enterVerify();
           if (data.emailSent === false) { state.err = "We couldn't send the email just now. Tap Resend email."; render(); }
@@ -6116,6 +6195,9 @@
         const data = await api("/api/login", { method: "POST", body: { username: state.drafts.user, password: state.drafts.pass } });
         applyMe(data);
         state.drafts.pass = "";
+        if (isAgeBlocked(state.me)) { enterAgeBlocked(); return; }
+        await syncAppleAgeCheck();
+        if (isAgeBlocked(state.me)) return;
         if (state.me && state.me.emailLocked) { enterVerify(); return; }
         state.view = needsOnboard(state.me) ? "onboard" : "app";
         if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
@@ -6126,6 +6208,28 @@
         await openPendingShow();
         if (await maybeOpenAdmin()) return;
         maybeShowAmbassadorNotice();
+        render(); return;
+      }
+      if (act === "age-check-retry") {
+        if (!state.me || state.ageCheckBusy) return;
+        state.ageCheckBusy = true; state.err = ""; render();
+        try {
+          await syncAppleAgeCheck({ force: true });
+          if (isAgeBlocked(state.me)) state.info = "Apple still shows this Apple ID as under 18.";
+        } catch (err) {
+          state.err = (err && err.message) || "Couldn't check your age just now.";
+        }
+        state.ageCheckBusy = false;
+        if (!isAgeBlocked(state.me)) {
+          if (state.me && state.me.emailLocked) { enterVerify(); return; }
+          state.view = needsOnboard(state.me) ? "onboard" : "app";
+          if (state.view === "onboard") state.onboardStep = onboardResumeStep(state.me);
+          state.overlay = null;
+          connectWs();
+          render();
+          if (state.view === "onboard") await loadEvents(); else await refreshAll();
+          return;
+        }
         render(); return;
       }
       if (act === "logout") {

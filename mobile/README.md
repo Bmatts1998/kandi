@@ -68,6 +68,36 @@ Internal TestFlight does not need App Review. External testers do, the first tim
 
 If GitHub Actions is not usable, create a free [Codemagic](https://codemagic.io) account, connect this repo, use `mobile/codemagic.yaml`, and add the same App Store Connect API key for signing. Then start the **kandi_ios** workflow and follow the TestFlight steps above.
 
+## Declared Age Range (next native iOS build)
+
+Kandi is 18+. The website still asks people to type their age. In the iOS app we also ask Apple for a declared age range, so a fake typed age is harder to get away with. This uses Apple's [Declared Age Range](https://developer.apple.com/documentation/declaredagerange) framework (`AgeRangeService.requestAgeRange(ageGates:)`) with a single gate of 18. It is **not** an ID check: Apple returns a range the person (or their guardian) already declared on their Apple ID, not a birthdate and not a scanned license.
+
+A small local Capacitor 7 plugin lives at `mobile/plugins/declared-age-range`. The published `@capgo/capacitor-age-range` plugin needs Capacitor 8; this project is on Capacitor 7.
+
+### What the person sees
+
+On iOS 26+, at sign-up and on the next launch for existing accounts, the system sheet asks them to share whether they are 18 or older.
+
+- **Shared, 18+:** they continue as usual. The account is marked `over18`.
+- **Shared, under 18:** the account is blocked. They see a "Kandi is 18+" screen and can log out, delete the account, or share again later (for example after they turn 18).
+- **Declined:** they can still use the app. The account is marked unverified. We do not keep asking.
+- **Unavailable** (iOS 25 or earlier, not signed into iCloud, or a build without the plugin): they can still use the app and are marked unverified. We try again on the next launch. Older iOS is never hard-blocked.
+
+The website and Android are unchanged. The server endpoint `POST /api/age-check` is already live once this lands on main; the system sheet only appears after a new Xcode build that includes the plugin and entitlement.
+
+### What Boston / Xcode must do
+
+The Linux box cannot produce an iOS build. On a Mac (or the GitHub Actions TestFlight workflow):
+
+1. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list), open App ID `com.marshandbarb.kandi` and enable the **Declared Age Range** capability. Save.
+2. Regenerate the App Store provisioning profile used for Kandi, then download or refresh it in Xcode.
+3. On a Mac: `cd mobile && npm ci && npx cap sync ios`, then open Xcode (`npx cap open ios`).
+4. In the App target → **Signing & Capabilities** → **+ Capability** → **Declared Age Range**. The entitlement file `ios/App/App/App.entitlements` already contains `com.apple.developer.declared-age-range`. Confirm `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` is set for Debug and Release.
+5. Archive and upload with **Xcode 26 or later**. The DeclaredAgeRange SDK is not in Xcode 16. The plugin is written so an older SDK still compiles and reports `unavailable`, but the system sheet will not appear until the build is made with Xcode 26+.
+6. Test on an iPhone running iOS 26+. Sandbox testing is documented in [Testing age assurance in sandbox](https://developer.apple.com/documentation/declaredagerange). You can also set Age Range for Apps under Settings → [your name] → Personal Information.
+
+Other DAT-20 native items still open: install `@capacitor/keyboard` and cap sync (the config is already in `capacitor.config.js`), a branded cold-start page, and StoreKit in-app purchases. `AVAudioSession` `.playback` and `contentInset: "never"` are already in the project.
+
 ## App Store review — what can get Kandi rejected
 
 Apple will review a store build against the [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/). The ones that matter most here:
