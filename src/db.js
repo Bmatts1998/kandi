@@ -542,7 +542,7 @@ const REPLACE_CONFLICT = {
   blocks: { cols: ["user_id", "blocked_id"], update: ["reason"] },
 };
 
-const SERIAL_TABLES = new Set(["users", "likes", "matches", "messages", "reports", "location_shares", "posts", "comments", "stories", "crews", "crew_requests", "crew_messages", "verification_requests", "referrals"]);
+const SERIAL_TABLES = new Set(["users", "likes", "matches", "messages", "reports", "location_shares", "posts", "comments", "stories", "crews", "crew_requests", "crew_messages", "verification_requests", "referrals", "safety_checks", "safety_alerts", "safety_notifications"]);
 
 function tableName(sql) {
   const m = String(sql).match(/\b(?:INTO|UPDATE|FROM|TABLE)\s+([a-zA-Z_][\w]*)/i);

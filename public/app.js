@@ -1459,6 +1459,10 @@
     chatLightbox: null,
     blocked: [],
     locationShare: null,
+    safetyCheck: null,
+    safetyIncoming: [],
+    safetyBuddies: [],
+    safetyAlert: null,
     crews: { mine: [], discover: [] },
     crewInbox: { invites: [], requests: [] },
     group: null,
@@ -1466,7 +1470,7 @@
     crewBadges: {},
     profileCrews: [],
     crewPeople: [],
-    drafts: { user: "", pass: "", name: "", age: "", email: "", gender: "", forgotLogin: "", verifyEmail: "", setEmail: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false },
+    drafts: { user: "", pass: "", name: "", age: "", email: "", gender: "", forgotLogin: "", verifyEmail: "", setEmail: "", comment: "", chat: "", promptQ: "", promptA: "", caption: "", postEvent: "", postPreview: "", commentText: "", reportReason: "", editName: "", editBio: "", editAge: "", editFavoriteArtists: "", editFavoriteFestival: "", editFavoriteVenue: "", editFavoriteHangout: "", editRaveTotem: "", editYearsRaving: "", filterAgeMin: "18", filterAgeMax: "99", claimPreview: "", storyText: "", storyEvent: "", storyReply: "", crewName: "", crewBio: "", crewScene: "", crewEmoji: "🧡", crewJoinMode: "public", crewSearch: "", crewChat: "", agreeTerms: false, safetyInterval: "120", safetyTime: "", safetyNote: "", safetyShareGps: false },
     uploadingPhoto: false,
     uploadProgress: null,
     uploadError: "",
@@ -1932,6 +1936,19 @@
         quiet(loadCrewInbox());
         if (msg.accepted && msg.group) toast("You're in " + msg.group.name);
         else toast((msg.from && msg.from.name ? msg.from.name + " tagged you in " : "You're invited to ") + ((msg.group && msg.group.name) || "a crew"));
+      } else if (msg.type === "safety") {
+        quiet(Promise.all([loadSafety(), loadNotifs()]));
+        const who = msg.from && msg.from.name ? msg.from.name : "A friend";
+        if (msg.kind === "safety_help") toast(who + " says they need help" + (msg.eventLabel ? " at " + msg.eventLabel : "") + ".", "err");
+        else if (msg.kind === "safety_missed") toast(who + " missed a safety check-in" + (msg.eventLabel ? " at " + msg.eventLabel : "") + ".", "warn");
+        else if (msg.kind === "safety_ok") toast(who + " checked in: I'm good.");
+        else if (msg.kind === "safety_ended") toast(who + " ended their safety check.");
+        else if (msg.kind === "safety_started") toast(who + " started a safety check and picked you as a buddy.");
+        if ((msg.kind === "safety_help" || msg.kind === "safety_missed") && !(state.overlay && (state.overlay.type === "chat" || state.overlay.type === "safetyHelpConfirm"))) {
+          state.safetyAlert = msg;
+          state.overlay = { type: "safetyIncoming", alert: msg, returnTo: state.overlay };
+          render();
+        }
       }
     };
   }
@@ -2861,7 +2878,7 @@
     }
   }
   async function refreshAll() {
-    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans(), loadFounding(), loadReferral()]);
+    const results = await Promise.allSettled([loadHome(), loadFeed(), loadInbound(), loadMatches(), loadEvents(), loadBlocks(), loadCrews(), loadCrewInbox(), loadNotifs(), loadPlans(), loadFounding(), loadReferral(), loadSafety()]);
     state.loaded.home = true;
     const failed = results.find((r) => r.status === "rejected");
     if (failed && state.me) toast((failed.reason && failed.reason.message) || "Some things didn't load. Pull down or switch tabs to retry.", "warn");
@@ -3050,6 +3067,113 @@
     state.unreadMsgs = data.total || 0;
     state.unreadByUser = data.byUser || {};
   }
+
+  async function loadSafety() {
+    if (!state.me) return;
+    try {
+      const data = await api("/api/safety");
+      state.safetyCheck = data.check || null;
+      state.safetyIncoming = data.incoming || [];
+      maybeSafetyReminder();
+    } catch (_) { /* keep last known check */ }
+  }
+  async function loadSafetyBuddies(eventId) {
+    const data = await api("/api/safety/buddies" + (eventId ? "?eventId=" + encodeURIComponent(eventId) : ""));
+    state.safetyBuddies = data.people || [];
+    return state.safetyBuddies;
+  }
+  function safetyDisclaimer() {
+    return `<p class="safety-disclaimer">Safety check is not an emergency service. If you or someone else is in danger, <a href="tel:911">call 911</a>.</p>`;
+  }
+  function formatSafetyWhen(iso, tz) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    try {
+      return d.toLocaleString(undefined, { timeZone: tz || undefined, weekday: "short", hour: "numeric", minute: "2-digit" });
+    } catch (_) {
+      return d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+    }
+  }
+  function safetyPhaseLabel(check) {
+    const phase = (check && check.phase) || "";
+    if (phase === "missed") return "Check-in is overdue";
+    if (phase === "grace") return "Check in now";
+    if (phase === "due_soon") return "Check-in due soon";
+    if (check && check.dueAt) return "Next check-in " + formatSafetyWhen(check.dueAt, check.timezone);
+    return "Safety check is on";
+  }
+  function safetyDock() {
+    const c = state.safetyCheck;
+    if (!c || state.view !== "app") return "";
+    if (state.overlay && (state.overlay.type === "chat" || state.overlay.type === "safetySetup" || state.overlay.type === "safetyActive" || state.overlay.type === "safetyHelpConfirm")) return "";
+    const phase = c.phase || "ok";
+    const cls = phase === "missed" ? "missed" : (phase === "grace" || phase === "due_soon" ? "grace" : "");
+    return `<div class="safety-dock ${cls}" role="status">
+      <button type="button" class="grow left-btn" data-act="open-safety">
+        <div class="nm">Safety check</div>
+        <div class="tiny">${esc(safetyPhaseLabel(c))}${c.eventLabel ? " · " + esc(c.eventLabel) : ""}</div>
+      </button>
+      <button type="button" class="btn sm primary" data-act="safety-checkin" data-id="${c.id}">I'm good</button>
+    </div>`;
+  }
+  function safetyEventsCard() {
+    const c = state.safetyCheck;
+    if (c) {
+      return `<div class="safety-card">
+        <div class="safety-phase">On</div>
+        <div class="nm" style="margin-top:4px">Safety check is on</div>
+        <div class="tiny" style="margin-top:4px">${esc(safetyPhaseLabel(c))}${c.eventLabel ? " · " + esc(c.eventLabel) : ""}</div>
+        <div class="row" style="margin-top:10px;gap:8px">
+          <button type="button" class="btn sm primary" data-act="safety-checkin" data-id="${c.id}">I'm good</button>
+          <button type="button" class="btn sm ghost" data-act="open-safety">Details</button>
+        </div>
+      </div>`;
+    }
+    return `<div class="safety-card">
+      <div class="nm">Safety check</div>
+      <p class="tiny" style="margin-top:4px">Pick buddies to check on you at a show. If you miss a check-in, they'll get an alert with your last location.</p>
+      <button type="button" class="btn sm primary" style="margin-top:10px" data-act="open-safety">Start a safety check</button>
+    </div>`;
+  }
+  function maybeSafetyReminder() {
+    const c = state.safetyCheck;
+    if (!c || c.status !== "active") return;
+    if (!(c.phase === "grace" || c.phase === "missed")) return;
+    if (state.overlay && (state.overlay.type === "safetyActive" || state.overlay.type === "safetyHelpConfirm" || state.overlay.type === "safetySetup" || state.overlay.type === "chat")) return;
+    if (state.safetyNagFor === c.id + ":" + c.dueAt) return;
+    state.safetyNagFor = c.id + ":" + c.dueAt;
+    state.overlay = { type: "safetyActive", nag: true, returnTo: state.overlay };
+  }
+  function safetyDueAtFromTime(hhmm) {
+    const m = String(hhmm || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const now = new Date();
+    const due = new Date(now);
+    due.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    if (due.getTime() <= now.getTime() - 30 * 1000) due.setDate(due.getDate() + 1);
+    return due.toISOString();
+  }
+  async function requestSafetyGps() {
+    if (!navigator.geolocation) return null;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      );
+    });
+  }
+  function selectedSafetyBuddyIds() {
+    const picked = state.drafts.safetyBuddies || [];
+    return picked.map(Number).filter(Boolean);
+  }
+  function safetySourceLabel(src) {
+    if (src === "crew") return "Crew";
+    if (src === "friend") return "Friend";
+    if (src === "match") return "Match";
+    return "Buddy";
+  }
   function bellBtn() {
     const n = state.notifUnread;
     return `<button class="icon-btn bell" data-act="open-notifs" aria-label="Notifications${n ? ", " + n + " new" : ""}">🔔${n ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : ""}</button>`;
@@ -3062,6 +3186,11 @@
     if (n.kind === "post_like") return `${who} liked your post`;
     if (n.kind === "comment") return `${who} commented: “${esc(n.text)}”`;
     if (n.kind === "follow") return `${who} started following you`;
+    if (n.kind === "safety_started") return `${who} started a safety check${n.eventLabel ? " for " + esc(n.eventLabel) : ""} and picked you as a buddy`;
+    if (n.kind === "safety_missed") return `${esc(n.text || ( (n.user ? n.user.name : "A friend") + " missed a safety check-in"))}`;
+    if (n.kind === "safety_help") return `${esc(n.text || ( (n.user ? n.user.name : "A friend") + " says they need help"))}`;
+    if (n.kind === "safety_ok") return `${who} checked in: I'm good`;
+    if (n.kind === "safety_ended") return `${esc(n.text || ( (n.user ? n.user.name : "A friend") + " ended their safety check"))}`;
     return who;
   }
   function notifAct(n) {
@@ -3070,6 +3199,7 @@
     if (n.kind === "like") return `data-act="tab" data-id="likes"`;
     if (n.kind === "match") return `data-act="chat" data-id="${n.user.id}"`;
     if (n.kind === "post_like" || n.kind === "comment") return `data-act="open-comments" data-id="${n.postId}"`;
+    if (String(n.kind || "").startsWith("safety_")) return n.checkId ? `data-act="open-safety-alert" data-id="${n.checkId}"` : `data-act="open-safety"`;
     return `data-act="open-profile" data-id="${n.user.id}"`;
   }
   function skeletonPosts(n) {
@@ -3695,6 +3825,7 @@
         <button class="${cat === "concert" ? "on" : ""}" data-act="event-cat" data-id="concert">Concerts</button>
       </div>
       <p class="sub" style="margin:0 0 10px">Upcoming Salt Lake City raves and concerts. Mark where you're going so people can find you on the floor.</p>
+      ${safetyEventsCard()}
       <div class="label">Shows I'm going to</div>${showPickerField("events")}<div style="height:14px"></div>`;
     if (!list.length) {
       html += `<div class="empty"><p>No upcoming ${cat === "rave" ? "raves" : cat === "concert" ? "concerts" : "shows"} in this list yet. Check back soon — we refresh every hour.</p></div>`;
@@ -4087,6 +4218,7 @@
     const counts = soc && soc.user ? { followerCount: soc.user.followerCount, followingCount: soc.user.followingCount } : {};
     let html = header("You", `<button type="button" class="icon-btn" data-act="share-profile" data-id="${p.id}" aria-label="Share my profile">↗</button>${bellBtn()}<button type="button" class="icon-btn" data-act="open-settings" aria-label="Settings">⚙︎</button>`);
     html += `<div class="scroll pad">`;
+    html += safetyEventsCard();
     html += profilePreview(p, posts, { isMe: true, counts });
     html += `</div>`;
     return html;
@@ -4192,6 +4324,7 @@
         ${row("open-notifs", "Activity", "Likes, matches, comments and follows")}
       </div>
       <div class="label">Safety &amp; privacy</div><div class="set-group">
+        ${row("open-safety", state.safetyCheck ? "Safety check is on" : "Safety check", state.safetyCheck ? "Tap I'm good, or end the check anytime" : "Pick buddies to check on you at a show")}
         ${row("open-get-verified", p.verified ? "You're verified" : "Get verified", p.verified ? "Selfie-verified badge is on your profile" : (p.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : (p.verificationStatus === "stale" ? "Your main photo changed — verify again" : "Take a live selfie so people know you're real")))}
         ${p.isAdmin ? row("open-admin-verify", "Review verifications", "Approve or reject selfie checks") : ""}
         ${p.isAdmin ? row("open-admin-invites", "Invite leaderboard", "Top referrers") : ""}
@@ -5102,6 +5235,7 @@
         <div class="label">Who's going (${e.goingCount != null ? e.goingCount : (e.going || []).length})</div>
         ${(e.going || []).length ? e.going.map((p) => goerRow(p)).join("") : `<p class="tiny">No one has marked this show yet. Be the first.</p>`}
         ${(e.openToMeet || []).length ? `<div class="label" style="margin-top:16px">Open to meet (${e.openCount != null ? e.openCount : e.openToMeet.length})</div>` + e.openToMeet.map((p) => goerRow(p)).join("") : ""}
+        <button type="button" class="btn ghost" style="margin-top:8px" data-act="open-safety" data-id="${esc(e.id)}">${state.safetyCheck ? "Open safety check" : "Start a safety check"}</button>
         <button type="button" class="btn primary" style="margin-top:8px" data-act="open-live" data-id="${e.id}">Open at-the-show live mode</button></div></div>`;    }
     if (o.type === "live") {
       const options = state.events.filter((e) => e.imGoing).length ? state.events.filter((e) => e.imGoing) : state.events;
@@ -5117,6 +5251,7 @@
             `<button class="chip${state.live.meetupSpot === s ? " on" : ""}" data-act="spot" data-id="${esc(s)}">${esc(s)}</button>`).join("")}</div>
           ${state.live.meetupSpot ? `<div class="notice" style="margin-top:12px">You're meeting at <strong>${esc(state.live.meetupSpot)}</strong>.</div>` : ""}
           <div class="notice warn" style="margin-top:12px">Stay safe: text a friend where you'll be, agree on a meet-up spot, and keep your phone charged.</div>
+          <button type="button" class="btn ${state.safetyCheck ? "ghost" : "primary"}" style="margin-top:12px" data-act="open-safety" data-id="${esc(eid || "")}">${state.safetyCheck ? "Open safety check" : "Start a safety check"}</button>
           <div class="label" style="margin-top:16px">Nearby at this event</div>
           ${state.nearby.map((p) => `<button class="nearby card row" style="margin-bottom:8px" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">
             ${personAvatar(p, "av sm")}
@@ -5195,7 +5330,7 @@
         <div class="scroll pad">${list.length ? list.map((n) => `<button class="notif row${n.unread ? " unread" : ""}" ${notifAct(n)}>
             ${n.user ? personAvatar(n.user, "av sm") : `<span class="av sm" style="background:linear-gradient(160deg,#111,#ff5c00)">♡</span>`}
             <div class="grow"><div>${notifText(n)}</div><div class="tiny">${esc(timeAgo(n.at))}</div></div>${n.unread ? `<span class="dot-new" aria-label="New"></span>` : ""}</button>`).join("")
-          : `<div class="empty"><div style="font-size:40px;margin-bottom:8px">🔔</div><h2 class="h2" style="font-size:22px">Nothing yet</h2><p class="sub">Likes, matches, comments and new followers show up here.</p>
+          : `<div class="empty"><div style="font-size:40px;margin-bottom:8px">🔔</div><h2 class="h2" style="font-size:22px">Nothing yet</h2><p class="sub">Likes, matches, comments, follows, and safety alerts show up here.</p>
             <button class="btn primary" style="margin-top:16px" data-act="open-composer">Share your first post</button></div>`}</div></div>`;
     }
     if (o.type === "chatMenu") {
@@ -5218,6 +5353,94 @@
         <p class="sub">${esc(o.body || "")}</p>
         <button class="btn ${o.danger ? "danger" : "primary"}" style="margin-top:16px;width:100%" data-act="confirm-ok" data-id="${esc(o.okId || "")}">${esc(o.okLabel || "OK")}</button>
         <button class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button></div></div>`;
+    }
+
+    if (o.type === "safetySetup") {
+      const going = (state.events || []).filter((e) => e.imGoing);
+      const eventId = state.drafts.safetyEvent || o.eventId || "";
+      const kind = state.drafts.safetyKind || "interval";
+      const interval = String(state.drafts.safetyInterval || "120");
+      const picked = new Set((state.drafts.safetyBuddies || []).map(String));
+      const people = state.safetyBuddies || [];
+      const intervalLabs = [["30","Every 30 minutes"],["60","Every 1 hour"],["120","Every 2 hours"],["180","Every 3 hours"]];
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Safety check</span></div></div>
+        <div class="scroll pad">
+          <p class="sub">Pick buddies to look out for you. We'll remind you to tap I'm good. If you miss a check-in, they get an alert with your last location and the show.</p>
+          ${safetyDisclaimer()}
+          <div class="label" style="margin-top:16px">Show</div>
+          <div class="chips">${`<button type="button" class="chip${!eventId ? " on" : ""}" data-act="safety-event" data-id="">No specific show</button>` + going.map((e) => `<button type="button" class="chip${eventId === e.id ? " on" : ""}" data-act="safety-event" data-id="${esc(e.id)}">${esc(e.name)}</button>`).join("")}</div>
+          <div class="label" style="margin-top:16px">Buddies</div>
+          ${people.length ? people.map((u) => `<button type="button" class="safety-buddy${picked.has(String(u.id)) ? " on" : ""}" data-act="safety-toggle-buddy" data-id="${u.id}">
+            ${personAvatar(u, "av sm")}<div class="grow"><div style="font-weight:600">${esc(u.name)}</div><div class="src">${esc(safetySourceLabel(u.source))}</div></div>
+            <span class="safety-check">${picked.has(String(u.id)) ? "✓" : ""}</span>
+          </button>`).join("") : `<p class="tiny">Match, follow, or join a crew with someone first so they can look out for you.</p>`}
+          <div class="label" style="margin-top:16px">When should we check on you?</div>
+          <div class="seg" style="margin-top:8px">
+            <button type="button" class="${kind === "interval" ? "on" : ""}" data-act="safety-kind" data-id="interval">On a schedule</button>
+            <button type="button" class="${kind === "at" ? "on" : ""}" data-act="safety-kind" data-id="at">At a time</button>
+          </div>
+          ${kind === "interval" ? `<div class="chips" style="margin-top:10px">${intervalLabs.map(([id, lab]) => `<button type="button" class="chip${interval === id ? " on" : ""}" data-act="safety-interval" data-id="${id}">${esc(lab)}</button>`).join("")}</div>`
+            : `<input type="time" data-field="safetyTime" aria-label="Check on me at" value="${esc(state.drafts.safetyTime || "")}" style="margin-top:10px" />
+               <p class="tiny" style="margin-top:6px">We'll remind you at that time, then give you about 15 minutes to check in.</p>`}
+          <div class="label" style="margin-top:16px">Location note</div>
+          <input data-field="safetyNote" maxlength="140" aria-label="Location note" placeholder="e.g. rail, left side" value="${esc(state.drafts.safetyNote || "")}" />
+          <div class="set-row static" style="margin-top:12px"><div class="grow"><div>Share GPS with buddies if I miss a check-in</div><div class="tiny">Optional. They only see it on a missed check-in or I need help.</div></div>
+            <button type="button" class="toggle${state.drafts.safetyShareGps ? " on" : ""}" data-act="safety-toggle-gps" aria-pressed="${state.drafts.safetyShareGps ? "true" : "false"}" aria-label="Share GPS"><i></i></button></div>
+          ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+          <button type="button" class="btn primary" style="margin-top:16px" data-act="safety-start" ${people.length && picked.size ? "" : "disabled"}>Start safety check</button>
+        </div></div>`;
+    }
+    if (o.type === "safetyActive") {
+      const c = state.safetyCheck;
+      if (!c) return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Safety check</span></div></div>
+        <div class="scroll pad"><p class="sub">No safety check is on.</p><button type="button" class="btn primary" style="margin-top:16px" data-act="open-safety-new">Start a safety check</button></div></div>`;
+      const overdue = c.phase === "missed" || c.phase === "grace";
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Safety check</span></div></div>
+        <div class="scroll pad">
+          ${overdue ? `<div class="notice warn" style="margin-bottom:12px">${c.phase === "missed" ? "You missed a check-in. Tap I'm good so your buddies know you're okay." : "Time to check in. Tap I'm good."}</div>` : ""}
+          <div class="safety-phase">${overdue ? "Check in" : "On"}</div>
+          <h2 class="h2" style="font-size:22px;margin-top:4px">${esc(safetyPhaseLabel(c))}</h2>
+          ${c.eventLabel ? `<p class="muted" style="margin-top:4px">${esc(c.eventLabel)}</p>` : ""}
+          <p class="tiny" style="margin-top:6px">Ends ${esc(formatSafetyWhen(c.endsAt, c.timezone))} (next morning).</p>
+          <button type="button" class="btn primary" style="margin-top:16px" data-act="safety-checkin" data-id="${c.id}">I'm good</button>
+          <button type="button" class="btn danger safety-help" data-act="safety-help-confirm" data-id="${c.id}">I need help</button>
+          <div class="label" style="margin-top:18px">Location note</div>
+          <div class="row" style="gap:8px"><input data-field="safetyNote" maxlength="140" aria-label="Location note" placeholder="e.g. rail, left side" value="${esc(state.drafts.safetyNote != null && state.drafts.safetyNote !== "" ? state.drafts.safetyNote : (c.locationNote || ""))}" />
+          <button type="button" class="btn sm ghost" data-act="safety-save-note" data-id="${c.id}">Save</button></div>
+          ${c.shareGps && c.lat != null ? `<p class="tiny" style="margin-top:8px">GPS shared${c.mapsUrl ? ` · <a href="${esc(c.mapsUrl)}" target="_blank" rel="noopener">Open map</a>` : ""}.</p>` : ""}
+          <div class="label" style="margin-top:18px">Buddies who get alerts</div>
+          ${(c.buddies || []).map((u) => `<div class="row" style="margin-bottom:8px">${personAvatar(u, "av sm")}<div class="grow"><div style="font-weight:600">${esc(u.name)}</div><div class="tiny">${esc(safetySourceLabel(u.source))}</div></div></div>`).join("") || `<p class="tiny">No buddies on this check.</p>`}
+          ${safetyDisclaimer()}
+          ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
+          <button type="button" class="btn ghost" style="margin-top:18px" data-act="safety-end" data-id="${c.id}">End safety check</button>
+        </div></div>`;
+    }
+    if (o.type === "safetyHelpConfirm") {
+      const c = state.safetyCheck || {};
+      return `<div class="sheet-bg" data-act="close"><div class="sheet" data-stop="1" role="alertdialog" aria-label="I need help"><div class="grab"></div>
+        <h2 class="h2" style="font-size:22px">Alert your buddies?</h2>
+        <p class="sub">This sends them an alert right now${c.eventLabel ? " for " + esc(c.eventLabel) : ""}, with your last location note${c.shareGps ? " and GPS, if you shared it" : ""}.</p>
+        ${safetyDisclaimer()}
+        <button type="button" class="btn danger" style="margin-top:16px;width:100%" data-act="safety-help" data-id="${c.id}">Send I need help</button>
+        <button type="button" class="btn ghost" style="margin-top:8px" data-act="close">Cancel</button>
+      </div></div>`;
+    }
+    if (o.type === "safetyIncoming") {
+      const a = o.alert || state.safetyAlert || {};
+      const who = (a.from && a.from.name) || "A friend";
+      const title = a.kind === "safety_help" ? who + " needs help" : (a.kind === "safety_missed" ? who + " missed a check-in" : who);
+      return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Back">‹</button><span style="font-weight:600">Safety alert</span></div></div>
+        <div class="scroll pad">
+          ${a.from ? personAvatar(a.from, "av") : ""}
+          <h2 class="h2" style="font-size:22px;margin-top:10px">${esc(title)}</h2>
+          <p class="sub">${esc(a.text || a.body || "")}</p>
+          ${a.eventLabel ? `<p class="muted" style="margin-top:8px">${esc(a.eventLabel)}</p>` : ""}
+          ${a.locationNote ? `<div class="notice" style="margin-top:12px">Last location: ${esc(a.locationNote)}</div>` : ""}
+          ${a.mapsUrl ? `<a class="btn primary" style="margin-top:14px" href="${esc(a.mapsUrl)}" target="_blank" rel="noopener">Open last GPS</a>` : ""}
+          ${a.from && a.from.id ? `<button type="button" class="btn ghost" style="margin-top:10px" data-act="open-profile" data-id="${a.from.id}">View profile</button>
+          <button type="button" class="btn ghost" style="margin-top:8px" data-act="chat" data-id="${a.from.id}">Message them</button>` : ""}
+          ${safetyDisclaimer()}
+        </div></div>`;
     }
     if (o.type === "share") {
       const evName = (state.events.find((e) => e.id === state.live.eventId) || {}).name || "your event";
@@ -5513,7 +5736,7 @@
       const storyOpen = Boolean(state.storyViewer);
       html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}"></div>`;
       // Parse each part on its own so stray or nested tags in one screen stay contained inside .screen.
-      appParts = [body, tabbar(), overlays(), viewGenreSheet(), viewShowPicker()];
+      appParts = [body, safetyDock(), tabbar(), overlays(), viewGenreSheet(), viewShowPicker()];
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
@@ -5554,6 +5777,7 @@
     if (SC) { try { SC.afterRender(); } catch (_) {} }
     document.body.classList.toggle("chat-open", !!(state.view === "app" && state.overlay && state.overlay.type === "chat"));
     document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-bg"));
+    document.body.classList.toggle("safety-dock-on", !!(state.view === "app" && state.safetyCheck && document.querySelector(".safety-dock")));
   }
   let lastRenderKey = "";
   const busyActs = new Set();
@@ -7224,6 +7448,156 @@
       if (act === "hold-mic") {
         return;
       }
+
+      if (act === "open-safety" || act === "open-safety-new") {
+        state.err = "";
+        if (act === "open-safety" && state.safetyCheck && !id) {
+          if (state.drafts.safetyNote == null) state.drafts.safetyNote = state.safetyCheck.locationNote || "";
+          state.overlay = { type: "safetyActive", returnTo: state.overlay && state.overlay.type === "settings" ? state.overlay : (state.overlay && state.overlay.type === "event" ? state.overlay : (state.overlay && state.overlay.type === "live" ? state.overlay : null)) };
+          render();
+          quiet(loadSafety().then(() => render()));
+          return;
+        }
+        const eventId = id || state.drafts.safetyEvent || "";
+        state.drafts.safetyEvent = eventId;
+        state.drafts.safetyKind = state.drafts.safetyKind || "interval";
+        state.drafts.safetyInterval = state.drafts.safetyInterval || "120";
+        if (!Array.isArray(state.drafts.safetyBuddies)) state.drafts.safetyBuddies = [];
+        state.overlay = { type: "safetySetup", eventId };
+        render();
+        quiet(Promise.all([loadSafetyBuddies(eventId), loadEvents(), loadSafety()]).then(() => render()));
+        return;
+      }
+      if (act === "safety-event") {
+        state.drafts.safetyEvent = id || "";
+        render();
+        quiet(loadSafetyBuddies(id || "").then(() => render()));
+        return;
+      }
+      if (act === "safety-toggle-buddy") {
+        const cur = new Set((state.drafts.safetyBuddies || []).map(String));
+        if (cur.has(String(id))) cur.delete(String(id));
+        else cur.add(String(id));
+        state.drafts.safetyBuddies = Array.from(cur);
+        render();
+        return;
+      }
+      if (act === "safety-kind") {
+        state.drafts.safetyKind = id === "at" ? "at" : "interval";
+        render();
+        return;
+      }
+      if (act === "safety-interval") {
+        state.drafts.safetyInterval = id || "120";
+        render();
+        return;
+      }
+      if (act === "safety-toggle-gps") {
+        const on = !state.drafts.safetyShareGps;
+        state.drafts.safetyShareGps = on;
+        render();
+        if (on) {
+          requestSafetyGps().then((coords) => {
+            state.safetyGps = coords;
+            if (!coords) toast("Couldn't get GPS. You can still start the check with a location note.", "warn");
+          });
+        } else state.safetyGps = null;
+        return;
+      }
+      if (act === "safety-start") {
+        const kind = state.drafts.safetyKind === "at" ? "at" : "interval";
+        const body = {
+          scheduleKind: kind,
+          buddyIds: selectedSafetyBuddyIds(),
+          eventId: state.drafts.safetyEvent || "",
+          locationNote: state.drafts.safetyNote || "",
+          shareGps: Boolean(state.drafts.safetyShareGps),
+          timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Denver"),
+        };
+        if (kind === "interval") body.intervalMinutes = Number(state.drafts.safetyInterval || 120);
+        else {
+          const dueAt = safetyDueAtFromTime(state.drafts.safetyTime);
+          if (!dueAt) { state.err = "Pick a time for us to check on you."; render(); return; }
+          body.dueAt = dueAt;
+        }
+        if (body.shareGps && state.safetyGps) { body.lat = state.safetyGps.lat; body.lng = state.safetyGps.lng; }
+        if (body.shareGps && !state.safetyGps) {
+          const coords = await requestSafetyGps();
+          if (coords) { body.lat = coords.lat; body.lng = coords.lng; state.safetyGps = coords; }
+        }
+        const data = await api("/api/safety", { method: "POST", body });
+        state.safetyCheck = data.check;
+        state.err = "";
+        state.overlay = { type: "safetyActive" };
+        render();
+        toast("Safety check is on. We'll remind you to tap I'm good.");
+        return;
+      }
+      if (act === "safety-checkin") {
+        const check = state.safetyCheck;
+        if (!check) return;
+        const body = { locationNote: state.drafts.safetyNote != null && state.drafts.safetyNote !== "" ? state.drafts.safetyNote : check.locationNote, shareGps: Boolean(check.shareGps || state.drafts.safetyShareGps) };
+        if (body.shareGps) {
+          const coords = state.safetyGps || await requestSafetyGps();
+          if (coords) { body.lat = coords.lat; body.lng = coords.lng; }
+        }
+        const data = await api("/api/safety/" + check.id + "/checkin", { method: "POST", body });
+        state.safetyCheck = data.check;
+        toast("Checked in. You're good.");
+        if (state.overlay && (state.overlay.type === "safetyActive" || state.overlay.nag)) render();
+        else render();
+        return;
+      }
+      if (act === "safety-save-note") {
+        const check = state.safetyCheck;
+        if (!check) return;
+        const data = await api("/api/safety/" + check.id + "/location", { method: "POST", body: { locationNote: state.drafts.safetyNote || "", shareGps: Boolean(check.shareGps || state.drafts.safetyShareGps) } });
+        state.safetyCheck = data.check;
+        toast("Location note saved.");
+        render();
+        return;
+      }
+      if (act === "safety-help-confirm") {
+        state.overlay = { type: "safetyHelpConfirm", returnTo: { type: "safetyActive" } };
+        render();
+        return;
+      }
+      if (act === "safety-help") {
+        const check = state.safetyCheck;
+        if (!check) return;
+        const body = { locationNote: state.drafts.safetyNote != null && state.drafts.safetyNote !== "" ? state.drafts.safetyNote : check.locationNote, shareGps: Boolean(check.shareGps || state.drafts.safetyShareGps) };
+        if (body.shareGps) {
+          const coords = state.safetyGps || await requestSafetyGps();
+          if (coords) { body.lat = coords.lat; body.lng = coords.lng; }
+        }
+        const data = await api("/api/safety/" + check.id + "/help", { method: "POST", body });
+        state.safetyCheck = data.check;
+        state.overlay = { type: "safetyActive" };
+        toast("Your buddies were alerted. If this is an emergency, call 911.", "warn");
+        render();
+        return;
+      }
+      if (act === "safety-end") {
+        const check = state.safetyCheck;
+        if (!check) return;
+        await api("/api/safety/" + check.id + "/end", { method: "POST", body: {} });
+        state.safetyCheck = null;
+        state.overlay = null;
+        toast("Safety check ended.");
+        render();
+        return;
+      }
+      if (act === "open-safety-alert") {
+        const incoming = (state.safetyIncoming || []).find((a) => String(a.checkId) === String(id)) || (state.notifs || []).find((n) => String(n.checkId) === String(id) && String(n.kind || "").startsWith("safety_"));
+        state.safetyAlert = incoming || { checkId: id };
+        state.overlay = { type: "safetyIncoming", alert: state.safetyAlert };
+        render();
+        quiet(loadSafety().then(() => {
+          const again = (state.safetyIncoming || []).find((a) => String(a.checkId) === String(id));
+          if (again) { state.safetyAlert = again; state.overlay = { type: "safetyIncoming", alert: again }; render(); }
+        }));
+        return;
+      }
       if (act === "share-loc") { state.overlay = { type: "share", with: "Riley (trusted friend)", returnTo: state.overlay && ["settings", "live"].includes(state.overlay.type) ? state.overlay : null }; render(); return; }
       if (act === "share-with") { state.overlay = Object.assign({}, state.overlay, { with: id }); render(); return; }
       if (act === "confirm-share") {
@@ -7438,7 +7812,7 @@
     "preview-profile", "edit-back",
     "open-story-composer", "story-close", "story-next", "story-prev", "story-composer-close", "story-event", "story-hide-viewers",
     "create-group", "pick-crew-emoji", "crew-join-mode", "edit-group", "invite-open", "close-invite",
-    "close-genre", "discover-genre"]);
+    "close-genre", "discover-genre", "open-safety", "open-safety-new", "safety-event", "safety-toggle-buddy", "safety-kind", "safety-interval", "safety-toggle-gps", "safety-help-confirm"]);
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (t.closest && t.closest("input[type=file], .file-sr, label[for^='kandi-file-']")) return;
@@ -7939,5 +8313,9 @@
   if (window.matchMedia("(display-mode: standalone)").matches) document.body.classList.add("standalone");
   applyDynamicType();
   startIconizer();
+  setInterval(() => { if (state.view === "app" && state.me) quiet(loadSafety()); }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.view === "app" && state.me) quiet(loadSafety());
+  });
   boot();
 })();

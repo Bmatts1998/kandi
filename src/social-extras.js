@@ -146,6 +146,23 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
     if (extraNotifications) {
       try { for (const it of (await extraNotifications(me)) || []) items.push(it); } catch (err) { console.error("extra notifications:", err.message || err); }
     }
+    try {
+      const safety = require("./safety");
+      const rows = await safety.listSafetyNotifications(db(), me, 40);
+      for (const r of rows) {
+        items.push({
+          kind: r.kind,
+          fromId: r.from_id != null ? Number(r.from_id) : 0,
+          at: r.created_at,
+          text: r.text || "",
+          checkId: r.check_id ? Number(r.check_id) : null,
+          locationNote: r.location_note || "",
+          lat: r.lat == null ? null : Number(r.lat),
+          lng: r.lng == null ? null : Number(r.lng),
+          eventLabel: r.event_label || "",
+        });
+      }
+    } catch (_) { /* safety tables may not exist yet */ }
     const unread = await unreadFor(me);
     const visible = items.filter((it) => !blocked.has(it.fromId));
     visible.forEach((it) => { it.ts = toMs(it.at); });
@@ -168,8 +185,13 @@ function installSocialExtras({ app, getDb, auth, publicUser, blockedSet, broadca
         targetType: it.targetType || null,
         text: hidden ? "" : (it.text || it.comment || ""),
         user: hidden || !u ? null : { id: u.id, name: u.name, username: u.username, photos: (u.photos || []).slice(0, 1) },
+        checkId: it.checkId || null,
+        locationNote: it.locationNote || "",
+        lat: it.lat == null ? null : it.lat,
+        lng: it.lng == null ? null : it.lng,
+        eventLabel: it.eventLabel || "",
       };
-    }).filter((n) => n.user || n.kind === "like");
+    }).filter((n) => n.user || n.kind === "like" || String(n.kind || "").startsWith("safety_") || n.kind === "crew_lost");
     res.json({ notifications: out, unreadCount: out.filter((n) => n.unread).length, unreadMessages: unread.total, unreadByUser: unread.byUser });
   });
 

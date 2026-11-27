@@ -47,6 +47,7 @@ const songs = require("./song");
 const followRules = require("./follow-rules");
 const ageCheck = require("./age-check");
 const showCrew = require("./show-crew");
+const { installSafety } = require("./safety");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -1906,6 +1907,15 @@ installGroups({
   getDb: () => db,
   auth,
   upload,
+  publicUser,
+  blockedSet,
+  broadcastToUser: (userId, payload) => broadcastToUser(userId, payload),
+});
+
+installSafety({
+  app,
+  getDb: () => db,
+  auth,
   publicUser,
   blockedSet,
   broadcastToUser: (userId, payload) => broadcastToUser(userId, payload),
