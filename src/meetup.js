@@ -64,6 +64,7 @@ async function setRsvp(db, user, ev, { going, openToMeet, meetNote }) {
   const key = ev.event_key || eventKey(ev);
   const existing = await db.prepare(`SELECT * FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).get(user.id, ev.id, key);
   if (going === false) {
+    try { await require("./sets").clearCatchingForEvent(db, user.id, ev); } catch (_) {}
     await db.prepare(`DELETE FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).run(user.id, ev.id, key);
     const live = await db.prepare(`SELECT event_id FROM live WHERE user_id=?`).get(user.id);
     if (live && (live.event_id === ev.id || live.event_id === key)) {

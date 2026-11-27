@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:engagement": "node scripts/test-engagement.js",
     "test:billing": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js",
-    "test": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js tests/socials.test.js tests/email-verification.test.js tests/song.test.js tests/follow-rules.test.js tests/profile-video.test.js tests/object-store.test.js tests/age-check.test.js tests/show-crew.test.js tests/safety.test.js tests/trades.test.js"
+"test": "node --test tests/stripe-billing.test.js tests/plus-founding.test.js tests/socials.test.js tests/email-verification.test.js tests/song.test.js tests/follow-rules.test.js tests/profile-video.test.js tests/object-store.test.js tests/age-check.test.js tests/show-crew.test.js tests/safety.test.js tests/trades.test.js tests/sets.test.js"
   },
   "engines": {
     "node": ">=22"

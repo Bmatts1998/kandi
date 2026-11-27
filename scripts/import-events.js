@@ -18,6 +18,7 @@ const { URL } = require("url");
 
 const ROOT = path.join(__dirname, "..");
 const { eventKey } = require("../src/event-key");
+const { lineupFromSource, syncImportedSets } = require("../src/sets");
 const JSON_PATH = path.join(ROOT, "data", "slc-events-2026.json");
 const USER_AGENT = "KandiEventBot/1.0 (+https://github.com/Bmatts1998/kandi)";
 const FETCH_TIMEOUT_MS = 20000;
@@ -423,7 +424,10 @@ function finalize(partial) {
     timeTba: !!dateOnly,
     address: rememberAddress(partial.venue, partial.address) || addressFromVenue(partial.venue, ""),
     endsAt: partial.endsAt || "",
+    lineup: Array.isArray(partial.lineup) ? partial.lineup : [],
+    raw: partial.raw || null,
   };
+  if (!ev.lineup.length) ev.lineup = lineupFromSource(ev, ev.raw);
   const reason = skipReason(ev);
   if (reason) return null;
   return ev;
@@ -566,37 +570,58 @@ async function fetchElectronicSlc() {
 
 async function fetchResidentAdvisor() {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const query = `query ($f: FilterInputDtoInput, $s: SortInputDtoInput) {
+  const queryCore = `id title date startTime contentUrl flyerFront minimumAge
+          venue { name area { name } }
+          artists { name }
+          genres { name }`;
+  const queryWithLineup = `query ($f: FilterInputDtoInput, $s: SortInputDtoInput) {
     eventListings(filters: $f, pageSize: 80, page: 1, sort: $s) {
       data {
         event {
-          id title date startTime contentUrl flyerFront minimumAge
-          venue { name area { name } }
-          artists { name }
-          genres { name }
+          ${queryCore}
+          timetable { start end startTime endTime area { name } artists { name } }
         }
       }
       totalResults
     }
   }`;
-  const payload = JSON.stringify({
-    query,
-    variables: {
-      f: { areas: { eq: 592 }, listingDate: { gte: today } },
-      s: { listingDate: { order: "ASCENDING" } },
-    },
-  });
-  const { status, text } = await fetchText("https://ra.co/graphql", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Referer: "https://ra.co/events/us/saltlakecity",
-      Origin: "https://ra.co",
-    },
-    body: payload,
-  });
-  if (status !== 200) throw new Error("HTTP " + status);
-  const data = JSON.parse(text);
+  const query = `query ($f: FilterInputDtoInput, $s: SortInputDtoInput) {
+    eventListings(filters: $f, pageSize: 80, page: 1, sort: $s) {
+      data {
+        event {
+          ${queryCore}
+        }
+      }
+      totalResults
+    }
+  }`;
+  async function raQuery(q) {
+    const body = JSON.stringify({
+      query: q,
+      variables: {
+        f: { areas: { eq: 592 }, listingDate: { gte: today } },
+        s: { listingDate: { order: "ASCENDING" } },
+      },
+    });
+    const { status, text } = await fetchText("https://ra.co/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Referer: "https://ra.co/events/us/saltlakecity",
+        Origin: "https://ra.co",
+      },
+      body,
+    });
+    if (status !== 200) throw new Error("HTTP " + status);
+    return JSON.parse(text);
+  }
+  let data;
+  try {
+    data = await raQuery(queryWithLineup);
+    if (data.errors && data.errors.length) data = await raQuery(query);
+  } catch {
+    data = await raQuery(query);
+  }
   if (data.errors && data.errors.length) throw new Error(data.errors[0].message);
   const rows = (((data.data || {}).eventListings || {}).data) || [];
   const events = [];
@@ -620,6 +645,7 @@ async function fetchResidentAdvisor() {
       sourceUrl: e.contentUrl ? "https://ra.co" + e.contentUrl : "https://ra.co/events/us/saltlakecity",
       imageUrl: e.flyerFront || "",
       source: "residentadvisor",
+      raw: e,
     });
     if (ev) events.push(ev);
   }
@@ -833,6 +859,7 @@ function loadCurated() {
         emoji: raw.emoji,
         color: raw.color,
         source: raw.source || "curated",
+        lineup: raw.lineup || raw.sets || [],
       });
     }).filter(Boolean);
   } catch (err) {
@@ -876,6 +903,11 @@ function mergeEvents(groups) {
       if (!prefer.imageUrl && other.imageUrl) merged.imageUrl = other.imageUrl;
       if (!prefer.ageLimit && other.ageLimit) merged.ageLimit = other.ageLimit;
       if ((prefer.artists || []).length < (other.artists || []).length) merged.artists = other.artists;
+      const preferLineup = prefer.lineup || [];
+      const otherLineup = other.lineup || [];
+      const timed = (list) => (list || []).filter((s) => s && (s.startsAt || s.starts_at)).length;
+      if (timed(otherLineup) > timed(preferLineup) || (!preferLineup.length && otherLineup.length)) merged.lineup = otherLineup;
+      else if (!merged.lineup || !merged.lineup.length) merged.lineup = preferLineup.length ? preferLineup : otherLineup;
       if (prefer.timeTba && !other.timeTba) {
         merged.startsAt = other.startsAt;
         merged.timeTba = false;
@@ -1031,8 +1063,15 @@ async function upsertDatabase(events, sourceResults) {
     .run("events_updated_at", new Date().toISOString(), new Date().toISOString());
 
   const active = events.length;
+  let setsUpserted = 0;
+  try {
+    const synced = await syncImportedSets(db, events);
+    setsUpserted = synced && synced.upserted || 0;
+  } catch (err) {
+    console.error("set-time import failed:", err && err.message ? err.message : err);
+  }
   await db.close?.();
-  return { upserted: active, removed };
+  return { upserted: active, removed, setsUpserted };
 }
 
 function writeSnapshot(events, sourceResults) {
@@ -1062,6 +1101,7 @@ function writeSnapshot(events, sourceResults) {
       address: ev.address,
       timeTba: ev.timeTba,
       endsAt: ev.endsAt,
+      lineup: ev.lineup || [],
       sourceUrl: ev.sourceUrl,
       imageUrl: ev.imageUrl,
       source: ev.source,
@@ -1131,7 +1171,7 @@ async function main() {
       console.log("DATABASE_URL not set; using local SQLite from src/db.js");
     }
     const result = await upsertDatabase(events, sourceResults);
-    console.log(`database upserted ${result.upserted}, marked removed ${result.removed}`);
+    console.log(`database upserted ${result.upserted}, marked removed ${result.removed}, sets ${result.setsUpserted || 0}`);
   }
 }
 

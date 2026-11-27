@@ -49,6 +49,7 @@ const ageCheck = require("./age-check");
 const showCrew = require("./show-crew");
 const { installSafety } = require("./safety");
 const { installTrades, deleteTradesForUser } = require("./trade-routes");
+const sets = require("./sets");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -451,6 +452,7 @@ function selfEmailExtra(user) {
     emailVerificationOn: mailer.verificationActive(),
     allowLinkFollows: followRules.shareFollowEnabled(user),
     isAdmin: isAdminUser(user),
+    hideSets: sets.publicHideSets(user),
     verificationStatus: publicStatus(user),
     verified: publicStatus(user) === "approved",
     ...referrals.publicSelf(user),
@@ -1073,6 +1075,7 @@ app.get("/api/discover", auth, async (req, res) => {
   });
   if (genreId) people = people.filter((p) => p.vibes.includes(genreId));
   // Event-specific filters stay Kandi+, except "same show," which is free.
+  // Set-time matching is also free, including inside the iOS app.
   if (event !== "all" && event !== "same" && !isPlus(req.user)) event = "all";
   if (event === "same") {
     people = people.filter((p) => (p.sharedEvents || []).length);
@@ -1091,6 +1094,8 @@ app.get("/api/discover", auth, async (req, res) => {
   if (lo > 18 || hi < 99) {
     people = people.filter((p) => p.age != null && p.age >= lo && p.age <= hi);
   }
+  const setsFilter = String(req.query.sets || "all");
+  people = await sets.attachDiscoverSets(db, req.user, people, { setsFilter });
   res.json({
     people,
     mode,
@@ -1219,6 +1224,7 @@ app.get("/api/matches", auth, async (req, res) => {
     const other = await db.prepare(`SELECT * FROM users WHERE id=?`).get(otherId);
     const last = await db.prepare(`SELECT * FROM messages WHERE match_id=? ORDER BY id DESC LIMIT 1`).get(m.id);
     const shared = other ? await sharedShows(db, req.user.id, otherId) : [];
+    const setShare = other ? await sets.attachMatchSets(db, req.user.id, otherId, other) : { sharedSet: null, sharedSetChip: "" };
     const item = {
       matchId: m.id,
       matchKind: m.match_kind || "",
@@ -1226,6 +1232,8 @@ app.get("/api/matches", auth, async (req, res) => {
       lastMessage: last ? { text: previewText(last), preview: previewText(last), attachType: last.attach_type || null, fromId: last.from_id, at: last.created_at } : null,
       createdAt: m.created_at,
       sharedEvents: shared,
+      sharedSet: setShare.sharedSet,
+      sharedSetChip: setShare.sharedSetChip,
       meetPlan: (m.meet_spot || m.meet_time) ? {
         eventKey: m.meet_event_key || "",
         event: shared.find((s) => s.eventKey === m.meet_event_key || s.id === m.meet_event_key) || shared[0] || null,
@@ -1340,6 +1348,7 @@ app.get("/api/events", auth, async (req, res) => {
     });
   }
   events.sort((a, b) => String(a.startsAt || a.date).localeCompare(String(b.startsAt || b.date)));
+  await sets.attachSetsToEvents(db, events, req.user, { blocked, publicUser });
   res.json({ events, updatedAt: meta ? meta.value : null });
 });
 
@@ -1903,6 +1912,16 @@ referrals.installReferrals({
   auth,
 });
 
+sets.installSets({
+  app,
+  getDb: () => db,
+  auth,
+  publicUser,
+  blockedSet,
+  visibleInMode,
+  resolveMode,
+});
+
 
 installGroups({
   app,
@@ -2067,6 +2086,11 @@ async function boot() {
     if (n) console.log("Updated demo songs (" + n + " changes).");
   } catch (err) {
     console.error("Demo song seed failed:", err.message || err);
+  }
+  try {
+    await sets.seedDemoSets(db);
+  } catch (err) {
+    console.error("Demo set-time seed failed:", err.message || err);
   }
   Object.assign(engagement, createEngagement(() => db));
   demoChat = createDemoChat({ getDb: () => db, publicUser, broadcastToUser });
