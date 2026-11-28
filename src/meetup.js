@@ -1,7 +1,6 @@
 "use strict";
 
 const { eventKey, chipLabel } = require("./event-key");
-const { vibePublic } = require("./vibe");
 
 function isAdult(u) {
   return Number(u && u.age) >= 18;
@@ -37,7 +36,7 @@ function goingMatchesEvent(row, ev) {
 async function loadGoingRows(db) {
   return db.prepare(`
     SELECT g.event_id AS going_event_id, g.event_key AS going_event_key,
-           g.open_to_meet, g.meet_note, u.*, g.show_vibe AS vibe
+           g.open_to_meet, g.meet_note, u.*
     FROM event_going g
     JOIN users u ON u.id = g.user_id
   `).all();
@@ -51,7 +50,6 @@ function shapeGoers(rows, ev, viewer, blocked, publicUser) {
     .map((u) => publicUser(u, {
       openToMeet: truthy(u.open_to_meet),
       meetNote: truthy(u.open_to_meet) ? String(u.meet_note || "").slice(0, 80) : "",
-      ...vibePublic(u.vibe),
     }));
 }
 
@@ -62,7 +60,7 @@ async function resolveEvent(db, idOrKey) {
     || (await db.prepare(`SELECT * FROM events WHERE event_key=?`).get(id));
 }
 
-async function setRsvp(db, user, ev, { going, openToMeet, meetNote, vibe }) {
+async function setRsvp(db, user, ev, { going, openToMeet, meetNote }) {
   const key = ev.event_key || eventKey(ev);
   const existing = await db.prepare(`SELECT * FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).get(user.id, ev.id, key);
   if (going === false) {
@@ -75,26 +73,22 @@ async function setRsvp(db, user, ev, { going, openToMeet, meetNote, vibe }) {
   } else {
     const open = openToMeet == null ? (existing ? truthy(existing.open_to_meet) : 0) : (openToMeet ? 1 : 0);
     const note = meetNote == null ? (existing ? existing.meet_note : "") : String(meetNote || "").slice(0, 80);
-    const nextVibe = vibe !== undefined ? String(vibe || "") : (existing ? String(existing.show_vibe || "") : "");
     if (existing) {
-      await db.prepare(`UPDATE event_going SET event_id=?, event_key=?, open_to_meet=?, meet_note=?, show_vibe=? WHERE user_id=? AND (event_id=? OR event_key=?)`)
-        .run(ev.id, key, open, open ? note : "", nextVibe, user.id, ev.id, key);
+      await db.prepare(`UPDATE event_going SET event_id=?, event_key=?, open_to_meet=?, meet_note=? WHERE user_id=? AND (event_id=? OR event_key=?)`)
+        .run(ev.id, key, open, open ? note : "", user.id, ev.id, key);
     } else {
-      await db.prepare(`INSERT INTO event_going (user_id, event_id, event_key, open_to_meet, meet_note, show_vibe) VALUES (?,?,?,?,?,?)`)
-        .run(user.id, ev.id, key, open, open ? note : "", nextVibe);
+      await db.prepare(`INSERT INTO event_going (user_id, event_id, event_key, open_to_meet, meet_note) VALUES (?,?,?,?,?)`)
+        .run(user.id, ev.id, key, open, open ? note : "");
     }
   }
   const rows = await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(user.id);
   const ids = rows.map((r) => r.event_id);
   await db.prepare(`UPDATE users SET events=? WHERE id=?`).run(JSON.stringify(ids), user.id);
   const row = await db.prepare(`SELECT * FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).get(user.id, ev.id, key);
-  const pub = vibePublic(row && row.show_vibe);
   return {
     going: Boolean(row),
     openToMeet: Boolean(row && truthy(row.open_to_meet)),
     meetNote: row && truthy(row.open_to_meet) ? String(row.meet_note || "") : "",
-    vibe: pub.vibe,
-    vibeLabel: pub.vibeLabel,
   };
 }
 
@@ -105,7 +99,7 @@ async function goingEventIds(db, userId) {
 
 async function userGoingShows(db, userId) {
   const rows = await db.prepare(`
-    SELECT e.*, g.open_to_meet, g.meet_note, g.show_vibe AS vibe
+    SELECT e.*, g.open_to_meet, g.meet_note
     FROM event_going g
     JOIN events e ON e.id = g.event_id OR (COALESCE(g.event_key,'') != '' AND e.event_key = g.event_key)
     WHERE g.user_id=?
@@ -138,7 +132,6 @@ async function listUpcomingForProfile(db, targetUser, viewer) {
     showUpcoming: show,
     shows: rows.map((e) => compactShow(e, {
       openToMeet: isMe ? truthy(e.open_to_meet) : undefined,
-      ...vibePublic(e.vibe),
     })),
   };
 }
@@ -153,7 +146,7 @@ async function sharedShows(db, userAId, userBId) {
 
 async function upcomingByUser(db) {
   const rows = await db.prepare(`
-    SELECT g.user_id AS going_user_id, g.show_vibe AS vibe, e.*
+    SELECT g.user_id AS going_user_id, e.*
     FROM event_going g
     JOIN events e ON e.id = g.event_id OR (COALESCE(g.event_key,'') != '' AND e.event_key = g.event_key)
     WHERE COALESCE(e.is_example,0)=0 AND COALESCE(e.status,'active')='active'

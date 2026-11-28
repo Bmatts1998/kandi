@@ -410,11 +410,6 @@
     .meet-mini { margin-top: 2px; color: var(--orange, #ff8a1a); }
     .upcoming-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
     .upcoming-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--card, #161616); color: inherit; border: 1px solid var(--line, #2a2a2a); border-radius: 14px; padding: 10px 12px; min-height: 44px; }
-    .upcoming-row { flex-wrap: wrap; }
-    .upcoming-row .vibe-chip { flex: 0 0 auto; }
-    .vibe-picker { margin: 10px 0 2px; }
-    .vibe-chip { font-size: 11px; padding: 3px 8px; min-height: 0; white-space: nowrap; font-weight: 600; }
-    .goer .vibe-chip { margin-top: 4px; }
     .toggle { min-width: 46px; }
 
     /* ---- Tab bar pinned at all times (iOS WKWebView / older Safari without dvh) ---- */

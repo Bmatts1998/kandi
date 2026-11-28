@@ -75,11 +75,6 @@
   const MAX_VIDEO_BYTES = 60 * 1024 * 1024; // after in-app shrinking; the original can be any size
   const MAX_VIDEO_SECONDS = 60;
   const SPOTS = ["Left of main stage", "Right of main stage", "Water station", "Merch booth", "Back of the floor", "Totem / meeting flag", "Rideshare / exit"];
-  const SHOW_VIBES = [
-    { id: "going_sober", label: "Going sober", emoji: "💧" },
-    { id: "sober_friendly", label: "Sober-friendly", emoji: "" },
-    { id: "party", label: "Here to party", emoji: "🎉" },
-  ];
   const PROMPT_BANK = [
     { id: "goto", q: "My go-to set is..." },
     { id: "moment", q: "Best festival moment..." },
@@ -535,7 +530,6 @@
   }
   function compactUpcomingFromEvent(e) {
     if (!e) return null;
-    const vibe = e.imVibe || e.vibe || "";
     return {
       id: e.id,
       eventKey: e.eventKey || e.event_key || "",
@@ -546,8 +540,6 @@
       city: e.city || "",
       emoji: e.emoji || "",
       category: e.category || "concert",
-      vibe,
-      vibeLabel: e.imVibeLabel || e.vibeLabel || "",
     };
   }
   function applyMyShows(eventsIds, upcomingShows) {
@@ -565,14 +557,7 @@
     const ev = (state.events || []).find((x) => String(x.id) === sid);
     if (ev) {
       ev.imGoing = going;
-      if (!going) {
-        ev.imOpenToMeet = false;
-        ev.imVibe = "";
-        ev.imVibeLabel = "";
-      } else if (data) {
-        if (data.vibe !== undefined) ev.imVibe = data.vibe || "";
-        if (data.vibeLabel !== undefined) ev.imVibeLabel = data.vibeLabel || "";
-      }
+      if (!going) ev.imOpenToMeet = false;
       if (ev.goingCount != null) ev.goingCount = Math.max(0, Number(ev.goingCount) + (going ? 1 : -1));
     }
     if (data && (Array.isArray(data.events) || Array.isArray(data.upcomingShows))) {
@@ -1493,7 +1478,7 @@
     uploadError: "",
     onboardStep: 0,
     discoverMode: "",
-    filters: { event: "all", sets: "all", vibe: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
+    filters: { event: "all", sets: "all", genre: "all", gender: "all", ageMin: 18, ageMax: 99 },
     billing: "monthly",
     pendingPlan: "plus",
     plans: null,
@@ -1621,28 +1606,6 @@
     const extra = Math.max(0, (people || []).length - list.length);
     return `<div class="av-stack">${list.map((p) => personAvatar(p, "av xs")).join("")}${extra ? `<span class="av-more">+${extra}</span>` : ""}</div>`;
   }
-  function vibeChipLabel(id) {
-    const v = SHOW_VIBES.find((x) => x.id === id);
-    if (!v) return "";
-    return v.emoji ? v.label + " " + v.emoji : v.label;
-  }
-  function vibeChipHtml(id, label) {
-    const text = label || vibeChipLabel(id);
-    if (!text) return "";
-    return `<span class="chip soft vibe-chip">${esc(text)}</span>`;
-  }
-  function showVibePicker(e) {
-    if (!e || !e.imGoing) return "";
-    const cur = e.imVibe || e.vibe || "";
-    return `<div class="vibe-picker">
-      <div class="tiny" style="margin-bottom:8px">Your vibe at this show <span class="muted">(optional)</span></div>
-      <div class="chips">${SHOW_VIBES.map((v) =>
-        `<button type="button" class="chip${cur === v.id ? " on" : ""}" data-act="set-show-vibe" data-id="${esc(e.id)}" data-t="${esc(v.id)}">${esc(vibeChipLabel(v.id))}</button>`
-      ).join("")}
-        <button type="button" class="chip${!cur ? " on" : ""}" data-act="set-show-vibe" data-id="${esc(e.id)}" data-t="">No vibe</button>
-      </div>
-    </div>`;
-  }
   function rsvpToggles(e) {
     return `<div class="rsvp-box">
       <div class="rsvp-item"><div class="grow"><div class="rsvp-label">I'm going</div></div>
@@ -1650,7 +1613,6 @@
       <div class="rsvp-item"><div class="grow"><div class="rsvp-label">Open to meet up</div>
         <div class="tiny">Let people at this show know they can say hi</div></div>
         <button type="button" class="toggle${e.imOpenToMeet ? " on" : ""}" data-act="toggle-meet" data-id="${esc(e.id)}" aria-pressed="${e.imOpenToMeet ? "true" : "false"}" aria-label="Open to meet up"><i></i></button></div>
-      ${showVibePicker(e)}
     </div>`;
   }
   function goerActions(p) {
@@ -1660,14 +1622,13 @@
     return `<button type="button" class="btn sm primary" data-act="want-like" data-id="${p.id}" data-type="photo" data-target="0">Like</button>`;
   }
   function goerRow(p) {
-    const vibe = (p.vibeLabel || p.vibe) ? `<div class="tiny">${vibeChipHtml(p.vibe, p.vibeLabel)}</div>` : "";
     const note = p.openToMeet
       ? `<div class="tiny">Open to meet${p.meetNote ? " · " + esc(p.meetNote) : ""}</div>`
       : (p.vibes && p.vibes.length ? `<div class="tiny">${p.vibes.slice(0, 3).map(esc).join(" · ")}</div>` : "");
     return `<div class="goer card">
       <button type="button" class="goer-main" data-act="open-profile" data-id="${p.id}">
         ${personAvatar(p, "av sm")}
-        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}${vibe}${note}</div>
+        <div class="grow"><div style="font-weight:700">${esc(p.name)}${p.age ? ", " + p.age : ""}${p.isDemo ? ` <span class="tiny">demo</span>` : ""}${isVip() && p.subscription === "vip" ? ' <span class="vip">Priority</span>' : ""}</div>${genreRow(p, { compact: true, max: 2, tappable: false })}${note}</div>
       </button>
       <div class="goer-actions">${goerActions(p)}</div>
     </div>`;
@@ -1688,7 +1649,7 @@
     if (opts.hidden) return `<div class="label">Upcoming shows</div><p class="tiny">This person hides their upcoming shows.</p>`;
     if (!(shows && shows.length)) return opts.mine ? `<div class="label">Upcoming shows</div><p class="tiny">Pick your shows in Edit Profile or the Events tab and they'll show up here.</p>` : "";
     return `<div class="label">Upcoming shows</div><div class="upcoming-list">${shows.map((e) =>
-      `<button type="button" class="upcoming-row" data-act="event" data-id="${esc(e.id)}">${esc(e.emoji || "✺")} <span class="grow">${esc(e.name)}</span>${(e.vibeLabel || e.vibe) ? vibeChipHtml(e.vibe, e.vibeLabel) : ""}<span class="tiny">${esc(e.date || eventChipLabel(e))}</span></button>`
+      `<button type="button" class="upcoming-row" data-act="event" data-id="${esc(e.id)}">${esc(e.emoji || "✺")} <span class="grow">${esc(e.name)}</span><span class="tiny">${esc(e.date || eventChipLabel(e))}</span></button>`
     ).join("")}</div>`;
   }
 
@@ -3104,7 +3065,6 @@
     if (state.filters.genre && state.filters.genre !== "all") q.set("genre", state.filters.genre);
     if (state.filters.event && state.filters.event !== "all") q.set("event", state.filters.event);
     if (state.filters.sets && state.filters.sets !== "all") q.set("sets", state.filters.sets);
-    if (state.filters.vibe && state.filters.vibe !== "all") q.set("vibe", state.filters.vibe);
     if (state.filters.gender && state.filters.gender !== "all") q.set("gender", state.filters.gender);
     q.set("mode", discoverMode());
     const ageMin = Number(state.filters.ageMin);
@@ -4056,7 +4016,7 @@
       html += `<div class="event" style="margin-bottom:10px">
         <button type="button" class="event-main" data-act="event" data-id="${esc(e.id)}">
           <div class="thumb" style="background:${esc(e.color || "#1a0a00")}">${eventThumb(e)}</div>
-          <div class="grow"><div style="font-weight:600">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}${(e.imVibe || e.imVibeLabel) ? vibeChipHtml(e.imVibe, e.imVibeLabel) : ""}${e.imOpenToMeet ? `<span class="chip soft">Open to meet</span>` : ""}</div>
+          <div class="grow"><div style="font-weight:600">${esc(e.name)} ${e.imGoing ? `<span class="chip soft">You're going</span>` : ""}${e.imOpenToMeet ? `<span class="chip soft">Open to meet</span>` : ""}</div>
           <div class="muted">${esc(eventWhen(e))}</div>
           <div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div>
           <div class="tiny going-line" style="margin-top:6px">${avatarStack(e.going)}<span>${bits.join(" · ")}</span></div>
@@ -5424,12 +5384,6 @@
           <button type="button" class="chip${(f.sets || "all") !== "all" ? " on" : ""}" data-act="set-sets-filter" data-id="same">Catching the same sets</button>
         </div>
         <p class="tiny" style="margin-top:6px">Free for everyone — find people starring the same sets at a show you're both going to.</p>
-        <div class="label" style="margin-top:14px">Show vibe</div>
-        <div class="chips">
-          <button type="button" class="chip${(f.vibe || "all") === "all" ? " on" : ""}" data-act="set-vibe-filter" data-id="all">Any vibe</button>
-          ${SHOW_VIBES.map((v) => `<button type="button" class="chip${(f.vibe || "all") === v.id ? " on" : ""}" data-act="set-vibe-filter" data-id="${esc(v.id)}">${esc(vibeChipLabel(v.id))}</button>`).join("")}
-        </div>
-        <p class="tiny" style="margin-top:6px">Free for everyone — optional tags people add when they mark a show.</p>
         <div class="label" style="margin-top:14px">Age range</div>
         <div class="row height-row"><input data-field="filterAgeMin" type="number" min="18" max="99" inputmode="numeric" aria-label="Minimum age" value="${esc(String(ageMin))}" />
           <span class="muted">to</span>
@@ -7230,24 +7184,6 @@
         state.filters.sets = id || "all";
         render(); return;
       }
-      if (act === "set-vibe-filter") {
-        state.filters.vibe = id || "all";
-        render(); return;
-      }
-      if (act === "set-show-vibe") {
-        const next = (el && el.getAttribute("data-t")) || "";
-        const data = await api("/api/events/" + encodeURIComponent(id) + "/vibe", { method: "POST", body: { vibe: next } });
-        const ev = findEvent(id);
-        if (ev) {
-          ev.imVibe = data.vibe || "";
-          ev.imVibeLabel = data.vibeLabel || "";
-        }
-        if (data && (Array.isArray(data.events) || Array.isArray(data.upcomingShows))) {
-          applyMyShows(data.events, data.upcomingShows);
-        }
-        try { await loadEvents(); } catch (_) {}
-        render(); return;
-      }
       if (act === "event-cat") { state.eventCategory = id || "all"; render(); return; }
       if (act === "apply-filters") {
         const lo = Number(state.drafts.filterAgeMin);
@@ -8166,7 +8102,7 @@
   const root = document.getElementById("app");
   // Actions that only change local UI never need a busy guard.
   const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
-    "set-genre", "set-event-filter", "set-sets-filter", "set-vibe-filter", "set-gender-filter", "toggle-suggest-set", "toggle-admin-set", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
+    "set-genre", "set-event-filter", "set-sets-filter", "set-gender-filter", "toggle-suggest-set", "toggle-admin-set", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
     "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
