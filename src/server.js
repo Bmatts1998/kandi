@@ -50,6 +50,7 @@ const showCrew = require("./show-crew");
 const { installSafety } = require("./safety");
 const { installTrades, deleteTradesForUser } = require("./trade-routes");
 const sets = require("./sets");
+const vibe = require("./vibe");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -1046,7 +1047,7 @@ app.get("/api/discover", auth, async (req, res) => {
   const myKeys = new Set(myShows.map((e) => e.event_key || e.id));
   function sharedFor(uid) {
     const theirs = showsByUser.get(Number(uid)) || [];
-    return theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id)).map((e) => compactShow(e));
+    return theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id)).map((e) => compactShow(e, vibe.vibePublic(e.vibe)));
   }
   let rows = (await db.prepare(`SELECT * FROM users WHERE id != ?`).all(req.user.id))
     .filter((u) => isAdult(u) && !mailer.isLocked(u) && !blocked.has(Number(u.id)) && !liked.has(u.id) && !passed.has(u.id) && !matched.has(u.id));
@@ -1067,7 +1068,7 @@ app.get("/api/discover", auth, async (req, res) => {
       sharedEventChip: shared[0] ? ("Also going to " + (shared[0].chip || shared[0].name)) : "",
       sharedGenres: sharedGenreIds(myGenres, theirVibes),
       sharedGenreChip: sharedGenreChip(myGenres, theirVibes),
-      upcomingShows: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => compactShow(e)) : [],
+      upcomingShows: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => compactShow(e, vibe.vibePublic(e.vibe))) : [],
       events: showUpcoming ? (showsByUser.get(Number(u.id)) || []).map((e) => e.id) : [],
       upcomingHidden: !showUpcoming,
       showUpcoming,
@@ -1093,6 +1094,26 @@ app.get("/api/discover", auth, async (req, res) => {
   const hi = Number.isFinite(ageMax) ? ageMax : 99;
   if (lo > 18 || hi < 99) {
     people = people.filter((p) => p.age != null && p.age >= lo && p.age <= hi);
+  }
+  // Show-vibe filter is free, including inside the iOS app.
+  const vibeFilterRaw = String(req.query.vibe || "all");
+  if (vibeFilterRaw && vibeFilterRaw !== "all") {
+    const vibeFilter = vibe.normalizeVibe(vibeFilterRaw);
+    if (vibeFilter === null) return res.status(400).json({ error: "Unknown vibe." });
+    if (vibeFilter) {
+      people = people.filter((p) => {
+        if (p.upcomingHidden) return false;
+        const theirs = showsByUser.get(Number(p.id)) || [];
+        let pool = theirs;
+        if (event === "same") {
+          pool = theirs.filter((e) => myIds.has(e.id) || myKeys.has(e.event_key || e.id));
+        } else if (event !== "all") {
+          const ids = event.split(",").map((s) => s.trim()).filter(Boolean);
+          pool = theirs.filter((e) => ids.includes(String(e.id)) || ids.includes(String(e.event_key)));
+        }
+        return pool.some((e) => (vibe.normalizeVibe(e.vibe, { omitted: "" }) || "") === vibeFilter);
+      });
+    }
   }
   const setsFilter = String(req.query.sets || "all");
   people = await sets.attachDiscoverSets(db, req.user, people, { setsFilter });
@@ -1341,6 +1362,8 @@ app.get("/api/events", auth, async (req, res) => {
       imGoing: Boolean(mine),
       imOpenToMeet: Boolean(mine && mine.openToMeet),
       meetNote: mine && mine.openToMeet ? (mine.meetNote || "") : "",
+      imVibe: mine && mine.vibe ? mine.vibe : "",
+      imVibeLabel: mine && mine.vibeLabel ? mine.vibeLabel : "",
       going,
       openToMeet: open,
       goingCount: going.length,
@@ -1374,7 +1397,13 @@ app.post("/api/events/:id/going", auth, async (req, res) => {
     return res.status(404).json({ error: "Event not found." });
   }
   const going = Boolean(req.body.going);
-  const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false });
+  let nextVibe;
+  if (going && req.body.vibe !== undefined) {
+    const n = vibe.normalizeVibe(req.body.vibe);
+    if (n === null) return res.status(400).json({ error: "Pick Going sober, Sober-friendly, Here to party, or leave it blank." });
+    nextVibe = n;
+  }
+  const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false, vibe: nextVibe });
   engagement.scheduleRefresh();
   const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   const goingIds = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
@@ -1391,6 +1420,27 @@ app.post("/api/events/:id/meet", auth, async (req, res) => {
   const open = Boolean(req.body.open ?? req.body.openToMeet);
   const note = req.body.note != null ? String(req.body.note).slice(0, 80) : undefined;
   const result = await setRsvp(db, req.user, ev, { going: true, openToMeet: open, meetNote: note });
+  engagement.scheduleRefresh();
+  const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
+  const goingIds = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);
+  const upcoming = await listUpcomingForProfile(db, me || req.user, me || req.user);
+  res.json({ ok: true, ...result, events: goingIds, upcomingShows: upcoming.shows });
+});
+
+app.post("/api/events/:id/vibe", auth, async (req, res) => {
+  if (!isAdult(req.user)) return res.status(403).json({ error: "Kandi is 18+ only." });
+  const ev = await resolveEvent(db, req.params.id);
+  if (!ev || ev.is_example || String(ev.status || "active") === "removed") {
+    return res.status(404).json({ error: "Event not found." });
+  }
+  const n = vibe.normalizeVibe(req.body.vibe);
+  if (n === null || n === undefined) {
+    return res.status(400).json({ error: "Pick Going sober, Sober-friendly, Here to party, or leave it blank." });
+  }
+  const key = ev.event_key || eventKey(ev);
+  const existing = await db.prepare(`SELECT * FROM event_going WHERE user_id=? AND (event_id=? OR event_key=?)`).get(req.user.id, ev.id, key);
+  if (!existing) return res.status(400).json({ error: "Mark that you're going first, then you can add a vibe." });
+  const result = await setRsvp(db, req.user, ev, { going: true, vibe: n });
   engagement.scheduleRefresh();
   const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
   const goingIds = (await db.prepare(`SELECT event_id FROM event_going WHERE user_id=?`).all(req.user.id)).map((r) => r.event_id);

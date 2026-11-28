@@ -1057,6 +1057,7 @@ async function migrate(db) {
   await require("./show-crew").migrateShowCrew(db);
   await require("./trade-routes").migrateTrades(db);
   await sets_migrate(db);
+  await require("./vibe").vibe_migrate(db);
 }
 
 // man/woman -> male/female, and copy sex into gender when gender was left blank.
