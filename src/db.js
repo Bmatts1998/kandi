@@ -1057,6 +1057,28 @@ async function migrate(db) {
   await require("./show-crew").migrateShowCrew(db);
   await require("./trade-routes").migrateTrades(db);
   await sets_migrate(db);
+  await vibe_drop_show_vibe(db);
+}
+
+// Drop leftover per-show vibe data from the reverted feature. Named uniquely so
+// this can land without clashing, and it is safe if the column was never added
+// (fresh DBs) or if the old vibe_migrate file is already gone.
+async function vibe_drop_show_vibe(db) {
+  if (db.driver === "postgres") {
+    try { await db.exec("UPDATE event_going SET show_vibe = '' WHERE show_vibe IS NOT NULL AND show_vibe <> ''"); } catch (err) {
+      console.error("vibe_drop_show_vibe clear:", err.message || err);
+    }
+    try { await db.exec("DROP INDEX IF EXISTS idx_vibe_event_going_show_vibe"); } catch (err) {
+      console.error("vibe_drop_show_vibe index:", err.message || err);
+    }
+    try { await db.exec("ALTER TABLE event_going DROP COLUMN IF EXISTS show_vibe"); } catch (err) {
+      console.error("vibe_drop_show_vibe column:", err.message || err);
+    }
+  } else {
+    try { await db.exec("UPDATE event_going SET show_vibe = '' WHERE show_vibe IS NOT NULL AND show_vibe <> ''"); } catch (_) {}
+    try { await db.exec("DROP INDEX IF EXISTS idx_vibe_event_going_show_vibe"); } catch (_) {}
+    try { await db.exec("ALTER TABLE event_going DROP COLUMN show_vibe"); } catch (_) {}
+  }
 }
 
 // man/woman -> male/female, and copy sex into gender when gender was left blank.
