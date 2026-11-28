@@ -39,7 +39,7 @@
     { id: "date", label: "Dates" },
     { id: "friends", label: "Friends" },
     { id: "crew", label: "Rave crew" },
-    { id: "hookup", label: "Hookups" },
+    { id: "hookup", label: "Casual" }, // stored id stays "hookup" so existing selections and filters still match
     { id: "dance", label: "Dance partner" },
   ];
   const MEET_INTENTS = [
@@ -103,7 +103,10 @@
     return (g && (g.short || g.name)) || String(v || "");
   }
 
-  function lookingLabel(id) { return LOOKING_LABEL[id] || id; }
+  function lookingLabel(id) {
+    if (id === "hookup" || id === "hookups") return "Casual";
+    return LOOKING_LABEL[id] || id;
+  }
   function meetIntentLabel(id) {
     if (id === "friends") return "Friends";
     if (id === "dating") return "Dating";
