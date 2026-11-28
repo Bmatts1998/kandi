@@ -41,6 +41,38 @@ describe("set-time helpers", () => {
     const bare = sets.sharedSetBadge({ artist: "Yheti" });
     assert.equal(bare, "You both are catching Yheti");
   });
+
+  test("demo show seed stays off hosted production unless explicitly enabled", () => {
+    const saved = {
+      RENDER: process.env.RENDER,
+      RENDER_SERVICE_ID: process.env.RENDER_SERVICE_ID,
+      SEED_DEMO_SHOWS: process.env.SEED_DEMO_SHOWS,
+    };
+    const restore = (key, val) => {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    };
+    try {
+      delete process.env.SEED_DEMO_SHOWS;
+      delete process.env.RENDER;
+      delete process.env.RENDER_SERVICE_ID;
+      assert.equal(sets.allowDemoShowSeed(), true);
+      process.env.RENDER = "true";
+      assert.equal(sets.allowDemoShowSeed(), false);
+      process.env.RENDER_SERVICE_ID = "srv-test";
+      assert.equal(sets.allowDemoShowSeed(), false);
+      process.env.SEED_DEMO_SHOWS = "1";
+      assert.equal(sets.allowDemoShowSeed(), true);
+      process.env.SEED_DEMO_SHOWS = "0";
+      delete process.env.RENDER;
+      delete process.env.RENDER_SERVICE_ID;
+      assert.equal(sets.allowDemoShowSeed(), false);
+    } finally {
+      restore("RENDER", saved.RENDER);
+      restore("RENDER_SERVICE_ID", saved.RENDER_SERVICE_ID);
+      restore("SEED_DEMO_SHOWS", saved.SEED_DEMO_SHOWS);
+    }
+  });
 });
 
 function startServer() {

@@ -2128,7 +2128,10 @@ async function boot() {
     console.error("Demo song seed failed:", err.message || err);
   }
   try {
-    await sets.seedDemoSets(db);
+    const seededSets = await sets.seedDemoSets(db);
+    if (seededSets && seededSets.skipped) {
+      console.log("Skipped demo show seed (" + seededSets.skipped + ").");
+    }
   } catch (err) {
     console.error("Demo set-time seed failed:", err.message || err);
   }

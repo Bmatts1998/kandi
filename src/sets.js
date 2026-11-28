@@ -669,7 +669,16 @@ async function attachMatchSets(db, viewerId, otherId, otherUser) {
   };
 }
 
+function allowDemoShowSeed() {
+  if (process.env.SEED_DEMO_SHOWS === "0") return false;
+  if (process.env.SEED_DEMO_SHOWS === "1") return true;
+  // Hosted production must never re-insert the fake Yheti / Desert Lights shows.
+  if (process.env.RENDER || process.env.RENDER_SERVICE_ID) return false;
+  return true;
+}
+
 async function seedDemoSets(db) {
+  if (!allowDemoShowSeed()) return { created: false, skipped: "production" };
   const demos = await db.prepare(`SELECT id, username FROM users WHERE is_demo=1`).all();
   if (!demos.length) return { created: false };
   const clubId = "sets-demo-club";
@@ -975,6 +984,7 @@ function installSets({
 
 module.exports = {
   installSets,
+  allowDemoShowSeed,
   seedDemoSets,
   syncImportedSets,
   lineupFromSource,
