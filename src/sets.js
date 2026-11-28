@@ -4,6 +4,7 @@ const { contentRejected } = require("./content-filter");
 const { isAdminUser } = require("./verification");
 const { isAdult, resolveEvent, truthy } = require("./meetup");
 const { eventKey } = require("./event-key");
+const { eventIsListed } = require("./event-end");
 
 const TZ = "America/Denver";
 const MAX_ARTIST = 80;
@@ -579,13 +580,29 @@ function pickSharedSet(mine, theirs) {
   return shared[0] || null;
 }
 
+async function listedEventIds(db, ids) {
+  const unique = Array.from(new Set((ids || []).map((id) => String(id || "")).filter(Boolean)));
+  if (!unique.length) return new Set();
+  const rows = await db.prepare(`SELECT * FROM events WHERE id IN (${unique.map(() => "?").join(",")})`).all(...unique);
+  const now = Date.now();
+  return new Set(rows.filter((e) => eventIsListed(e, now)).map((e) => String(e.id)));
+}
+
 async function attachDiscoverSets(db, viewer, people, opts) {
   const filter = String((opts && opts.setsFilter) || "all");
-  const mine = await catchingSetIdsForUser(db, viewer.id);
-  const myIds = new Set(mine.map((s) => Number(s.id)));
+  const mineAll = await catchingSetIdsForUser(db, viewer.id);
   const filterEventId = filter !== "all" && filter !== "same" ? filter : "";
-  const scopedMine = filterEventId ? mine.filter((s) => String(s.event_id) === String(filterEventId)) : mine;
-  const scopedIds = new Set(scopedMine.map((s) => Number(s.id)));
+  if (filterEventId) {
+    const filterLive = await listedEventIds(db, [filterEventId]);
+    if (!filterLive.has(String(filterEventId))) {
+      for (const p of people) {
+        p.sharedSet = null;
+        p.sharedSetChip = "";
+        p.sharedSetsCount = 0;
+      }
+      return [];
+    }
+  }
 
   const ids = people.map((p) => Number(p.id));
   let theirsByUser = new Map();
@@ -605,11 +622,21 @@ async function attachDiscoverSets(db, viewer, people, opts) {
     }
   }
 
+  const eventIds = mineAll.map((s) => s.event_id);
+  for (const list of theirsByUser.values()) {
+    for (const row of list) eventIds.push(row.event_id);
+  }
+  const liveIds = await listedEventIds(db, eventIds);
+  const mine = mineAll.filter((s) => liveIds.has(String(s.event_id)));
+  const myIds = new Set(mine.map((s) => Number(s.id)));
+  const scopedMine = filterEventId ? mine.filter((s) => String(s.event_id) === String(filterEventId)) : mine;
+  const scopedIds = new Set(scopedMine.map((s) => Number(s.id)));
+
   const out = [];
   for (const p of people) {
     const hidden = hideSetsOf({ hide_sets: p.hideSets || p.hide_sets }) || (theirsByUser.get(Number(p.id)) || []).some((r) => Number(r.hide_sets) === 1);
     // If they hid sets, treat as no shared sets for others.
-    const theirs = hidden ? [] : (theirsByUser.get(Number(p.id)) || []);
+    const theirs = hidden ? [] : (theirsByUser.get(Number(p.id)) || []).filter((s) => liveIds.has(String(s.event_id)));
     const sharedRow = pickSharedSet(scopedMine.length ? scopedMine : mine, theirs);
     const badge = sharedRow ? sharedSetBadge(compactSet(sharedRow)) : "";
     p.sharedSet = sharedRow ? compactSet(sharedRow) : null;
@@ -629,8 +656,11 @@ async function attachDiscoverSets(db, viewer, people, opts) {
 async function attachMatchSets(db, viewerId, otherId, otherUser) {
   if (otherUser && hideSetsOf(otherUser)) return { sharedSet: null, sharedSetChip: "" };
   const viewer = await db.prepare(`SELECT hide_sets FROM users WHERE id=?`).get(viewerId);
-  const mine = await catchingSetIdsForUser(db, viewerId);
-  const theirs = await catchingSetIdsForUser(db, otherId);
+  const mineAll = await catchingSetIdsForUser(db, viewerId);
+  const theirsAll = await catchingSetIdsForUser(db, otherId);
+  const liveIds = await listedEventIds(db, mineAll.map((s) => s.event_id).concat(theirsAll.map((s) => s.event_id)));
+  const mine = mineAll.filter((s) => liveIds.has(String(s.event_id)));
+  const theirs = theirsAll.filter((s) => liveIds.has(String(s.event_id)));
   const sharedRow = pickSharedSet(mine, theirs);
   return {
     sharedSet: sharedRow ? compactSet(sharedRow) : null,

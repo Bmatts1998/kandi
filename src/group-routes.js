@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 const { normalizePhoto, savePhotoFile } = require("./photo");
 const { contentRejected } = require("./content-filter");
+const { eventIsListed } = require("./event-end");
 
 const MAX_NAME = 40;
 const MAX_BIO = 280;
@@ -118,7 +119,6 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
 
   async function upcomingShows(crewId, blocked) {
     try {
-      const now = new Date().toISOString();
       const rows = await db().prepare(`
         SELECT e.id, e.name, e.emoji, e.city, e.venue, e.date_label, e.starts_at, e.address, e.color,
                g.user_id, u.username, u.name AS member_name, u.photos
@@ -128,10 +128,11 @@ function installGroups({ app, getDb, auth, upload, publicUser, blockedSet, broad
         JOIN users u ON u.id=g.user_id
         WHERE (e.status IS NULL OR e.status!='removed')
           AND (e.is_example IS NULL OR e.is_example=0)
-          AND (e.starts_at IS NULL OR e.starts_at='' OR e.starts_at >= ?)
-      `).all(crewId, now);
+      `).all(crewId);
+      const nowMs = Date.now();
       const byEvent = new Map();
       for (const r of rows) {
+        if (!eventIsListed(r, nowMs)) continue;
         if (blocked.has(Number(r.user_id))) continue;
         if (!byEvent.has(r.id)) {
           byEvent.set(r.id, {

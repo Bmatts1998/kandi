@@ -1,6 +1,7 @@
 "use strict";
 
 const { eventKey, chipLabel } = require("./event-key");
+const { eventIsListed, overAtIso, eventIsOver } = require("./event-end");
 
 function isAdult(u) {
   return Number(u && u.age) >= 18;
@@ -23,6 +24,8 @@ function compactShow(e, extra) {
     emoji: e.emoji || "",
     category: e.category || "concert",
     chip: chipLabel({ name: e.name, startsAt: e.starts_at || e.startsAt }),
+    overAt: overAtIso(e),
+    isPast: eventIsOver(e),
     ...(extra || {}),
   };
 }
@@ -108,11 +111,7 @@ async function userGoingShows(db, userId) {
   const seen = new Set();
   const out = [];
   for (const e of rows) {
-    if (e.is_example) continue;
-    if (String(e.status || "active") === "removed" || String(e.status || "") === "past") continue;
-    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    const startsMs = Number.isNaN(starts) && e.starts_at ? new Date(e.starts_at).getTime() : starts;
-    if (!Number.isNaN(startsMs) && startsMs < now) continue;
+    if (!eventIsListed(e, now)) continue;
     const key = e.event_key || e.id;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -154,8 +153,7 @@ async function upcomingByUser(db) {
   const now = Date.now();
   const map = new Map();
   for (const e of rows) {
-    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    if (!Number.isNaN(starts) && starts < now) continue;
+    if (!eventIsListed(e, now)) continue;
     const uid = Number(e.going_user_id);
     if (!map.has(uid)) map.set(uid, []);
     const list = map.get(uid);
@@ -200,10 +198,7 @@ async function seedDemoMeetups(db) {
     WHERE COALESCE(is_example,0)=0
       AND COALESCE(status,'active')='active'
     ORDER BY starts_at ASC
-  `).all()).filter((e) => {
-    const t = Date.parse(e.starts_at || "");
-    return Number.isNaN(t) || t >= Date.now();
-  });
+  `).all()).filter((e) => eventIsListed(e));
   if (!events.length) {
     console.log("Demo meetups: no upcoming real events to attach yet.");
     return { seeded: 0 };

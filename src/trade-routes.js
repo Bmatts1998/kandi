@@ -6,6 +6,7 @@
 const crypto = require("crypto");
 const { contentRejected } = require("./content-filter");
 const KD = require("./kandi-design");
+const { eventIsOver, overAtIso } = require("./event-end");
 const { parseDesign, parseStoredDesign, extraFromDesign, parseExtra } = KD;
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
@@ -79,6 +80,8 @@ function compactEvent(ev) {
     startsAt: ev.starts_at || ev.startsAt || "",
     endsAt: ev.ends_at || ev.endsAt || "",
     emoji: ev.emoji || "",
+    overAt: overAtIso(ev),
+    isPast: eventIsOver(ev),
   };
 }
 
@@ -166,6 +169,7 @@ async function todayShowsFor(db, userId, day, tz) {
   const seen = new Set();
   const out = [];
   for (const ev of rows) {
+    if (eventIsOver(ev)) continue;
     if (!eventHappensOn(ev, stamp, tz || TZ)) continue;
     const key = ev.event_key || ev.id;
     if (seen.has(key) || seen.has(ev.id)) continue;

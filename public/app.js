@@ -523,7 +523,28 @@
   }
 
   // ---- Shows I'm going to: one compact field + a searchable multi-select sheet ----
-  function pickableEvents() { return (state.events || []).filter((e) => e && e.id && !e.isExample); }
+  function eventIsOver(e, now) {
+    if (!e) return false;
+    if (e.isPast) return true;
+    const t = Date.parse(e.overAt || "");
+    if (!Number.isFinite(t)) return false;
+    return (now != null ? now : Date.now()) >= t;
+  }
+  function liveEvents(list) {
+    const now = Date.now();
+    return (list || []).filter((e) => e && e.id && !e.isExample && !eventIsOver(e, now));
+  }
+  function rememberEvent(ev) {
+    if (!ev || !ev.id) return ev;
+    state.knownEvents = state.knownEvents || {};
+    state.knownEvents[String(ev.id)] = ev;
+    return ev;
+  }
+  function pickableEvents() { return liveEvents(state.events); }
+  function adminEventList() {
+    const list = (state.adminEvents && state.adminEvents.length) ? state.adminEvents : (state.events || []);
+    return list.filter((e) => e && e.id && !e.isExample);
+  }
   function goingIds() {
     const mine = new Set(((state.me && state.me.events) || []).map(String));
     return pickableEvents().filter((e) => {
@@ -543,6 +564,8 @@
       city: e.city || "",
       emoji: e.emoji || "",
       category: e.category || "concert",
+      overAt: e.overAt || "",
+      isPast: Boolean(e.isPast),
     };
   }
   function applyMyShows(eventsIds, upcomingShows) {
@@ -1210,7 +1233,9 @@
   }
 
   function findEvent(id) {
-    const fromList = (state.events || []).find((x) => String(x.id) === String(id));
+    const fromKnown = state.knownEvents && state.knownEvents[String(id)];
+    if (fromKnown) return fromKnown;
+    const fromList = (state.events || []).concat(state.adminEvents || []).find((x) => String(x.id) === String(id));
     if (fromList) return fromList;
     const fromUpcoming = []
       .concat((state.me && state.me.upcomingShows) || [])
@@ -1798,6 +1823,14 @@
     return `<div class="av-stack">${list.map((p) => personAvatar(p, "av xs")).join("")}${extra ? `<span class="av-more">+${extra}</span>` : ""}</div>`;
   }
   function rsvpToggles(e) {
+    if (eventIsOver(e)) {
+      if (!e.imGoing) return `<div class="rsvp-box"><p class="tiny">This show has ended.</p></div>`;
+      return `<div class="rsvp-box">
+        <p class="tiny">This show has ended.</p>
+        <div class="rsvp-item"><div class="grow"><div class="rsvp-label">I'm going</div><div class="tiny">Turn this off to remove it from your list.</div></div>
+          <button type="button" class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${esc(e.id)}" aria-pressed="${e.imGoing ? "true" : "false"}" aria-label="I'm going"><i></i></button></div>
+      </div>`;
+    }
     return `<div class="rsvp-box">
       <div class="rsvp-item"><div class="grow"><div class="rsvp-label">I'm going</div></div>
         <button type="button" class="toggle${e.imGoing ? " on" : ""}" data-act="toggle-going" data-id="${esc(e.id)}" aria-pressed="${e.imGoing ? "true" : "false"}" aria-label="I'm going"><i></i></button></div>
@@ -1839,12 +1872,13 @@
     opts = opts || {};
     const lab = opts.noLabel ? "" : `<div class="label">Upcoming shows</div>`;
     if (opts.hidden) return `${lab}<div class="pf-empty"><p class="tiny">This person hides their upcoming shows.</p></div>`;
-    if (!(shows && shows.length)) {
+    const live = liveEvents(shows);
+    if (!(live && live.length)) {
       if (!opts.mine) return "";
       return `${lab}<div class="pf-empty">${kIcon("events", "pf-empty-ico")}<p class="tiny">Pick your shows in Edit profile or the Events tab and they'll show up here.</p>
         <button type="button" class="btn sm ghost" data-act="tab" data-id="events">Open Events</button></div>`;
     }
-    const all = shows.slice();
+    const all = live.slice();
     const limit = opts.limit || 0;
     const expanded = Boolean(opts.expanded);
     const list = (limit && !expanded && all.length > limit) ? all.slice(0, limit) : all;
@@ -2319,6 +2353,7 @@
     state.adminLineups = Object.assign({}, state.adminLineups || {}, { loading: true, eventId: evId, sets: (state.adminLineups && state.adminLineups.sets) || [], pending: (state.adminLineups && state.adminLineups.pending) || [] });
     render();
     try {
+      await loadAdminEvents();
       const pending = await api("/api/admin/sets?status=pending");
       const q = evId ? "/api/admin/sets?status=all&eventId=" + encodeURIComponent(evId) : "/api/admin/sets?status=all";
       const all = evId ? await api(q) : { sets: [] };
@@ -3300,6 +3335,37 @@
     state.events = data.events || [];
     state.eventsUpdatedAt = data.updatedAt || null;
     state.eventsLoaded = true;
+    (state.events || []).forEach(rememberEvent);
+  }
+  async function loadEventById(id) {
+    if (!id) return null;
+    const have = findEvent(id);
+    if (have && (have.going || have.venue || have.overAt)) return have;
+    try {
+      const data = await api("/api/events/" + encodeURIComponent(id));
+      if (data && data.event) return rememberEvent(data.event);
+    } catch (_) {}
+    return findEvent(id);
+  }
+  async function loadAdminEvents() {
+    if (!(state.me && state.me.isAdmin)) return;
+    try {
+      const data = await api("/api/events?includePast=1");
+      state.adminEvents = data.events || [];
+      (state.adminEvents || []).forEach(rememberEvent);
+    } catch (_) {}
+  }
+  function denverLocalInput(iso) {
+    const raw = String(iso || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw + "T00:00";
+    const t = Date.parse(raw);
+    if (!Number.isFinite(t)) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Denver", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(t));
+    const get = (ty) => ((parts.find((p) => p.type === ty) || {}).value || "");
+    return get("year") + "-" + get("month") + "-" + get("day") + "T" + get("hour") + ":" + get("minute");
   }
   async function loadNotifs() {
     const data = await api("/api/notifications");
@@ -3879,13 +3945,13 @@
   }
   function viewAdminLineups(sectionBar) {
     const r = state.adminLineups || { loading: true, pending: [], sets: [], eventId: "" };
-    const evs = pickableEvents();
+    const evs = adminEventList();
     const evId = r.eventId || "";
     const ev = evId ? evs.find((e) => String(e.id) === String(evId)) : null;
     const picker = `<div class="label">Edit a show</div>
       <select data-field="adminLineupEvent" data-act-change="admin-lineup-event" style="width:100%;margin:0 0 14px;padding:12px;border-radius:12px;background:#111;color:inherit;border:1px solid var(--line)">
         <option value="">Choose a show</option>
-        ${evs.map((e) => `<option value="${esc(e.id)}"${String(e.id) === String(evId) ? " selected" : ""}>${esc(e.name)} — ${esc(e.date || e.startsAt || "")}</option>`).join("")}
+        ${evs.map((e) => `<option value="${esc(e.id)}"${String(e.id) === String(evId) ? " selected" : ""}>${esc(e.name)} — ${esc(e.date || e.startsAt || "")}${eventIsOver(e) ? " (Past)" : ""}</option>`).join("")}
       </select>`;
     let pending = "";
     if (r.loading) pending = `<p class="muted">Loading…</p>`;
@@ -3914,7 +3980,13 @@
           </div>`).join("")
         : `<p class="tiny">No approved sets yet.</p>`);
       editor += `<div class="suggest-set">
-        <div class="tiny" style="margin-bottom:8px">Add a set</div>
+        <div class="tiny" style="margin-bottom:8px">Show end time (America/Denver)</div>
+        <p class="tiny">When this time passes, the show comes off every list. Leave blank to use the default (start + 8 hours, or 6 AM the next morning for time-TBA shows).</p>
+        <div class="row" style="margin-top:8px;gap:8px"><input type="datetime-local" data-field="adminEndsAt" value="${esc(denverLocalInput(ev.endsAt || ""))}" />
+          <button type="button" class="btn sm primary" data-act="admin-save-ends" data-id="${esc(ev.id)}">Save end</button></div>
+        ${ev.overAt ? `<p class="tiny" style="margin-top:6px">Comes off lists at ${esc(eventWhen({ startsAt: ev.overAt, date: "", timeTba: false }))}${ev.endsAt ? "" : " (default)"}.</p>` : ""}
+        ${eventIsOver(ev) ? `<p class="tiny" style="margin-top:4px">This show is marked Past.</p>` : ""}
+        <div class="tiny" style="margin:14px 0 8px">Add a set</div>
         <input data-field="adminSetArtist" placeholder="Artist" value="${esc(state.drafts.adminSetArtist || "")}" />
         <input data-field="adminSetStage" placeholder="Stage (optional)" value="${esc(state.drafts.adminSetStage || "")}" style="margin-top:8px" />
         <div class="row"><input data-field="adminSetStart" placeholder="Start (e.g. 11:30 PM)" value="${esc(state.drafts.adminSetStart || "")}" />
@@ -4093,8 +4165,19 @@
       </div></div>`;
   }
 
+  function liveSharedEvents(person) {
+    return liveEvents((person && person.sharedEvents) || []);
+  }
+  function personMatchesLiveEventFilter(person) {
+    const evf = parseEventFilter(state.filters && state.filters.event);
+    if (!evf || evf.type === "all") return true;
+    if (evf.type === "same") return liveSharedEvents(person).length > 0;
+    const ids = new Set((evf.ids || []).map(String));
+    return liveEvents(person.upcomingShows || []).some((e) => ids.has(String(e.id)) || ids.has(String(e.eventKey || "")))
+      || liveSharedEvents(person).some((e) => ids.has(String(e.id)) || ids.has(String(e.eventKey || "")));
+  }
   function viewDiscover() {
-    const p = state.feed[0];
+    const p = (state.feed || []).find((person) => personMatchesLiveEventFilter(person));
     const likePill = isNativeIos()
       ? ""
       : `<span class="pill">${isPlus() ? "Unlimited likes" : ((state.likesLeft == null ? "" : state.likesLeft + " likes left") || "Likes")}</span>`;
@@ -4144,7 +4227,7 @@
     if (discoHeight) discoChips.push(`<span class="chip soft">${esc(discoHeight)}</span>`);
     (p.hobbies || []).slice(0, 4).forEach((h) => discoChips.push(`<span class="chip soft">${esc(h)}</span>`));
     const showsHidden = Boolean(p.upcomingHidden) || p.showUpcoming === false;
-    const shows = showsHidden ? [] : (p.upcomingShows || []);
+    const shows = showsHidden ? [] : liveEvents(p.upcomingShows || []);
     parts.push(`<div class="meta-card">${genreRow(p)}<div class="chips" style="margin:8px 0">${discoChips.join("")}</div>
       ${socialLinksHtml(p, { compact: true })}
       ${p.favoriteFestival ? `<div class="tiny" style="margin-top:6px">Favorite show: ${esc(p.favoriteFestival)}</div>` : ""}
@@ -4203,7 +4286,7 @@
   function viewEvents() {
     const liveBtn = `<button class="btn sm ${state.live.on ? "primary" : "ghost"}" data-act="open-live">${state.live.on ? "Live · on" : "At the show"}</button>`;
     const cat = state.eventCategory || "all";
-    const list = state.events.filter((e) => cat === "all" || e.category === cat);
+    const list = liveEvents(state.events).filter((e) => cat === "all" || e.category === cat);
     const updated = formatUpdatedAgo(state.eventsUpdatedAt);
     let html = header("Events", liveBtn) + `<div class="scroll pad">`;
     if (updated) html += `<p class="event-updated">${esc(updated)}</p>`;
@@ -5619,7 +5702,14 @@
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">${esc(e.name)}</span></div></div>
         <div class="scroll pad"><div class="photo" style="background:${esc(e.color)};height:180px">${e.imageUrl ? `<img src="${esc(e.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async">` : `<div class="emoji">${e.emoji}</div>`}</div>
         <p class="event-updated" style="margin:12px 0 6px">${e.category === "rave" ? "Rave / EDM" : "Concert"}${e.ageLimit ? " · " + esc(e.ageLimit) : ""}</p>
+        ${eventIsOver(e) ? `<div class="notice" style="margin:10px 0">This show has ended. It no longer appears in Events, Discover, or show pickers.</div>` : ""}
         <div class="event-detail-row"><div class="label" style="margin:0">Date &amp; time</div><div class="muted">${esc(eventWhen(e))}</div></div>
+        ${state.me && state.me.isAdmin ? `<div class="suggest-set" style="margin:12px 0"><div class="label" style="margin:0 0 6px">Show end time</div>
+          <p class="tiny">When this time passes, the show comes off every list. Leave blank for the default (start + 8 hours, or 6 AM the next morning for time-TBA shows).</p>
+          <div class="row" style="margin-top:8px;gap:8px"><input type="datetime-local" data-field="adminEndsAt" value="${esc(denverLocalInput(e.endsAt || ""))}" />
+            <button type="button" class="btn sm primary" data-act="admin-save-ends" data-id="${esc(e.id)}">Save</button></div>
+          ${e.overAt ? `<p class="tiny" style="margin-top:6px">Comes off lists at ${esc(eventWhen({ startsAt: e.overAt, date: "", timeTba: false }))}${e.endsAt ? "" : " (default)"}.</p>` : ""}
+        </div>` : ""}
         <div class="event-detail-row"><div class="label" style="margin:0">Venue</div><div class="muted">${esc(e.venue || "Venue TBA")}${e.city ? " · " + esc(e.city) : ""}</div></div>
         <div class="event-detail-row"><div class="label" style="margin:0">Address</div><div>${eventAddressLine(e)}</div></div>
         <div class="event-detail-row"><div class="label" style="margin:0">Tickets</div><div>${eventTicketLine(e)}</div></div>
@@ -7565,11 +7655,34 @@
       }
       if (act === "event") {
         if (!state.events.length) await loadEvents();
+        if (!findEvent(id)) await loadEventById(id);
         if (state.overlay && state.overlay.type !== "event") state.overlayBack = state.overlay;
         state.overlay = { type: "event", id };
         render();
         await Promise.all([loadEventPosts(id), loadEventSets(id)]);
         if (state.overlay && state.overlay.type === "event" && state.overlay.id === id) render();
+        return;
+      }
+      if (act === "admin-save-ends") {
+        if (!(state.me && state.me.isAdmin)) return;
+        const current = findEvent(id);
+        const endsAt = state.drafts.adminEndsAt != null ? state.drafts.adminEndsAt : denverLocalInput((current && current.endsAt) || "");
+        const data = await api("/api/admin/events/" + encodeURIComponent(id), { method: "PATCH", body: { endsAt } });
+        if (data && data.event) {
+          rememberEvent(data.event);
+          const ev = data.event;
+          const patch = (list) => {
+            if (!Array.isArray(list)) return list;
+            const i = list.findIndex((x) => String(x.id) === String(ev.id));
+            if (i >= 0) list[i] = Object.assign({}, list[i], ev);
+            return eventIsOver(ev) ? list.filter((x) => String(x.id) !== String(ev.id) || (state.me && state.me.isAdmin && list === state.adminEvents)) : list;
+          };
+          state.events = liveEvents((state.events || []).map((x) => String(x.id) === String(ev.id) ? Object.assign({}, x, ev) : x));
+          if (state.adminEvents) state.adminEvents = state.adminEvents.map((x) => String(x.id) === String(ev.id) ? Object.assign({}, x, ev) : x);
+        }
+        toast(data && data.event && data.event.isPast ? "Saved. This show is now marked Past." : "End time saved.");
+        if (state.me && state.me.isAdmin && state.view === "adminVerify") await loadAdminEvents();
+        render();
         return;
       }
 
@@ -9020,7 +9133,21 @@
   if (window.matchMedia("(display-mode: standalone)").matches) document.body.classList.add("standalone");
   applyDynamicType();
   startIconizer();
-  setInterval(() => { if (state.view === "app" && state.me) quiet(loadSafety()); }, 30000);
+  function endedShowsVisible() {
+    const now = Date.now();
+    const lists = [state.events, state.adminEvents, state.me && state.me.upcomingShows,
+      state.profile && state.profile.upcomingShows, state.feed];
+    if (state.feed) {
+      for (const p of state.feed) {
+        lists.push(p.upcomingShows, p.sharedEvents);
+      }
+    }
+    return lists.some((list) => Array.isArray(list) && list.some((e) => e && e.id && eventIsOver(e, now)));
+  }
+  setInterval(() => {
+    if (state.view === "app" && state.me) quiet(loadSafety());
+    if (state.me && endedShowsVisible() && !isTypingInField()) render();
+  }, 30000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.view === "app" && state.me) quiet(loadSafety());
   });

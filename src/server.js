@@ -24,6 +24,7 @@ const { savePhotoFile, sendUploadedMedia, startPhotoBackfill, removePhotoFile, r
 const objectStore = require("./object-store");
 const { installObjectStoreRoutes } = require("./object-store-routes");
 const { eventKey, chipLabel } = require("./event-key");
+const { eventIsListed, eventIsOver, overAtIso, parseAdminEndsAt } = require("./event-end");
 const {
   isAdult, loadGoingRows, shapeGoers, resolveEvent, setRsvp,
   listUpcomingForProfile, sharedShows, upcomingByUser, seedDemoMeetups, compactShow, truthy,
@@ -193,9 +194,7 @@ app.get("/api/genres/:id", auth, async (req, res) => {
   const evRows = await db.prepare(`SELECT * FROM events`).all();
   const events = [];
   for (const e of evRows) {
-    if (String(e.status || "active") === "removed" || e.is_example) continue;
-    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    if (!Number.isNaN(starts) && starts < now) continue;
+    if (!eventIsListed(e, now)) continue;
     const ev = publicEventFields(e);
     if (!eventMatchesGenre(ev, genre.id)) continue;
     events.push(ev);
@@ -1301,6 +1300,8 @@ function publicEventFields(e) {
     icsUrl: "/api/events/" + encodeURIComponent(e.id) + ".ics",
     eventKey: e.event_key || eventKey(e),
   };
+  ev.overAt = overAtIso(e);
+  ev.isPast = eventIsOver(e);
   ev.googleCalendarUrl = googleCalendarUrl(ev);
   ev.mapsUrl = ev.address
     ? "https://maps.apple.com/?q=" + encodeURIComponent((ev.venue ? ev.venue + ", " : "") + ev.address)
@@ -1314,18 +1315,14 @@ app.get("/api/events", auth, async (req, res) => {
   const raw = await db.prepare(`SELECT * FROM events`).all();
   const meta = await db.prepare(`SELECT value FROM app_meta WHERE key=?`).get("events_updated_at");
   const now = Date.now();
+  const includePast = isAdminUser(req.user) && (req.query.includePast === "1" || req.query.includePast === "true");
   const events = [];
   // One query for everyone going to anything (was 2 queries per event: slow on Neon with 100+ shows).
   const goingRows = await loadGoingRows(db);
   for (const e of raw) {
     if (String(e.status || "active") === "removed") continue;
-    const starts = e.starts_at ? Date.parse(e.starts_at) : NaN;
-    // Keep a show that already started listed until its Find My Crew window closes (6 AM the next morning).
-    if (!Number.isNaN(starts) && starts < now) {
-      const win = showCrew.crewWindow(e);
-      if (!win || now >= win.expiresAt) continue;
-    }
     if (e.is_example) continue;
+    if (!includePast && !eventIsListed(e, now)) continue;
     const going = shapeGoers(goingRows, e, req.user, blocked, publicUser);
     const open = going.filter((u) => u.openToMeet);
     const mine = going.find((u) => Number(u.id) === Number(req.user.id));
@@ -1367,6 +1364,43 @@ app.get(/^\/api\/events\/(.+)\.ics$/, async (req, res) => {
   res.send(body);
 });
 
+app.get("/api/events/:id", auth, async (req, res) => {
+  if (String(req.params.id || "").endsWith(".ics")) return res.status(404).json({ error: "Event not found." });
+  const ev = await resolveEvent(db, req.params.id);
+  if (!ev || ev.is_example || String(ev.status || "active") === "removed") {
+    return res.status(404).json({ error: "Event not found." });
+  }
+  const blocked = await blockedSet(req.user.id);
+  const goingRows = await loadGoingRows(db);
+  const going = shapeGoers(goingRows, ev, req.user, blocked, publicUser);
+  const open = going.filter((u) => u.openToMeet);
+  const mine = going.find((u) => Number(u.id) === Number(req.user.id));
+  res.json({
+    event: {
+      ...publicEventFields(ev),
+      isExample: false,
+      imGoing: Boolean(mine),
+      imOpenToMeet: Boolean(mine && mine.openToMeet),
+      meetNote: mine && mine.openToMeet ? (mine.meetNote || "") : "",
+      going,
+      openToMeet: open,
+      goingCount: going.length,
+      openCount: open.length,
+    },
+  });
+});
+
+app.patch("/api/admin/events/:id", auth, async (req, res) => {
+  if (!isAdminUser(req.user)) return res.status(404).json({ error: "Not found." });
+  const ev = await resolveEvent(db, req.params.id);
+  if (!ev || ev.is_example) return res.status(404).json({ error: "Event not found." });
+  const parsed = parseAdminEndsAt(req.body && (req.body.endsAt != null ? req.body.endsAt : req.body.ends_at));
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  await db.prepare(`UPDATE events SET ends_at=?, updated_at=? WHERE id=?`).run(parsed.value, new Date().toISOString(), ev.id);
+  const fresh = await db.prepare(`SELECT * FROM events WHERE id=?`).get(ev.id);
+  res.json({ ok: true, event: { ...publicEventFields(fresh), isExample: false } });
+});
+
 app.post("/api/events/:id/going", auth, async (req, res) => {
   if (!isAdult(req.user)) return res.status(403).json({ error: "Kandi is 18+ only." });
   const ev = await resolveEvent(db, req.params.id);
@@ -1374,6 +1408,9 @@ app.post("/api/events/:id/going", auth, async (req, res) => {
     return res.status(404).json({ error: "Event not found." });
   }
   const going = Boolean(req.body.going);
+  if (going && eventIsOver(ev)) {
+    return res.status(410).json({ error: "This show has already ended.", code: "event_ended" });
+  }
   const result = await setRsvp(db, req.user, ev, { going, openToMeet: going ? undefined : false });
   engagement.scheduleRefresh();
   const me = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.user.id);
@@ -1387,6 +1424,9 @@ app.post("/api/events/:id/meet", auth, async (req, res) => {
   const ev = await resolveEvent(db, req.params.id);
   if (!ev || ev.is_example || String(ev.status || "active") === "removed") {
     return res.status(404).json({ error: "Event not found." });
+  }
+  if (eventIsOver(ev)) {
+    return res.status(410).json({ error: "This show has already ended.", code: "event_ended" });
   }
   const open = Boolean(req.body.open ?? req.body.openToMeet);
   const note = req.body.note != null ? String(req.body.note).slice(0, 80) : undefined;
