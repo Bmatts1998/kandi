@@ -1241,15 +1241,99 @@
     return null;
   }
 
-  function profilePhotoStrip(photos, keyPrefix) {
+  function viewerMediaOf(p) {
+    return (mediaOf(p) || []).filter((m) => m && ((m.type === "video" && m.url) || (m.type === "file" && m.url) || m.gradient || m.emoji));
+  }
+  function viewerIndexFor(p, match) {
+    const items = viewerMediaOf(p);
+    if (match && match.url) {
+      const i = items.findIndex((m) => m.url === match.url);
+      if (i >= 0) return i;
+    }
+    return items.length ? 0 : -1;
+  }
+  function openPhotoViewer(person, index) {
+    const items = viewerMediaOf(person).map((m) => ({
+      type: (m.type === "video" && m.url) ? "video" : ((m.type === "file" && m.url) ? "file" : "emoji"),
+      url: m.url || "",
+      poster: m.poster || "",
+      gradient: m.gradient || "",
+      emoji: m.emoji || "",
+      caption: m.caption || "",
+    }));
+    if (!items.length) return;
+    const i = Math.max(0, Math.min(items.length - 1, Number(index) || 0));
+    try { stopVideo(); } catch (_) {}
+    state.photoViewer = { items, index: i };
+    render();
+  }
+  function closePhotoViewer() {
+    if (!state.photoViewer) return;
+    state.photoViewer = null;
+    render();
+  }
+  function photoViewerSlideHtml(item) {
+    if (!item) return "";
+    if (item.type === "video" && item.url) {
+      return `<video class="mv-media" src="${esc(mediaUrl(item.url))}"${item.poster ? ` poster="${esc(mediaUrl(item.poster, 1080))}"` : ""} playsinline webkit-playsinline controls preload="auto" autoplay></video>`;
+    }
+    if (item.type === "file" && item.url) {
+      return `<img class="mv-media" src="${esc(mediaUrl(item.url, 1600))}" alt="">`;
+    }
+    const g = item.gradient || "linear-gradient(160deg,#111,#ff5c00)";
+    return `<div class="mv-media mv-emoji" style="background:${esc(g)}"><span>${esc(item.emoji || "")}</span></div>`;
+  }
+  function photoViewerHtml() {
+    const pv = state.photoViewer;
+    if (!pv || !pv.items || !pv.items.length) return "";
+    const i = pv.index || 0;
+    const item = pv.items[i];
+    const n = pv.items.length;
+    return `<div class="media-viewer" data-photo-viewer="1" role="dialog" aria-modal="true" aria-label="Photo viewer">
+      <button type="button" class="icon-btn mv-close" data-act="photo-view-close" aria-label="Close">✕</button>
+      ${n > 1 ? `<div class="mv-counter" aria-live="polite">${i + 1} / ${n}</div>` : ""}
+      <div class="mv-stage">
+        <div class="mv-frame">${photoViewerSlideHtml(item)}</div>
+      </div>
+    </div>`;
+  }
+  function photoViewerPerson(src, userId) {
+    if (src === "discover") return state.feed && state.feed[0];
+    if (src === "preview") {
+      try {
+        const built = draftPreviewUser();
+        return (built && built.user) || state.me;
+      } catch (_) { return state.me; }
+    }
+    if (src === "me") return state.me;
+    if (src === "profile" && state.profile && state.profile.user) return state.profile.user;
+    const id = userId != null ? String(userId) : "";
+    if (id && state.profile && state.profile.user && String(state.profile.user.id) === id) return state.profile.user;
+    if (id && state.me && String(state.me.id) === id) return state.me;
+    if (state.feed && state.feed[0] && String(state.feed[0].id) === id) return state.feed[0];
+    return state.me;
+  }
+
+  function profilePhotoStrip(photos, keyPrefix, viewOpts) {
     const list = (photos || []).filter(Boolean);
     if (!list.length) return "";
+    const src = viewOpts && viewOpts.src;
+    const open = (i) => src ? ` data-act="photo-view" data-src="${esc(src)}" data-id="${i}"` : "";
     let vi = 0;
-    return `<div class="photo-strip" aria-label="Photos and videos">` + list.map((ph) => {
-      if (ph.type === "video" && ph.url) return videoTileHtml(ph, (keyPrefix || "ps") + "-s" + (vi++), { cls: "photo-strip-item" });
-      if (ph.type === "file" && ph.url) return `<div class="photo-strip-item" ${lazyBg(ph.url, 320)}></div>`;
+    return `<div class="photo-strip" aria-label="Photos and videos">` + list.map((ph, i) => {
+      if (ph.type === "video" && ph.url) {
+        if (src) {
+          const bg = ph.poster ? `background-image:url('${esc(mediaUrl(ph.poster, 480))}')` : "background:#111";
+          return `<button type="button" class="vid-tile photo-strip-item" style="${bg}"${open(i)} aria-label="Play video">
+            <span class="vid-badge" aria-hidden="true">${kIcon("play")}</span>
+            ${ph.duration ? `<span class="vid-dur" aria-hidden="true">${fmtDur(ph.duration)}</span>` : ""}
+          </button>`;
+        }
+        return videoTileHtml(ph, (keyPrefix || "ps") + "-s" + (vi++), { cls: "photo-strip-item" });
+      }
+      if (ph.type === "file" && ph.url) return `<button type="button" class="photo-strip-item"${open(i)} ${lazyBg(ph.url, 320)} aria-label="View photo"></button>`;
       const bg = ph.gradient ? `background:${esc(ph.gradient)}` : "background:#141414";
-      return `<div class="photo-strip-item" style="${bg}"><span>${esc(ph.emoji || "")}</span></div>`;
+      return `<button type="button" class="photo-strip-item"${open(i)} style="${bg}" aria-label="View photo"><span>${esc(ph.emoji || "")}</span></button>`;
     }).join("") + `</div>`;
   }
 
@@ -1427,8 +1511,12 @@
     } else if (opts.actionsHtml) {
       actions = `<div class="pf-actions"><div class="pf-actions-row">${opts.actionsHtml}</div></div>`;
     }
+    const vSrc = opts.asOthers ? "preview" : (isMe ? "me" : "profile");
     const cover = profileCoverPhoto(p);
     const hasPhoto = Boolean(cover && cover.type === "file" && cover.url);
+    const coverIdx = viewerIndexFor(p, cover);
+    const canView = coverIdx >= 0;
+    const viewAttrs = canView ? ` data-act="photo-view" data-src="${esc(vSrc)}" data-id="${coverIdx}" role="button" tabindex="0" aria-label="View photo"` : "";
     const coverBg = hasPhoto
       ? lazyBg(cover.url, 1080)
       : `style="background:${esc((cover && cover.gradient) || "linear-gradient(165deg,#140800 0%,#3a1400 42%,#ff5c00 140%)")}"`;
@@ -1439,7 +1527,7 @@
     let html = `<div class="pf-page">`;
     // 1. Hero: cover photo with name overlaid, then stats and actions
     html += `<div class="pf-hero">
-      <div class="pf-cover${hasPhoto ? " has-photo" : " no-photo"}" ${coverBg}>
+      <div class="pf-cover${hasPhoto ? " has-photo" : " no-photo"}"${viewAttrs} ${coverBg}>
         <div class="pf-cover-shade" aria-hidden="true"></div>
         ${!hasPhoto && cover && cover.emoji ? `<div class="pf-cover-emoji" aria-hidden="true">${esc(cover.emoji)}</div>` : ""}
         <div class="pf-cover-meta">
@@ -1464,7 +1552,7 @@
     // 2. About
     html += pfSection("about", "About", profileAboutBody(p, isMe), { icon: "user" });
     // 3. Photos & videos
-    const strip = profilePhotoStrip(mediaOf(p), keyPrefix);
+    const strip = profilePhotoStrip(viewerMediaOf(p), keyPrefix, { src: vSrc });
     html += pfSection("media", "Photos & videos", strip || (isMe ? pfEmpty("photo", "Add photos and a profile video in Edit profile.", "Add photos", "edit-profile") : ""), { icon: "photo" });
     // 4. Music
     const music = profileSongs(p, keyPrefix) + profileArtists(p) + profileTunes(p.favoriteTunes);
@@ -1561,6 +1649,7 @@
     chatDisappear: false,
     chatSheet: null,
     chatLightbox: null,
+    photoViewer: null,
     blocked: [],
     locationShare: null,
     safetyCheck: null,
@@ -3512,11 +3601,13 @@
     if (!ph) return "";
     const liked = false;
     const caption = ph.caption || "";
+    const viewI = viewerIndexFor(p, ph);
+    const open = viewI >= 0 ? ` data-act="photo-view" data-src="discover" data-id="${viewI}" role="button" tabindex="0" aria-label="View photo"` : "";
     if (ph.type === "file" && ph.url) {
-      return `<div class="photo file" style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
+      return `<div class="photo file"${open} style="background-image:url('${esc(mediaUrl(ph.url, 1280))}')">${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
         ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
     }
-    return `<div class="photo" style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
+    return `<div class="photo"${open} style="background:${esc(ph.gradient || "#111111")}"><div class="grain"></div>
       ${showWho ? `<div class="who"><div class="nm">${personName(p)}</div>${genreRow(p, { compact: true, max: 3 })}${p.sharedEventChip ? `<div class="meet-chip">${esc(p.sharedEventChip)}</div>` : ""}${p.sharedSetChip ? `<div class="meet-chip">${esc(p.sharedSetChip)}</div>` : ""}${p.sharedGenreChip ? `<div class="meet-chip genre-share">${esc(p.sharedGenreChip)}</div>` : ""}${crewBadgesHtml(p.id)}</div>` : ""}
       <div class="emoji">${ph.emoji || "💫"}</div>
       ${caption ? `<div class="caption">${esc(caption)}</div>` : ""}</div>`;
@@ -6015,7 +6106,7 @@
       renderFailures++;
       try { console.error("Kandi render failed", err); } catch (_) {}
       if (renderFailures > 2) { showRecoveryScreen(err); return; }
-      state.overlay = null; state.overlayBack = null; state.badgeSheet = null; state.storyViewer = null; state.openPost = null;
+      state.overlay = null; state.overlayBack = null; state.badgeSheet = null; state.storyViewer = null; state.photoViewer = null; state.openPost = null;
       try { stopStoryPlayback(); } catch (_) {}
       render();
       toast("Something glitched, so we reset the screen.", "err");
@@ -6056,11 +6147,12 @@
       const storyOpen = Boolean(state.storyViewer);
       html = `<div class="screen has-tabs${storyOpen ? " story-open" : ""}"></div>`;
       // Parse each part on its own so stray or nested tags in one screen stay contained inside .screen.
-      appParts = [body, safetyDock(), tabbar(), overlays(), viewGenreSheet(), viewShowPicker()];
+      appParts = [body, safetyDock(), tabbar(), overlays(), viewGenreSheet(), viewShowPicker(), photoViewerHtml()];
     }
     // Keep scroll position and the focused field across re-renders (likes, follows, typing feedback).
     const v = state.storyViewer;
-    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + ((state.overlay && state.overlay.type === "genre" && state.overlay.id) || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "");
+    const pv = state.photoViewer;
+    const key = state.view + "|" + state.tab + "|" + state.feedTab + "|" + ((state.overlay && state.overlay.type) || "") + "|" + ((state.overlay && state.overlay.type === "genre" && state.overlay.id) || "") + "|" + (v ? (v.ringIndex + ":" + v.storyIndex + ":" + (v.showViewers ? "v" : "")) : "") + "|" + (pv ? ("pv" + pv.index) : "");
     const scrollers = Array.from(root.querySelectorAll(".scroll, .overlay, .sheet"));
     const saved = lastRenderKey === key ? scrollers.map((n) => n.scrollTop) : null;
     const active = document.activeElement;
@@ -6101,6 +6193,8 @@
     document.body.classList.toggle("chat-open", !!(state.view === "app" && state.overlay && state.overlay.type === "chat"));
     document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-bg"));
     document.body.classList.toggle("safety-dock-on", !!(state.view === "app" && state.safetyCheck && document.querySelector(".safety-dock")));
+    document.body.classList.toggle("photo-viewer-open", !!state.photoViewer);
+    bindPhotoViewer();
   }
   let lastRenderKey = "";
   const busyActs = new Set();
@@ -6545,6 +6639,22 @@
         render(); return;
       }
       if (act === "settings") { state.overlay = { type: "settings" }; render(); quiet(Promise.all([loadBlocks(), loadReferral()]).then(() => render())); return; }
+      if (act === "photo-view") {
+        const src = (el && el.getAttribute("data-src")) || "";
+        const uid = (el && el.getAttribute("data-user")) || "";
+        const person = photoViewerPerson(src, uid);
+        if (person) openPhotoViewer(person, id);
+        return;
+      }
+      if (act === "photo-view-close") { closePhotoViewer(); return; }
+      if (act === "photo-view-prev" || act === "photo-view-next") {
+        const pv = state.photoViewer;
+        if (!pv || !pv.items.length) return;
+        const dir = act === "photo-view-next" ? 1 : -1;
+        pv.index = (pv.index + dir + pv.items.length) % pv.items.length;
+        render();
+        return;
+      }
       if (act === "pf-expand") {
         state.profileExpand = state.profileExpand || { shows: false, kandi: false };
         if (id === "shows" || id === "kandi") state.profileExpand[id] = !state.profileExpand[id];
@@ -7003,7 +7113,7 @@
       if (act === "tab") {
         if (state.storyViewer) { stopStoryPlayback(); state.storyViewer = null; }
         if (state.overlay && state.overlay.type === "chat") leaveOpenChat();
-        state.chatSheet = null; state.chatLightbox = null;
+        state.chatSheet = null; state.chatLightbox = null; state.photoViewer = null;
         state.tab = id; state.overlay = null; state.badgeSheet = null;
         render();
         const scroller = document.querySelector(".screen > .scroll");
@@ -7022,6 +7132,7 @@
         return;
       }
       if (act === "close") {
+        if (state.photoViewer) { closePhotoViewer(); return; }
         if (state.overlay && state.overlay.type === "ambassadorNotice") {
           try { api("/api/referral/notice-seen", { method: "POST", body: {} }); } catch (_) {}
           if (state.me) state.me.ambassadorNotice = false;
@@ -8238,7 +8349,7 @@
   const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-sets-filter", "set-gender-filter", "toggle-suggest-set", "toggle-admin-set", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
-    "settings", "profile-tab", "post-view", "pf-expand", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
+    "settings", "profile-tab", "post-view", "pf-expand", "photo-view", "photo-view-close", "photo-view-prev", "photo-view-next", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
     "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
     "preview-profile", "edit-back",
@@ -8271,6 +8382,160 @@
       });
     });
   });
+  let photoViewerKeyBound = false;
+  function bindPhotoViewer() {
+    if (!photoViewerKeyBound) {
+      photoViewerKeyBound = true;
+      document.addEventListener("keydown", (e) => {
+        const pv = state.photoViewer;
+        if (!pv) return;
+        if (e.key === "Escape") { e.preventDefault(); closePhotoViewer(); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); pv.index = (pv.index + 1) % pv.items.length; render(); }
+        else if (e.key === "ArrowLeft") { e.preventDefault(); pv.index = (pv.index - 1 + pv.items.length) % pv.items.length; render(); }
+      });
+    }
+    const rootEl = document.querySelector("[data-photo-viewer]");
+    if (!rootEl || rootEl.getAttribute("data-bound") === "1") return;
+    rootEl.setAttribute("data-bound", "1");
+    const stage = rootEl.querySelector(".mv-stage");
+    const frame = rootEl.querySelector(".mv-frame");
+    if (!stage || !frame) return;
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+    let scale = 1, tx = 0, ty = 0;
+    const pointers = new Map();
+    let pinch0 = 1, pinchScale = 1, pinchTx = 0, pinchTy = 0;
+    let startX = 0, startY = 0, lastX = 0, lastY = 0, panTx = 0, panTy = 0;
+    let moved = false, dragging = false, pinching = false, closed = false;
+    let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+    const apply = () => { frame.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")"; };
+    const resetZoom = (anim) => {
+      scale = 1; tx = 0; ty = 0;
+      frame.style.transition = anim ? "transform .2s ease" : "none";
+      apply();
+      if (anim) setTimeout(() => { if (frame) frame.style.transition = ""; }, 200);
+    };
+    const showAt = (index) => {
+      const pv = state.photoViewer;
+      if (!pv || !pv.items.length) return;
+      const n = pv.items.length;
+      const i = (index + n) % n;
+      pv.index = i;
+      scale = 1; tx = 0; ty = 0;
+      frame.style.transition = "";
+      frame.style.transform = "";
+      rootEl.style.transition = "";
+      rootEl.style.transform = "";
+      rootEl.style.opacity = "";
+      frame.innerHTML = photoViewerSlideHtml(pv.items[i]);
+      const c = rootEl.querySelector(".mv-counter");
+      if (c) c.textContent = (i + 1) + " / " + n;
+      const vid = frame.querySelector("video");
+      if (vid) { const pr = vid.play(); if (pr && pr.catch) pr.catch(() => {}); }
+    };
+    const close = () => { if (closed) return; closed = true; closePhotoViewer(); };
+    const onChrome = (t) => t && t.closest && t.closest(".mv-close, video, .mv-counter");
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.button && e.button !== 0) return;
+      if (onChrome(e.target)) return;
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        pinching = true;
+        dragging = false;
+        const pts = Array.from(pointers.values());
+        pinch0 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        pinchScale = scale;
+        pinchTx = tx; pinchTy = ty;
+        moved = true;
+        return;
+      }
+      dragging = true;
+      moved = false;
+      startX = lastX = e.clientX;
+      startY = lastY = e.clientY;
+      panTx = tx; panTy = ty;
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinching && pointers.size >= 2) {
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        scale = clamp(pinchScale * (dist / pinch0), 1, 4);
+        tx = pinchTx; ty = pinchTy;
+        apply();
+        try { e.preventDefault(); } catch (_) {}
+        return;
+      }
+      if (!dragging) return;
+      lastX = e.clientX; lastY = e.clientY;
+      const adx = e.clientX - startX, ady = e.clientY - startY;
+      if (Math.abs(adx) + Math.abs(ady) > 8) moved = true;
+      if (scale > 1.05) {
+        tx = panTx + adx;
+        ty = panTy + ady;
+        apply();
+        try { e.preventDefault(); } catch (_) {}
+        return;
+      }
+      if (ady > 12 && ady > Math.abs(adx) * 1.1) {
+        const o = clamp(1 - ady / 420, 0.28, 1);
+        rootEl.style.transition = "none";
+        rootEl.style.transform = "translateY(" + ady + "px)";
+        rootEl.style.opacity = String(o);
+      } else if (Math.abs(adx) > 12 && Math.abs(adx) > Math.abs(ady)) {
+        frame.style.transition = "none";
+        frame.style.transform = "translateX(" + adx + "px)";
+      }
+    });
+    const endPointer = (e) => {
+      pointers.delete(e.pointerId);
+      if (pinching) {
+        if (pointers.size < 2) {
+          pinching = false;
+          if (scale < 1.08) resetZoom(true);
+        }
+        dragging = false;
+        return;
+      }
+      if (!dragging) return;
+      dragging = false;
+      const adx = (e.clientX != null ? e.clientX : lastX) - startX;
+      const ady = (e.clientY != null ? e.clientY : lastY) - startY;
+      const pv = state.photoViewer;
+      if (scale > 1.05) return;
+      if (ady > 80 && ady > Math.abs(adx) * 1.15) { close(); return; }
+      rootEl.style.transition = "transform .2s ease, opacity .2s ease";
+      rootEl.style.transform = "";
+      rootEl.style.opacity = "";
+      if (pv && pv.items.length > 1 && Math.abs(adx) > 50 && Math.abs(adx) > Math.abs(ady)) {
+        showAt(pv.index + (adx < 0 ? 1 : -1));
+        return;
+      }
+      frame.style.transition = "transform .2s ease";
+      frame.style.transform = "";
+      setTimeout(() => { if (frame) frame.style.transition = ""; }, 200);
+      if (moved) return;
+      const now = Date.now();
+      const cx = e.clientX != null ? e.clientX : lastX;
+      const cy = e.clientY != null ? e.clientY : lastY;
+      if (now - lastTapT < 280 && Math.hypot(cx - lastTapX, cy - lastTapY) < 30) {
+        lastTapT = 0;
+        if (scale > 1.05) resetZoom(true);
+        else { scale = 2.4; tx = 0; ty = 0; frame.style.transition = "transform .2s ease"; apply(); setTimeout(() => { if (frame) frame.style.transition = ""; }, 200); }
+        return;
+      }
+      lastTapT = now; lastTapX = cx; lastTapY = cy;
+      if (!(e.target && e.target.closest && e.target.closest(".mv-media, .mv-close, .mv-counter"))) close();
+    };
+    stage.addEventListener("pointerup", endPointer);
+    stage.addEventListener("pointercancel", endPointer);
+    stage.addEventListener("click", (e) => { if (moved) { e.preventDefault(); e.stopPropagation(); } }, true);
+    stage.addEventListener("gesturestart", (e) => { try { e.preventDefault(); } catch (_) {} pinchScale = scale; }, { passive: false });
+    stage.addEventListener("gesturechange", (e) => { try { e.preventDefault(); } catch (_) {} scale = clamp(pinchScale * e.scale, 1, 4); apply(); }, { passive: false });
+    stage.addEventListener("gestureend", (e) => { try { e.preventDefault(); } catch (_) {} if (scale < 1.08) resetZoom(true); }, { passive: false });
+  }
+
+
   // Story viewer: tap left/right, hold to pause, swipe down to close. Real buttons stay tappable in WKWebView.
   (function bindStoryNav() {
     let startX = 0, startY = 0, startT = 0, held = false, tracking = false, pointerId = null;
