@@ -73,7 +73,7 @@ async function setRsvp(db, user, ev, { going, openToMeet, meetNote, vibe }) {
       await db.prepare(`DELETE FROM live WHERE user_id=?`).run(user.id);
     }
   } else {
-    const open = openToMeet == null ? (existing && truthy(existing.open_to_meet) ? 1 : 0) : (openToMeet ? 1 : 0);
+    const open = openToMeet == null ? (existing ? truthy(existing.open_to_meet) : 0) : (openToMeet ? 1 : 0);
     const note = meetNote == null ? (existing ? existing.meet_note : "") : String(meetNote || "").slice(0, 80);
     const nextVibe = vibe !== undefined ? String(vibe || "") : (existing ? String(existing.show_vibe || "") : "");
     if (existing) {
