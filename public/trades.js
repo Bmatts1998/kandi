@@ -3,7 +3,11 @@
   const STYLES = [
     { id: "classic", label: "Classic", beads: ["#ff5c00", "#ff8a1a", "#ffc14d", "#fff7f0", "#ff5c00", "#1a120c", "#ff8a1a"] },
     { id: "glow", label: "Glow", beads: ["#ff5c00", "#ff8a3d", "#ffe14d", "#ff5c00", "#ff3d9a", "#ff8a1a", "#fff3c4"] },
+    { id: "neon", label: "Neon", beads: ["#ff0080", "#ff6a00", "#fff200", "#39ff14", "#00f0ff", "#1f51ff", "#bc13fe"] },
     { id: "rainbow", label: "Rainbow", beads: ["#ff3b3b", "#ff8a1a", "#ffe14d", "#6dff6a", "#2ef0ff", "#4d7cff", "#b44aff"] },
+    { id: "pastel", label: "Pastel", beads: ["#ffb3c7", "#ffd1a8", "#fff1a8", "#c8f7c5", "#b5f0ea", "#b9d6ff", "#d9c2ff"] },
+    { id: "glitter", label: "Glitter", beads: ["#ff7ad9", "#b44aff", "#2ef0ff", "#ffe14d", "#ff5c00", "#6dff6a"] },
+    { id: "jelly", label: "Jelly", beads: ["#ff3d9a", "#ff8a1a", "#6dff6a", "#2ef0ff", "#b44aff", "#ffe14d"] },
     { id: "uv", label: "Blacklight", beads: ["#111111", "#7a5cff", "#d0b0ff", "#2ef0ff", "#ff5cff", "#111111", "#b44aff"] },
     { id: "sunset", label: "Sunset", beads: ["#ff3d9a", "#ff5c00", "#ff8a1a", "#ffc14d", "#ff7ad9", "#ff3b3b"] },
     { id: "forest", label: "Forest", beads: ["#0c3b28", "#1a6b3c", "#d4ff3f", "#6dff6a", "#0c3b28", "#fff7f0"] },
@@ -13,10 +17,53 @@
     { id: "pearl", label: "Pearl", beads: ["#fff7f0", "#f0d4b8", "#e8c4a0", "#fff7f0", "#d4b08a", "#fff3e0"] },
     { id: "metallic", label: "Metallic", beads: ["#d4af37", "#c0c0c0", "#ffd56a", "#8a8a8a", "#d4af37", "#fff7f0"] },
   ];
-  const PALETTE = ["#ff5c00", "#ff8a1a", "#ffc14d", "#ffe14d", "#fff7f0", "#ff3d9a", "#ff7ad9", "#ff3b3b", "#6dff6a", "#d4ff3f", "#2ef0ff", "#7ad0ff", "#4d7cff", "#b44aff", "#7a5cff", "#111111", "#3b0a5c", "#d4af37", "#c0c0c0"];
+  const PALETTES = [
+    { id: "classic", label: "Classic", colors: ["#ff5c00", "#ff8a1a", "#ffc14d", "#ffe14d", "#fff7f0", "#ff3d9a", "#ff7ad9", "#ff3b3b", "#6dff6a", "#d4ff3f", "#2ef0ff", "#7ad0ff", "#4d7cff", "#b44aff", "#7a5cff", "#111111", "#3b0a5c", "#d4af37", "#c0c0c0"] },
+    { id: "neon", label: "Neon", colors: ["#ff0080", "#ff2e63", "#ff6a00", "#fff200", "#ccff00", "#39ff14", "#00ff9f", "#00f0ff", "#1f51ff", "#7a00ff", "#bc13fe", "#ff00e5"] },
+    { id: "pastel", label: "Pastel", colors: ["#ffb3c7", "#ffd1a8", "#fff1a8", "#c8f7c5", "#b5f0ea", "#b9d6ff", "#d9c2ff", "#ffc9f0", "#f7e1d7", "#e6e6fa"] },
+    { id: "glow", label: "Glow", colors: ["#d6ff5c", "#9dffd9", "#b8f4ff", "#fffbb0", "#ffd9f2", "#e4ffd0", "#c7b8ff", "#ffe0b0"] },
+    { id: "metal", label: "Metal", colors: ["#d4af37", "#ffd56a", "#c0c0c0", "#8a8a8a", "#b76e79", "#cd7f32", "#e8e8f0", "#4a4a55"] },
+  ];
+  const SHAPES = [
+    { id: "round", label: "Round" },
+    { id: "star", label: "Star" },
+    { id: "heart", label: "Heart" },
+    { id: "pony", label: "Pony" },
+    { id: "cube", label: "Cube" },
+    { id: "flower", label: "Flower" },
+  ];
+  const WRAPPED_SHAPES = new Set(["star", "heart", "flower"]);
+  const PATTERNS = [
+    { id: "solid", label: "Solid" },
+    { id: "alternating", label: "Alternating" },
+    { id: "rainbow", label: "Rainbow" },
+    { id: "custom", label: "Custom" },
+  ];
+  const CHARMS = [
+    { id: "none", label: "None", e: "" },
+    { id: "star", label: "Star", e: "⭐" },
+    { id: "heart", label: "Heart", e: "💖" },
+    { id: "bolt", label: "Bolt", e: "⚡" },
+    { id: "moon", label: "Moon", e: "🌙" },
+    { id: "smiley", label: "Smiley", e: "😊" },
+    { id: "peace", label: "Peace", e: "☮️" },
+    { id: "butterfly", label: "Butterfly", e: "🦋" },
+    { id: "flower", label: "Flower", e: "🌸" },
+    { id: "crown", label: "Crown", e: "👑" },
+    { id: "rainbow", label: "Rainbow", e: "🌈" },
+    { id: "gem", label: "Gem", e: "💎" },
+    { id: "alien", label: "Alien", e: "👽" },
+  ];
+  const RAINBOW = ["#ff3b3b", "#ff8a1a", "#ffe14d", "#6dff6a", "#2ef0ff", "#4d7cff", "#b44aff"];
+  const LEN_MIN = 5;
+  const LEN_MAX = 24;
+  const LEN_PRESETS = [{ n: 8, label: "Small" }, { n: 12, label: "Medium" }, { n: 16, label: "Large" }, { n: 24, label: "Cuff" }];
+  const DEFAULT_LEN = 12;
+  const MAX_DESIGNS = 20;
   const INSTANT = new Set([
-    "trade-open", "trade-open-host", "trade-open-join", "trade-style", "trade-bead-add", "trade-bead-del",
-    "trade-pick-event", "trade-open-item", "trade-goto-you", "trade-copy-code", "trade-clear-event",
+    "trade-open", "trade-open-host", "trade-open-join", "trade-pick-event", "trade-open-item", "trade-goto-you", "trade-copy-code", "trade-clear-event",
+    "kd-open", "kd-new", "kd-edit", "kd-back", "kd-style", "kd-pattern", "kd-slot", "kd-color", "kd-palette", "kd-shape", "kd-bead", "kd-len",
+    "kd-fill", "kd-charm", "kd-pick", "kd-save-toggle", "kd-del-ask",
   ]);
 
   let api, esc, toast, render, personAvatar, personName, timeAgo, getState;
@@ -39,46 +86,464 @@
     return s.drafts;
   }
 
-  function designFromDraft() {
-    const s = state();
-    const d = s.tradeDesign || { style: "classic", beads: styleById("classic").beads.slice(), word: "PLUR", message: "" };
-    const word = String(drafts().tradeWord != null ? drafts().tradeWord : (d.word || "")).toUpperCase();
-    const message = String(drafts().tradeMessage != null ? drafts().tradeMessage : (d.message || ""));
-    return { style: d.style || "classic", beads: (d.beads && d.beads.length ? d.beads : styleById(d.style || "classic").beads).slice(), word, message };
+  /* ---------- design model (shared by trades and My designs) ---------- */
+
+  function cycle(list, n) {
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(list[i % list.length]);
+    return out;
   }
 
-  function setDesign(partial) {
+  function defaultDesign(word) {
+    return {
+      style: "classic",
+      pattern: "custom",
+      beads: cycle(styleById("classic").beads, DEFAULT_LEN),
+      shapes: cycle(["round"], DEFAULT_LEN),
+      charm: "none",
+      word: word != null ? word : "PLUR",
+      message: "",
+    };
+  }
+
+  function normalizeDesign(d) {
+    d = d || {};
+    const style = STYLES.some((x) => x.id === d.style) || ["neon", "pastel", "glitter", "jelly"].includes(d.style) ? d.style : "classic";
+    let beads = Array.isArray(d.beads) && d.beads.length ? d.beads.slice(0, LEN_MAX) : cycle(styleById(style).beads, DEFAULT_LEN);
+    const shapes = beads.map((_, i) => (d.shapes && SHAPES.some((x) => x.id === d.shapes[i])) ? d.shapes[i] : "round");
+    return {
+      style,
+      pattern: PATTERNS.some((x) => x.id === d.pattern) ? d.pattern : "custom",
+      beads,
+      shapes,
+      charm: CHARMS.some((x) => x.id === d.charm) ? d.charm : "none",
+      word: String(d.word || "").toUpperCase().slice(0, 8),
+      message: String(d.message || ""),
+    };
+  }
+
+  function designJson(d) {
+    return JSON.stringify({ s: d.style, p: d.pattern, b: d.beads, h: d.shapes, c: d.charm, w: d.word, m: d.message });
+  }
+
+  function newKd(design, extra) {
+    const d = normalizeDesign(design || defaultDesign());
+    return Object.assign({
+      design: d,
+      brushA: "#ff5c00",
+      brushB: "#2ef0ff",
+      slot: "A",
+      shape: d.shapes[0] || "round",
+      group: "classic",
+      selectedId: "",
+      baseline: designJson(d),
+      name: "",
+      editingId: "",
+      saveOn: false,
+    }, extra || {});
+  }
+
+  function kd() {
     const s = state();
-    const cur = designFromDraft();
-    s.tradeDesign = Object.assign({}, cur, partial || {});
-    if (partial && partial.word != null) drafts().tradeWord = partial.word;
-    if (partial && partial.message != null) drafts().tradeMessage = partial.message;
+    if (!s.kd) s.kd = newKd();
+    return s.kd;
+  }
+
+  function designFromDraft() {
+    const k = kd();
+    return JSON.parse(JSON.stringify(k.design));
+  }
+
+  function patternBeads(k, n) {
+    const d = k.design;
+    if (d.pattern === "solid") return cycle([k.brushA], n);
+    if (d.pattern === "alternating") return cycle([k.brushA, k.brushB], n);
+    if (d.pattern === "rainbow") return cycle(RAINBOW, n);
+    return null;
+  }
+
+  function regenerate(k) {
+    const d = k.design;
+    const gen = patternBeads(k, d.beads.length);
+    if (!gen) return;
+    d.beads = gen;
+    d.shapes = cycle([k.shape], d.beads.length);
+  }
+
+  function setLength(k, n) {
+    const d = k.design;
+    n = Math.max(LEN_MIN, Math.min(LEN_MAX, n));
+    if (n === d.beads.length) return;
+    if (d.pattern === "custom") {
+      while (d.beads.length > n) { d.beads.pop(); d.shapes.pop(); }
+      while (d.beads.length < n) { d.beads.push(k.slot === "B" ? k.brushB : k.brushA); d.shapes.push(k.shape); }
+    } else {
+      d.beads = new Array(n).fill("#000000");
+      d.shapes = new Array(n).fill(k.shape);
+      regenerate(k);
+    }
+  }
+
+  function charmEmoji(id) {
+    const c = CHARMS.find((x) => x.id === id);
+    return c ? c.e : "";
   }
 
   function braceletHtml(design, opts) {
     opts = opts || {};
     const d = design || { beads: styleById("classic").beads, word: "", style: "classic" };
     const beads = (d.beads && d.beads.length ? d.beads : styleById(d.style).beads).slice();
+    const shapes = Array.isArray(d.shapes) ? d.shapes : [];
     const word = String(d.word || "").toUpperCase();
-    const letters = word.split("");
+    const letters = word.split("").filter(Boolean);
     const cls = "kandi-bracelet" + (d.style ? " style-" + esc(d.style) : "") + (opts.size ? " " + opts.size : "") + (opts.animate ? " assemble" : "");
     const mid = Math.max(0, Math.floor((beads.length - letters.length) / 2));
     const items = [];
+    const inter = (i) => (opts.interactive ? ` data-act="kd-bead" data-id="${i}" aria-label="Paint bead ${i + 1}"` : "");
+    const tag = opts.interactive ? "button" : "span";
+    const typeAttr = opts.interactive ? ' type="button"' : "";
     let li = 0;
     for (let i = 0; i < beads.length; i++) {
       if (i >= mid && li < letters.length) {
-        items.push(`<span class="kandi-bead letter" style="--bead:${esc(beads[i])}"><i>${esc(letters[li])}</i></span>`);
+        items.push(`<${tag}${typeAttr} class="kandi-bead letter" style="--bead:${esc(beads[i])};--i:${i}"${inter(i)}><i>${esc(letters[li])}</i></${tag}>`);
         li++;
+        continue;
+      }
+      const shape = SHAPES.some((x) => x.id === shapes[i]) ? shapes[i] : "round";
+      const sc = shape === "round" ? "" : " shape-" + shape;
+      if (WRAPPED_SHAPES.has(shape)) {
+        items.push(`<${tag}${typeAttr} class="kb-s" style="--bead:${esc(beads[i])};--i:${i}"${inter(i)}><span class="kandi-bead${sc}"></span></${tag}>`);
       } else {
-        items.push(`<span class="kandi-bead" style="--bead:${esc(beads[i])}"></span>`);
+        items.push(`<${tag}${typeAttr} class="kandi-bead${sc}" style="--bead:${esc(beads[i])};--i:${i}"${inter(i)}></${tag}>`);
       }
     }
     while (li < letters.length) {
-      items.push(`<span class="kandi-bead letter" style="--bead:#fff7f0"><i>${esc(letters[li])}</i></span>`);
+      items.push(`<span class="kandi-bead letter" style="--bead:#fff7f0;--i:${beads.length + li}"><i>${esc(letters[li])}</i></span>`);
       li++;
     }
+    const em = charmEmoji(d.charm);
+    if (em) items.push(`<span class="kandi-charm" style="--i:${beads.length + letters.length}" aria-hidden="true">${em}</span>`);
     const label = opts.caption ? `<span class="kandi-br-cap">${opts.caption}</span>` : "";
     return `<div class="${cls}" role="img" aria-label="${esc((word ? word + " kandi" : "Kandi bracelet") + (opts.caption ? " · " + String(opts.caption).replace(/<[^>]+>/g, "") : ""))}">${items.join("")}</div>${label}`;
+  }
+
+  /* ---------- designer UI (used during a trade and in My designs) ---------- */
+
+  function swatch(c, act, id, on, extraCls) {
+    return `<button type="button" class="kandi-bead sm kd-sw${on ? " on" : ""}${extraCls ? " " + extraCls : ""}" style="--bead:${esc(c)}" data-act="${act}" data-id="${esc(id)}" aria-label="Color ${esc(c)}"></button>`;
+  }
+
+  function shapeChipHtml(sh, on) {
+    return `<button type="button" class="chip kd-shape${on ? " on" : ""}" data-act="kd-shape" data-id="${sh.id}"><span class="kd-sh-ico"><span class="kandi-bead sm${sh.id === "round" ? "" : " shape-" + sh.id}" style="--bead:var(--orange2)"></span></span>${esc(sh.label)}</button>`;
+  }
+
+  function controlsOneHtml(k) {
+    const d = k.design;
+    const pal = PALETTES.find((p) => p.id === k.group) || PALETTES[0];
+    const custom = d.pattern === "custom";
+    const hint = d.pattern === "custom"
+      ? "Tap any bead above to paint it with the selected color and shape."
+      : d.pattern === "rainbow"
+        ? "Rainbow uses its own colors. Pick a color to switch to Solid."
+        : "Pick colors and a shape. Choose Custom to paint bead by bead.";
+    return `
+      <div class="label" style="margin-top:14px">Quick start</div>
+      <div class="kd-scroll">${STYLES.map((st) => `<button type="button" class="chip${d.style === st.id ? " on" : ""}" data-act="kd-style" data-id="${st.id}">${esc(st.label)}</button>`).join("")}</div>
+      <div class="label" style="margin-top:14px">Pattern</div>
+      <div class="chips">${PATTERNS.map((pt) => `<button type="button" class="chip${d.pattern === pt.id ? " on" : ""}" data-act="kd-pattern" data-id="${pt.id}">${esc(pt.label)}</button>`).join("")}</div>
+      <div class="label" style="margin-top:14px">Colors</div>
+      <div class="kd-brush">
+        <button type="button" class="kd-slot${k.slot === "A" ? " on" : ""}" data-act="kd-slot" data-id="A" aria-label="Color A"><span class="kandi-bead sm" style="--bead:${esc(k.brushA)}"></span><b>A</b></button>
+        <button type="button" class="kd-slot${k.slot === "B" ? " on" : ""}${(d.pattern === "alternating" || custom) ? "" : " dim"}" data-act="kd-slot" data-id="B" aria-label="Color B"><span class="kandi-bead sm" style="--bead:${esc(k.brushB)}"></span><b>B</b></button>
+        ${custom ? `<button type="button" class="chip kd-fill" data-act="kd-fill">Fill all</button>` : ""}
+      </div>
+      <div class="kd-scroll kd-tabs">${PALETTES.map((p) => `<button type="button" class="chip${k.group === p.id ? " on" : ""}" data-act="kd-palette" data-id="${p.id}">${esc(p.label)}</button>`).join("")}</div>
+      <div class="kandi-palette kd-pal">${pal.colors.map((c) => swatch(c, "kd-color", c, c === (k.slot === "A" ? k.brushA : k.brushB))).join("")}</div>
+      <p class="tiny kd-hint">${esc(hint)}</p>
+      <div class="label" style="margin-top:10px">Bead shape${(custom && (k.painted || d.shapes.some((x) => x !== d.shapes[0]))) ? ` <span class="tiny">· tap beads to apply</span>` : ""}</div>
+      <div class="kd-scroll">${SHAPES.map((sh) => shapeChipHtml(sh, k.shape === sh.id)).join("")}</div>
+      <div class="label" style="margin-top:14px">Length <span class="tiny">· ${d.beads.length} beads</span></div>
+      <div class="kd-len">
+        <button type="button" class="btn sm ghost kd-step" data-act="kd-len" data-id="-1" aria-label="Fewer beads">−</button>
+        <div class="kd-scroll kd-len-presets">${LEN_PRESETS.map((lp) => `<button type="button" class="chip${d.beads.length === lp.n ? " on" : ""}" data-act="kd-len" data-id="=${lp.n}">${esc(lp.label)}</button>`).join("")}</div>
+        <button type="button" class="btn sm ghost kd-step" data-act="kd-len" data-id="1" aria-label="More beads">+</button>
+      </div>`;
+  }
+
+  function controlsTwoHtml(k) {
+    const d = k.design;
+    return `<div class="label" style="margin-top:14px">Charm <span class="tiny">(optional)</span></div>
+      <div class="kd-scroll">${CHARMS.map((c) => `<button type="button" class="chip kd-charm${d.charm === c.id ? " on" : ""}" data-act="kd-charm" data-id="${c.id}">${c.e ? `<span class="kd-ch-e">${c.e}</span>` : ""}${esc(c.label)}</button>`).join("")}</div>`;
+  }
+
+  function designerHtml() {
+    const k = kd();
+    const d = k.design;
+    return `<div class="kd">
+      <div id="kd-live" class="kandi-live">${braceletHtml(d, { size: "lg", interactive: true })}</div>
+      <div id="kd-ctl1">${controlsOneHtml(k)}</div>
+      <label class="label" for="kd-word" style="margin-top:14px">Word <span class="tiny">(up to 8 letters)</span></label>
+      <input id="kd-word" maxlength="8" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="PLUR" value="${esc(d.word || "")}" aria-label="Word on your kandi" />
+      <div id="kd-ctl2">${controlsTwoHtml(k)}</div>
+      <label class="label" for="kd-msg" style="margin-top:14px">Note <span class="tiny">(optional)</span></label>
+      <textarea id="kd-msg" maxlength="140" placeholder="A note for whoever gets it…" aria-label="Optional note">${esc(d.message || "")}</textarea>
+    </div>`;
+  }
+
+  function refreshDesigner() {
+    const k = kd();
+    const live = document.getElementById("kd-live");
+    if (live) live.innerHTML = braceletHtml(k.design, { size: "lg", interactive: true });
+    const c1 = document.getElementById("kd-ctl1");
+    if (c1) c1.innerHTML = controlsOneHtml(k);
+    const c2 = document.getElementById("kd-ctl2");
+    if (c2) c2.innerHTML = controlsTwoHtml(k);
+    const sv = document.getElementById("kd-savebox");
+    if (sv) sv.innerHTML = saveBoxInner(k);
+  }
+
+  function bindDesignerInputs() {
+    const k = kd();
+    const live = () => {
+      const el = document.getElementById("kd-live");
+      if (el) el.innerHTML = braceletHtml(k.design, { size: "lg", interactive: true });
+      const sv = document.getElementById("kd-savebox");
+      if (sv && !sv.contains(document.activeElement)) sv.innerHTML = saveBoxInner(k);
+    };
+    const word = document.getElementById("kd-word");
+    if (word && !word._kandiBound) {
+      word._kandiBound = true;
+      word.addEventListener("input", () => {
+        const v = word.value.toUpperCase().replace(/[^A-Z0-9&!?+]/g, "").slice(0, 8);
+        if (v !== word.value) word.value = v;
+        kd().design.word = v;
+        live();
+      });
+    }
+    const msg = document.getElementById("kd-msg");
+    if (msg && !msg._kandiBound) {
+      msg._kandiBound = true;
+      msg.addEventListener("input", () => { kd().design.message = msg.value; });
+    }
+    const nm = document.getElementById("kd-name");
+    if (nm && !nm._kandiBound) {
+      nm._kandiBound = true;
+      nm.addEventListener("input", () => { kd().name = nm.value; });
+    }
+  }
+
+  function applyDesignerAct(act, id) {
+    const k = kd();
+    const d = k.design;
+    if (act === "kd-style") {
+      const st = styleById(id);
+      d.style = st.id;
+      d.pattern = "custom";
+      k.painted = false;
+      d.beads = cycle(st.beads, d.beads.length);
+      d.shapes = d.shapes.slice(0, d.beads.length);
+      while (d.shapes.length < d.beads.length) d.shapes.push(k.shape);
+    } else if (act === "kd-pattern") {
+      d.pattern = id;
+      if (id === "solid" || id === "alternating") k.slot = "A";
+      regenerate(k);
+    } else if (act === "kd-slot") {
+      k.slot = id === "B" ? "B" : "A";
+    } else if (act === "kd-palette") {
+      k.group = id;
+    } else if (act === "kd-color") {
+      if (k.slot === "B") k.brushB = id; else k.brushA = id;
+      if (d.pattern === "rainbow") d.pattern = "solid";
+      if (d.pattern === "solid" || d.pattern === "alternating") regenerate(k);
+      else if (d.pattern === "custom" && k.slot === "B") { /* B only matters for alternating */ }
+    } else if (act === "kd-shape") {
+      k.shape = id;
+      if (d.pattern !== "custom") regenerate(k);
+      else if (!k.painted && d.shapes.every((x) => x === d.shapes[0])) d.shapes = d.shapes.map(() => id); // not hand-painted yet: reshape everything
+    } else if (act === "kd-bead") {
+      const i = Number(id);
+      if (!(i >= 0 && i < d.beads.length)) return;
+      if (d.pattern !== "custom") d.pattern = "custom";
+      k.painted = true;
+      d.beads[i] = k.slot === "B" ? k.brushB : k.brushA;
+      d.shapes[i] = k.shape;
+    } else if (act === "kd-fill") {
+      d.beads = d.beads.map(() => (k.slot === "B" ? k.brushB : k.brushA));
+      d.shapes = d.shapes.map(() => k.shape);
+    } else if (act === "kd-len") {
+      const raw = String(id);
+      const n = raw.charAt(0) === "=" ? Number(raw.slice(1)) : d.beads.length + Number(raw);
+      if (raw.charAt(0) !== "=" && ((Number(raw) < 0 && d.beads.length <= LEN_MIN) || (Number(raw) > 0 && d.beads.length >= LEN_MAX))) {
+        toast(Number(raw) < 0 ? "Leave at least " + LEN_MIN + " beads." : "That's a full cuff.");
+        return;
+      }
+      setLength(k, n);
+    } else if (act === "kd-charm") {
+      d.charm = id;
+    }
+    refreshDesigner();
+  }
+
+  /* ---------- saved designs (My designs) ---------- */
+
+  async function loadDesigns() {
+    const s = state();
+    try {
+      const data = await api("/api/kandi-designs");
+      s.kdList = (data && data.designs) || [];
+      s.kdLastUsed = (data && data.lastUsedId) || "";
+    } catch (_) {
+      s.kdList = s.kdList || [];
+    }
+    return s.kdList;
+  }
+
+  function applyListData(data) {
+    const s = state();
+    if (data && data.designs) { s.kdList = data.designs; s.kdLastUsed = data.lastUsedId || ""; }
+  }
+
+  function savedById(id) {
+    return (state().kdList || []).find((x) => x.id === id);
+  }
+
+  function designsListHtml(s, o) {
+    const list = s.kdList;
+    const full = list && list.length >= MAX_DESIGNS;
+    let html = `<div class="kd-list">
+      <p class="sub">Build your bracelets ahead of time. When you trade, just pick one.</p>
+      <button type="button" class="btn primary" style="width:100%;margin-top:6px" data-act="kd-new"${full ? " disabled" : ""}>New design</button>
+      <p class="tiny" style="text-align:center;margin:8px 0 14px">${list ? list.length : 0} of ${MAX_DESIGNS} saved${full ? " · delete one to make room" : ""}</p>`;
+    if (!list) {
+      html += `<p class="muted" style="text-align:center"><span class="spin"></span></p>`;
+    } else if (!list.length) {
+      html += `<div class="kd-empty"><div>${braceletHtml({ beads: styleById("neon").beads, shapes: ["star", "heart", "round", "pony", "round", "star", "heart"], word: "PLUR", style: "neon", charm: "star" }, { size: "md" })}</div>
+        <p class="muted" style="text-align:center;margin:8px 0 0">No designs yet. Make your first kandi and it'll be ready for your next trade.</p></div>`;
+    } else {
+      html += `<div class="kd-cards">`;
+      list.forEach((it) => {
+        const asking = s.kdDelAsk === it.id;
+        html += `<div class="kd-card">
+          <button type="button" class="kd-card-main" data-act="kd-edit" data-id="${esc(it.id)}" aria-label="Edit ${esc(it.name)}">
+            ${braceletHtml(it.design, { size: "sm" })}
+            <div class="kd-card-name">${esc(it.name)}${s.kdLastUsed === it.id ? ` <span class="tiny">· last traded</span>` : ""}</div>
+          </button>
+          <div class="kd-card-actions">
+            <button type="button" class="btn sm ghost" data-act="kd-edit" data-id="${esc(it.id)}">Edit</button>
+            <button type="button" class="btn sm ghost" data-act="kd-dup" data-id="${esc(it.id)}"${full ? " disabled" : ""}>Duplicate</button>
+            ${asking
+              ? `<button type="button" class="btn sm danger" data-act="kd-delete" data-id="${esc(it.id)}">Tap to delete</button>`
+              : `<button type="button" class="btn sm ghost" data-act="kd-del-ask" data-id="${esc(it.id)}">Delete</button>`}
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  function editorHtml(s, o) {
+    const k = kd();
+    return `<div class="kd-editor">
+      <label class="label" for="kd-name">Name</label>
+      <input id="kd-name" maxlength="30" autocomplete="off" placeholder="Festival kandi" value="${esc(k.name || "")}" aria-label="Design name" />
+      ${designerHtml()}
+      <button type="button" class="btn primary" style="margin-top:18px;width:100%" data-act="kd-save">Save design</button>
+      <button type="button" class="btn ghost" style="margin-top:8px;width:100%" data-act="kd-back">Cancel</button>
+    </div>`;
+  }
+
+  function isModified(k) {
+    return designJson(k.design) !== k.baseline;
+  }
+
+  function stripHtml(s) {
+    const list = s.kdList || [];
+    const k = kd();
+    if (!list.length) return "";
+    return `<div class="label" style="margin-top:12px">Your designs</div>
+      <div class="kd-strip">
+        <button type="button" class="kd-pick new${!k.selectedId ? " on" : ""}" data-act="kd-pick" data-id=""><span class="kd-plus">+</span><span class="tiny">New</span></button>
+        ${list.map((it) => `<button type="button" class="kd-pick${k.selectedId === it.id ? " on" : ""}" data-act="kd-pick" data-id="${esc(it.id)}" aria-label="Use ${esc(it.name)}">
+          ${braceletHtml(it.design, { size: "xs" })}<span class="tiny kd-pick-n">${esc(it.name)}${s.kdLastUsed === it.id ? " ★" : ""}</span></button>`).join("")}
+      </div>`;
+  }
+
+  function saveBoxInner(k) {
+    const list = state().kdList || [];
+    const hasSaved = k.selectedId && !isModified(k);
+    if (hasSaved) return `<p class="tiny" style="margin:0">Using your saved design “${esc((savedById(k.selectedId) || {}).name || "")}”. Trading sends a copy, so your design stays as it is.</p>`;
+    if (list.length >= MAX_DESIGNS) return `<p class="tiny" style="margin:0">Your library is full (${MAX_DESIGNS}). Delete a design in My designs to save this one.</p>`;
+    return `<button type="button" class="chip${k.saveOn ? " on" : ""}" data-act="kd-save-toggle">${k.saveOn ? "✓ " : ""}${k.selectedId ? "Save as a new design" : "Save to My designs"}</button>
+      ${k.saveOn ? `<input id="kd-name" maxlength="30" autocomplete="off" placeholder="Name this design" value="${esc(k.name || "")}" aria-label="Design name" style="margin-top:8px" />` : ""}`;
+  }
+
+  async function openDesigns(from) {
+    const s = state();
+    s.kdDelAsk = "";
+    setOverlay("designs", { from: from || "profile" });
+    await loadDesigns();
+    const o = s.overlay;
+    if (o && o.type === "trade" && o.step === "designs") render();
+  }
+
+  function openEditor(item) {
+    const s = state();
+    s.kd = item
+      ? newKd(item.design, { editingId: item.id, name: item.name, selectedId: item.id })
+      : newKd(defaultDesign(""), { name: "My kandi " + (((s.kdList || []).length) + 1), editingId: "" });
+    setOverlay("editor", {});
+  }
+
+  async function saveEditor() {
+    const s = state();
+    const k = kd();
+    const name = String(k.name || "").trim() || "My kandi";
+    const design = designFromDraft();
+    try {
+      let data;
+      if (k.editingId) data = await api("/api/kandi-designs/" + encodeURIComponent(k.editingId), { method: "PUT", body: { name, design } });
+      else data = await api("/api/kandi-designs", { method: "POST", body: { name, design } });
+      applyListData(data);
+      toast("Saved to My designs.");
+      s.kd = null;
+      setOverlay("designs", {});
+    } catch (err) {
+      toast((err && err.message) || "Couldn't save that design.", "err");
+    }
+  }
+
+  async function duplicateDesign(id) {
+    try {
+      const data = await api("/api/kandi-designs/" + encodeURIComponent(id) + "/duplicate", { method: "POST", body: {} });
+      applyListData(data);
+      toast("Duplicated.");
+      render();
+    } catch (err) {
+      toast((err && err.message) || "Couldn't duplicate that design.", "err");
+    }
+  }
+
+  async function deleteDesign(id) {
+    const s = state();
+    try {
+      const data = await api("/api/kandi-designs/" + encodeURIComponent(id), { method: "DELETE" });
+      applyListData(data);
+      s.kdDelAsk = "";
+      toast("Deleted.");
+      render();
+    } catch (err) {
+      toast((err && err.message) || "Couldn't delete that design.", "err");
+    }
+  }
+
+  // Start a trade design: default to the design they traded with last, else a fresh one.
+  async function initTradeKd() {
+    const s = state();
+    await loadDesigns();
+    const last = s.kdLastUsed && savedById(s.kdLastUsed);
+    s.kd = last ? newKd(last.design, { selectedId: last.id, name: last.name }) : newKd(defaultDesign());
   }
 
   function formatTradeDate(iso) {
@@ -124,7 +589,7 @@
           <div class="label">${beadIco}Kandi collection</div>
           <div class="tiny">${publicCount ? publicCount + (publicCount === 1 ? " trade" : " trades") : (isMe ? "Trade kandi when you meet someone" : "No kandi yet")}</div>
         </div>
-        ${isMe ? `<button type="button" class="btn sm primary" data-act="trade-open">Trade kandi</button>` : ""}
+        ${isMe ? `<div class="kandi-col-btns"><button type="button" class="btn sm ghost" data-act="kd-open">My designs</button><button type="button" class="btn sm primary" data-act="trade-open">Trade kandi</button></div>` : ""}
       </div>`;
     if (!shownAll.length) {
       html += isMe
@@ -196,18 +661,19 @@
   function tradeOverlay(s, o) {
     const step = o.step || "start";
     const offer = o.offer || s.tradeOffer;
-    const title = step === "done" ? "It's a trade!" : "Trade kandi";
+    const title = step === "done" ? "It's a trade!" : (step === "designs" ? "My designs" : (step === "editor" ? (kd().editingId ? "Edit design" : "New design") : "Trade kandi"));
     return `<div class="overlay top-pad trade-overlay"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="trade-close" aria-label="Close">✕</button><span style="font-weight:600">${esc(title)}</span></div></div>
       <div class="scroll pad">${stepHtml(s, o, offer, step)}</div></div>`;
   }
 
   function stepHtml(s, o, offer, step) {
     if (step === "start") {
-      return `<div class="trade-hero">${braceletHtml({ beads: styleById("classic").beads, word: "PLUR", style: "glow" }, { size: "lg" })}
+      return `<div class="trade-hero">${braceletHtml({ beads: styleById("neon").beads, shapes: ["round", "star", "round", "heart", "round", "star", "round"], word: "PLUR", style: "neon", charm: "star" }, { size: "lg" })}
         <h2 class="h2" style="margin-top:18px">Trade digital kandi</h2>
         <p class="sub">When you meet someone, one of you shows a code and the other scans it. You each design a bracelet, then swap.</p>
         <button type="button" class="btn primary" style="margin-top:20px;width:100%" data-act="trade-open-host">Show my code</button>
         <button type="button" class="btn ghost" style="margin-top:8px;width:100%" data-act="trade-open-join">Scan or enter a code</button>
+        <button type="button" class="btn ghost" style="margin-top:8px;width:100%" data-act="kd-open">My designs <span class="tiny">· design yours ahead of time</span></button>
       </div>`;
     }
     if (step === "host") {
@@ -246,6 +712,8 @@
     if (step === "design") {
       return designHtml(s, offer);
     }
+    if (step === "designs") return designsListHtml(s, o);
+    if (step === "editor") return editorHtml(s, o);
     if (step === "waiting") {
       const other = otherName(offer, s);
       return `<div class="trade-wait">
@@ -314,20 +782,13 @@
   }
 
   function designHtml(s, offer) {
-    const d = designFromDraft();
     const other = otherName(offer, s);
+    const k = kd();
     return `<div class="trade-design">
-      <p class="sub">Design the kandi you're giving ${esc(other)}.</p>
-      <div id="trade-live-br" class="kandi-live">${braceletHtml(d, { size: "lg" })}</div>
-      <div class="label" style="margin-top:16px">Style</div>
-      <div class="chips kandi-styles">${STYLES.map((st) => `<button type="button" class="chip${d.style === st.id ? " on" : ""}" data-act="trade-style" data-id="${st.id}">${esc(st.label)}</button>`).join("")}</div>
-      <div class="label" style="margin-top:14px">Beads</div>
-      <div class="kandi-bead-edit">${d.beads.map((c, i) => `<button type="button" class="kandi-bead" style="--bead:${esc(c)}" data-act="trade-bead-del" data-id="${i}" aria-label="Remove bead"></button>`).join("")}</div>
-      <div class="kandi-palette">${PALETTE.map((c) => `<button type="button" class="kandi-bead sm" style="--bead:${esc(c)}" data-act="trade-bead-add" data-id="${esc(c)}" aria-label="Add bead"></button>`).join("")}</div>
-      <label class="label" for="trade-word">Word</label>
-      <input id="trade-word" data-field="tradeWord" maxlength="8" autocapitalize="characters" autocomplete="off" placeholder="PLUR" value="${esc(d.word || "")}" aria-label="Word on your kandi" />
-      <label class="label" for="trade-msg">Message <span class="tiny">(optional)</span></label>
-      <textarea id="trade-msg" data-field="tradeMessage" maxlength="140" placeholder="A note for them…" aria-label="Optional message">${esc(d.message || "")}</textarea>
+      <p class="sub">Pick one of your saved kandi to give ${esc(other)}, or design a new one right now.</p>
+      ${stripHtml(s)}
+      ${designerHtml()}
+      <div id="kd-savebox" class="kd-savebox">${saveBoxInner(k)}</div>
       ${eventPicker(offer, s)}
       <button type="button" class="btn primary" style="margin-top:18px;width:100%" data-act="trade-ready">Ready to trade</button>
     </div>`;
@@ -377,8 +838,7 @@
     const s = state();
     s.tradeOffer = data.offer;
     s.tradeShows = (data.offer && data.offer.todayShows) || [];
-    drafts().tradeWord = drafts().tradeWord || "PLUR";
-    setDesign({ style: "classic", beads: styleById("classic").beads.slice(), word: drafts().tradeWord, message: drafts().tradeMessage || "" });
+    await initTradeKd();
     setOverlay("host", { offer: data.offer });
     startPoll();
   }
@@ -395,8 +855,7 @@
     const s = state();
     s.tradeOffer = data.offer;
     s.tradeShows = (data.offer && data.offer.todayShows) || [];
-    drafts().tradeWord = drafts().tradeWord || "PLUR";
-    setDesign({ style: "classic", beads: styleById("classic").beads.slice(), word: drafts().tradeWord, message: drafts().tradeMessage || "" });
+    await initTradeKd();
     setOverlay("design", { offer: data.offer });
     startPoll();
   }
@@ -406,8 +865,23 @@
     const offer = s.tradeOffer;
     if (!offer) return;
     const design = designFromDraft();
-    const data = await api("/api/trades/offers/" + encodeURIComponent(offer.id) + "/ready", { method: "POST", body: { design } });
+    const k = kd();
+    const body = { design };
+    const modified = isModified(k);
+    if (k.selectedId && !modified) body.designId = k.selectedId;
+    else if (k.saveOn) body.saveAs = String(k.name || "").trim() || "My kandi";
+    const data = await api("/api/trades/offers/" + encodeURIComponent(offer.id) + "/ready", { method: "POST", body });
     s.tradeOffer = data.offer;
+    if (data.saved) {
+      if (data.saved.error) toast(data.saved.error, "err");
+      else if (data.saved.name) toast("Saved to My designs.");
+      if (data.saved.id) {
+        k.selectedId = data.saved.id;
+        k.baseline = designJson(k.design);
+        k.saveOn = false;
+      }
+      loadDesigns();
+    }
     if (data.completed) {
       await refreshMine();
       setOverlay("done", { offer: data.offer });
@@ -602,13 +1076,7 @@
     if (o.step === "join") startScan();
     else stopScan();
     if (o.step === "waiting" || o.step === "host" || o.step === "design") startPoll();
-    const live = document.getElementById("trade-live-br");
-    if (live) {
-      const update = () => { live.innerHTML = braceletHtml(designFromDraft(), { size: "lg" }); };
-      const word = document.getElementById("trade-word");
-      const msg = document.getElementById("trade-msg");
-      if (word && !word._kandiBound) { word._kandiBound = true; word.addEventListener("input", update); }
-    }
+    if (o.step === "design" || o.step === "editor") bindDesignerInputs();
   }
 
   function onMessage(msg) {
@@ -654,7 +1122,7 @@
         return true;
       }
     }
-    if (!act || (act !== "trade-close" && !String(act).startsWith("trade-") && act !== "report")) return false;
+    if (!act || (act !== "trade-close" && !String(act).startsWith("trade-") && !String(act).startsWith("kd-") && act !== "report")) return false;
     if (act === "report") return false;
 
     if (act === "trade-open") { setOverlay("start", { offer: null }); return true; }
@@ -663,6 +1131,13 @@
     if (act === "trade-close") {
       const s = state();
       const step = s.overlay && s.overlay.step;
+      if (step === "editor") { setOverlay("designs", {}); return true; }
+      if (step === "designs") {
+        if (s.overlay.from === "start") { setOverlay("start", { offer: null }); return true; }
+        s.overlay = null;
+        render();
+        return true;
+      }
       if (step === "host" || step === "join" || step === "design" || step === "waiting") {
         /* leave an open host offer running so the other person can still join if they just close the scanner; cancel only from Cancel */
         if (step === "host" || step === "waiting" || step === "design") stopPoll();
@@ -687,29 +1162,42 @@
       await joinWithCode(drafts().tradeCode || "");
       return true;
     }
-    if (act === "trade-style") {
-      const st = styleById(id);
-      setDesign({ style: st.id, beads: st.beads.slice() });
+    if (act === "kd-open") {
+      const st = state().overlay;
+      await openDesigns(st && st.type === "trade" && st.step === "start" ? "start" : "profile");
+      return true;
+    }
+    if (act === "kd-new") {
+      if ((state().kdList || []).length >= MAX_DESIGNS) { toast("You can save up to " + MAX_DESIGNS + " designs. Delete one first.", "err"); return true; }
+      openEditor(null);
+      return true;
+    }
+    if (act === "kd-edit") {
+      const it = savedById(id);
+      if (!it) { toast("That design isn't available.", "err"); return true; }
+      openEditor(it);
+      return true;
+    }
+    if (act === "kd-back") { setOverlay("designs", {}); return true; }
+    if (act === "kd-del-ask") { state().kdDelAsk = id; render(); return true; }
+    if (act === "kd-delete") { await deleteDesign(id); return true; }
+    if (act === "kd-dup") { await duplicateDesign(id); return true; }
+    if (act === "kd-save") { await saveEditor(); return true; }
+    if (act === "kd-save-toggle") {
+      const k = kd();
+      k.saveOn = !k.saveOn;
+      if (k.saveOn && !String(k.name || "").trim()) k.name = String(k.design.word || "").trim() ? (k.design.word.charAt(0) + k.design.word.slice(1).toLowerCase() + " kandi") : "My kandi";
       render();
       return true;
     }
-    if (act === "trade-bead-add") {
-      const d = designFromDraft();
-      if (d.beads.length >= 16) { toast("That's a full cuff.", "err"); return true; }
-      d.beads.push(id);
-      setDesign({ beads: d.beads, style: d.style });
+    if (act === "kd-pick") {
+      const s = state();
+      const it = id ? savedById(id) : null;
+      s.kd = it ? newKd(it.design, { selectedId: it.id, name: it.name }) : newKd(defaultDesign());
       render();
       return true;
     }
-    if (act === "trade-bead-del") {
-      const d = designFromDraft();
-      const i = Number(id);
-      if (d.beads.length <= 5) { toast("Leave at least 5 beads."); return true; }
-      d.beads.splice(i, 1);
-      setDesign({ beads: d.beads, style: d.style });
-      render();
-      return true;
-    }
+    if (String(act).startsWith("kd-")) { applyDesignerAct(act, id); return true; }
     if (act === "trade-goto-design") { setOverlay("design"); return true; }
     if (act === "trade-pick-event") {
       const offer = state().tradeOffer;

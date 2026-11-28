@@ -5,16 +5,15 @@
 
 const crypto = require("crypto");
 const { contentRejected } = require("./content-filter");
+const KD = require("./kandi-design");
+const { parseDesign, parseStoredDesign, extraFromDesign, parseExtra } = KD;
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const OFFER_TTL_MS = 15 * 60 * 1000;
 const WORD_MAX = 8;
 const MESSAGE_MAX = 140;
-const BEAD_MIN = 5;
-const BEAD_MAX = 16;
 const TZ = "America/Denver";
 
-const STYLES = new Set(["classic", "glow", "uv", "pearl", "metallic", "rainbow", "sunset", "forest", "ice", "candy", "midnight"]);
 
 function newId(prefix) {
   return prefix + crypto.randomBytes(12).toString("hex");
@@ -101,35 +100,6 @@ function hexColor(raw) {
   return m ? "#" + m[1].toLowerCase() : null;
 }
 
-function parseDesign(raw) {
-  let src = raw;
-  if (typeof raw === "string") {
-    try { src = JSON.parse(raw); } catch { return { error: "Pick a kandi style and try again." }; }
-  }
-  if (!src || typeof src !== "object") return { error: "Pick a kandi style and try again." };
-  const style = String(src.style || "classic").toLowerCase();
-  if (!STYLES.has(style)) return { error: "That kandi style isn't available." };
-  const beads = [];
-  const list = Array.isArray(src.beads) ? src.beads : [];
-  for (const c of list) {
-    const hx = hexColor(c);
-    if (hx) beads.push(hx);
-    if (beads.length >= BEAD_MAX) break;
-  }
-  if (beads.length < BEAD_MIN) return { error: "Add at least " + BEAD_MIN + " beads to your kandi." };
-  const word = clipWord(src.word);
-  const message = clipMessage(src.message);
-  const bad = contentRejected(word) || contentRejected(message);
-  if (bad) return { error: bad };
-  return { design: { beads, style, word, message } };
-}
-
-function parseStoredDesign(raw) {
-  if (!raw) return null;
-  const parsed = parseDesign(raw);
-  return parsed.design || null;
-}
-
 async function migrateTrades(db) {
   const offers = `CREATE TABLE IF NOT EXISTS trade_offers (
     id TEXT PRIMARY KEY,
@@ -167,6 +137,7 @@ async function migrateTrades(db) {
   )`;
   await db.exec(offers);
   await db.exec(items);
+  await KD.migrateDesigns(db);
   for (const sql of [
     "CREATE UNIQUE INDEX IF NOT EXISTS trade_offers_code_idx ON trade_offers(code)",
     "CREATE INDEX IF NOT EXISTS trade_offers_host_idx ON trade_offers(host_id, status)",
@@ -311,11 +282,16 @@ async function shapeOffer(db, offer, viewerId, publicUser, blockedSet) {
 
 function itemPublic(row, fromUser, opts) {
   const hidden = Boolean(Number(row.hidden));
+  const beads = parseJsonColors(row.beads);
+  const extra = parseExtra(row.extra, beads.length);
   return {
     id: row.id,
     offerId: row.offer_id,
     from: fromUser,
-    beads: parseJsonColors(row.beads),
+    beads: beads,
+    shapes: extra.shapes,
+    pattern: extra.pattern,
+    charm: extra.charm,
     style: row.style || "classic",
     word: row.word || "",
     message: (opts && opts.includeMessage === false) ? "" : (row.message || ""),
@@ -352,16 +328,16 @@ async function completeTrade(db, offer) {
     event_venue: offer.event_venue || "",
     event_date: offer.event_date || "",
   };
-  const insert = `INSERT INTO trade_items (id, offer_id, owner_id, from_id, beads, style, word, message, event_id, event_name, event_venue, event_date, traded_at, hidden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)`;
+  const insert = `INSERT INTO trade_items (id, offer_id, owner_id, from_id, beads, style, word, message, event_id, event_name, event_venue, event_date, traded_at, hidden, extra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`;
   await db.prepare(insert).run(
     guestItem, offer.id, offer.guest_id, offer.host_id,
     JSON.stringify(hostDesign.beads), hostDesign.style, hostDesign.word, hostDesign.message,
-    ev.event_id, ev.event_name, ev.event_venue, ev.event_date, now
+    ev.event_id, ev.event_name, ev.event_venue, ev.event_date, now, extraFromDesign(hostDesign)
   );
   await db.prepare(insert).run(
     hostItem, offer.id, offer.host_id, offer.guest_id,
     JSON.stringify(guestDesign.beads), guestDesign.style, guestDesign.word, guestDesign.message,
-    ev.event_id, ev.event_name, ev.event_venue, ev.event_date, now
+    ev.event_id, ev.event_name, ev.event_venue, ev.event_date, now, extraFromDesign(guestDesign)
   );
   await db.prepare(`UPDATE trade_offers SET status='completed', completed_at=?, host_ready=1, guest_ready=1 WHERE id=?`).run(now, offer.id);
   return { ok: true, completedAt: now, hostItem, guestItem };
@@ -403,6 +379,8 @@ function installTrades({ app, getDb, auth, publicUser, blockedSet, broadcastToUs
     if (!broadcastToUser || userId == null) return;
     try { broadcastToUser(userId, payload); } catch (err) { console.error("trade push:", err.message || err); }
   }
+
+  KD.installKandiDesigns({ app, getDb, auth });
 
   app.get("/t/:code", (req, res) => {
     const code = cleanCode(req.params.code);
@@ -569,9 +547,30 @@ function installTrades({ app, getDb, auth, publicUser, blockedSet, broadcastToUs
     const blocked = await blockedSet(req.user.id);
     const otherId = role === "host" ? row.guest_id : row.host_id;
     if (blocked.has(Number(otherId))) return res.status(403).json({ error: "You can't trade kandi with this person." });
-    const parsed = parseDesign(req.body && (req.body.design || req.body));
+    const body = req.body || {};
+    // A saved design may be named by id (the server then uses its own copy); either way the
+    // design that gets stored on the offer is a snapshot, so later edits to the saved design
+    // never change a trade that already happened.
+    let designSrc = body.design || (body.designId ? null : body);
+    const designId = body.designId ? String(body.designId) : "";
+    if (!designSrc && designId) {
+      const saved = await KD.ownedDesign(db(), req.user.id, designId);
+      if (!saved) return res.status(404).json({ error: "That saved design isn't available." });
+      designSrc = JSON.parse(saved.design);
+      if (body.message != null) designSrc.message = body.message;
+    }
+    const parsed = parseDesign(designSrc);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
     const json = JSON.stringify(parsed.design);
+    let savedInfo = null;
+    if (designId) {
+      const own = await KD.ownedDesign(db(), req.user.id, designId);
+      if (own) { await KD.touchUsed(db(), req.user.id, designId); savedInfo = { id: designId }; }
+    } else if (body.saveAs != null && String(body.saveAs).trim() !== "" && body.saveAs !== false) {
+      const made = await KD.createDesign(db(), req.user.id, body.saveAs === true ? "My kandi" : body.saveAs, parsed.design);
+      if (made.item) { await KD.touchUsed(db(), req.user.id, made.item.id); savedInfo = { id: made.item.id, name: made.item.name }; }
+      else savedInfo = { error: made.error };
+    }
     if (role === "host") {
       await db().prepare(`UPDATE trade_offers SET host_design=?, host_ready=1 WHERE id=? AND status='joined'`).run(json, row.id);
     } else {
@@ -587,7 +586,7 @@ function installTrades({ app, getDb, auth, publicUser, blockedSet, broadcastToUs
     }
     const offer = await shapeOffer(db(), fresh, req.user.id, publicUser, blockedSet);
     await push(otherId, { type: "trade", action: completed ? "completed" : "ready", offer: await shapeOffer(db(), fresh, otherId, publicUser, blockedSet) });
-    res.json({ offer, completed });
+    res.json({ offer, completed, saved: savedInfo });
   });
 
   app.post("/api/trades/offers/:ref/cancel", auth, async (req, res) => {
@@ -663,6 +662,7 @@ async function deleteTradesForUser(db, userId) {
     await db.prepare(`UPDATE trade_offers SET status='cancelled' WHERE (host_id=? OR guest_id=?) AND status IN ('open','joined')`).run(userId, userId);
     await db.prepare(`DELETE FROM trade_items WHERE owner_id=?`).run(userId);
   } catch (_) { /* tables may not exist yet */ }
+  await KD.deleteDesignsForUser(db, userId);
 }
 
 module.exports = {

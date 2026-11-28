@@ -93,3 +93,103 @@
 @media (prefers-reduced-motion: reduce) {
   .kandi-bracelet.assemble .kandi-bead, .kandi-confetti { animation: none; }
 }
+
+
+/* ---------- Kandi designer: shapes, finishes, charms, My designs ---------- */
+.kandi-bracelet { --bs: 18px; }
+.kandi-bracelet.xs { --bs: 10px; gap: 1px; padding: 2px 0; max-width: 100%; filter: none; }
+.kandi-bracelet.sm { --bs: 14px; }
+.kandi-bracelet.md { --bs: 22px; }
+.kandi-bracelet.lg { --bs: 26px; }
+.kandi-bracelet.xs .kandi-bead { width: 10px; height: 10px; box-shadow: none; }
+.kandi-bracelet.xs .kandi-bead.letter { width: 11px; height: 11px; font-size: 7px; border-radius: 3px; }
+.kandi-bracelet.xs .kandi-charm { font-size: 10px; }
+
+.kandi-bead.shape-cube { border-radius: 24%; }
+.kandi-bead.shape-pony { width: calc(var(--bs) * .78); height: var(--bs); border-radius: 34%;
+  background: linear-gradient(90deg, rgba(255,255,255,.4), transparent 38%, rgba(0,0,0,.28)), var(--bead); }
+.kandi-bracelet .kandi-bead.shape-pony { width: calc(var(--bs) * .78); height: var(--bs); }
+.kb-s { --bead: #ff5c00; display: inline-grid; place-items: center; flex: 0 0 auto; padding: 0; border: 0; background: none;
+  width: calc(var(--bs) * 1.25); height: calc(var(--bs) * 1.25); position: relative; color: inherit; }
+.kandi-bracelet .kb-s > .kandi-bead { width: 100%; height: 100%; box-shadow: none; border-radius: 0; }
+.kandi-bracelet .kb-s > .kandi-bead.shape-star { clip-path: polygon(50.0% 2.0%,62.9% 34.2%,97.6% 36.5%,70.9% 58.8%,79.4% 92.5%,50.0% 74.0%,20.6% 92.5%,29.1% 58.8%,2.4% 36.5%,37.1% 34.2%); }
+.kandi-bracelet .kb-s > .kandi-bead.shape-heart { clip-path: polygon(50.0% 31.0%,50.2% 29.5%,51.4% 25.5%,54.5% 20.1%,59.7% 14.8%,67.0% 11.2%,75.4% 10.3%,84.0% 12.6%,91.3% 17.9%,96.2% 25.3%,98.0% 34.0%,96.2% 43.0%,91.3% 51.7%,84.0% 59.9%,75.4% 67.6%,67.0% 74.8%,59.7% 81.6%,54.5% 87.7%,51.4% 92.6%,50.2% 95.9%,50.0% 97.0%,49.8% 95.9%,48.6% 92.6%,45.5% 87.7%,40.3% 81.6%,33.0% 74.8%,24.6% 67.6%,16.0% 59.9%,8.7% 51.7%,3.8% 43.0%,2.0% 34.0%,3.8% 25.3%,8.7% 17.9%,16.0% 12.6%,24.6% 10.3%,33.0% 11.2%,40.3% 14.8%,45.5% 20.1%,48.6% 25.5%,49.8% 29.5%); }
+.kandi-bracelet .kb-s > .kandi-bead.shape-flower { clip-path: polygon(100.0% 50.0%,96.3% 54.6%,87.3% 57.4%,78.2% 58.6%,74.0% 59.9%,76.0% 63.9%,81.6% 71.1%,85.9% 79.5%,85.4% 85.4%,79.5% 85.9%,71.1% 81.6%,63.9% 76.0%,59.9% 74.0%,58.6% 78.2%,57.4% 87.3%,54.6% 96.3%,50.0% 100.0%,45.4% 96.3%,42.6% 87.3%,41.4% 78.2%,40.1% 74.0%,36.1% 76.0%,28.9% 81.6%,20.5% 85.9%,14.6% 85.4%,14.1% 79.5%,18.4% 71.1%,24.0% 63.9%,26.0% 59.9%,21.8% 58.6%,12.7% 57.4%,3.7% 54.6%,0.0% 50.0%,3.7% 45.4%,12.7% 42.6%,21.8% 41.4%,26.0% 40.1%,24.0% 36.1%,18.4% 28.9%,14.1% 20.5%,14.6% 14.6%,20.5% 14.1%,28.9% 18.4%,36.1% 24.0%,40.1% 26.0%,41.4% 21.8%,42.6% 12.7%,45.4% 3.7%,50.0% 0.0%,54.6% 3.7%,57.4% 12.7%,58.6% 21.8%,59.9% 26.0%,63.9% 24.0%,71.1% 18.4%,79.5% 14.1%,85.4% 14.6%,85.9% 20.5%,81.6% 28.9%,76.0% 36.1%,74.0% 40.1%,78.2% 41.4%,87.3% 42.6%,96.3% 45.4%); }
+.kandi-bracelet .kb-s > .kandi-bead.shape-star, .kandi-bracelet .kb-s > .kandi-bead.shape-heart, .kandi-bracelet .kb-s > .kandi-bead.shape-flower { background:
+    linear-gradient(135deg, rgba(255,255,255,.5), transparent 45%, rgba(0,0,0,.25)), var(--bead); }
+.style-glow .kb-s, .style-neon .kb-s, .style-uv .kb-s { filter: drop-shadow(0 0 5px var(--bead)); }
+.kandi-bracelet button.kandi-bead, .kandi-bracelet button.kb-s { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.kandi-bracelet button.kandi-bead:active, .kandi-bracelet button.kb-s:active { transform: scale(.85); }
+.kandi-bracelet .kandi-bead.letter { background: linear-gradient(180deg, rgba(255,255,255,.25), transparent 40%), #f4efe6; }
+
+.style-neon .kandi-bead { filter: saturate(1.35) brightness(1.08); box-shadow: inset 0 -2px 3px rgba(0,0,0,.2), 0 0 12px var(--bead), 0 0 3px #fff6; }
+.style-neon .kandi-bead.letter { filter: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 0 8px rgba(255,255,255,.5); }
+.style-pastel .kandi-bead { filter: saturate(.9) brightness(1.06); background:
+    radial-gradient(circle at 32% 28%, rgba(255,255,255,.75), transparent 52%), var(--bead); }
+.style-glitter .kandi-bead:not(.letter) { background:
+    radial-gradient(circle at 28% 24%, #fff 0 7%, transparent 8%),
+    radial-gradient(circle at 68% 58%, #fff 0 6%, transparent 7%),
+    radial-gradient(circle at 42% 80%, rgba(255,255,255,.85) 0 5%, transparent 6%),
+    radial-gradient(circle at 80% 22%, rgba(255,255,255,.8) 0 4%, transparent 5%),
+    linear-gradient(135deg, rgba(255,255,255,.25), transparent 50%), var(--bead); }
+.style-jelly .kandi-bead:not(.letter) { opacity: .9; background:
+    radial-gradient(circle at 30% 26%, rgba(255,255,255,.85), transparent 36%),
+    radial-gradient(circle at 60% 70%, rgba(255,255,255,.28), transparent 60%), var(--bead);
+  box-shadow: inset 0 -3px 6px rgba(255,255,255,.22), inset 0 2px 4px rgba(0,0,0,.2), 0 0 0 1px rgba(255,255,255,.12); }
+
+.kandi-charm { font-size: calc(var(--bs) * 1.1); line-height: 1; margin-left: 3px; transform-origin: 50% 0; animation: kandi-swing 2.8s ease-in-out infinite; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+@keyframes kandi-swing { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+.kandi-bracelet.assemble .kandi-bead, .kandi-bracelet.assemble .kb-s, .kandi-bracelet.assemble .kandi-charm { animation-delay: calc(var(--i, 0) * .04s); }
+.kandi-bracelet.assemble .kb-s { animation: kandi-in .55s var(--ease) both; animation-delay: calc(var(--i, 0) * .04s); }
+.kandi-bracelet.assemble .kb-s > .kandi-bead { animation: none; }
+.kandi-bracelet.assemble .kandi-charm { animation: kandi-swing 2.8s ease-in-out infinite; animation-delay: 0s; }
+
+.kandi-col-btns { display: flex; gap: 8px; flex: 0 0 auto; }
+
+.kd-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; margin: 0 -2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.kd-scroll::-webkit-scrollbar { display: none; }
+.kd-scroll .chip { flex: 0 0 auto; white-space: nowrap; }
+.kd-tabs { margin-top: 6px; padding-bottom: 2px; }
+.kd-brush { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.kd-slot { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: inherit; font-weight: 700; }
+.kd-slot .kandi-bead { width: 24px; height: 24px; }
+.kd-slot.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,92,0,.35); }
+.kd-slot.dim:not(.on) { opacity: .55; }
+.kd-fill { margin-left: auto; }
+.kd-pal { gap: 8px; }
+.kd-pal .kandi-bead.kd-sw { width: 32px; height: 32px; cursor: pointer; }
+.kandi-palette .kandi-bead.kd-sw.on { box-shadow: 0 0 0 2px #0b0b0d, 0 0 0 4px var(--accent), inset 0 -2px 3px rgba(0,0,0,.35); }
+.kd-hint { margin: 2px 0 0; }
+.kd-shape { display: inline-flex; align-items: center; gap: 6px; }
+.kd-sh-ico { display: inline-grid; place-items: center; width: 20px; height: 20px; }
+.kd-sh-ico .kandi-bead { width: 16px; height: 16px; box-shadow: none; }
+.kd-sh-ico .kandi-bead.shape-star { clip-path: polygon(50.0% 2.0%,62.9% 34.2%,97.6% 36.5%,70.9% 58.8%,79.4% 92.5%,50.0% 74.0%,20.6% 92.5%,29.1% 58.8%,2.4% 36.5%,37.1% 34.2%); }
+.kd-sh-ico .kandi-bead.shape-heart { clip-path: polygon(50.0% 31.0%,50.2% 29.5%,51.4% 25.5%,54.5% 20.1%,59.7% 14.8%,67.0% 11.2%,75.4% 10.3%,84.0% 12.6%,91.3% 17.9%,96.2% 25.3%,98.0% 34.0%,96.2% 43.0%,91.3% 51.7%,84.0% 59.9%,75.4% 67.6%,67.0% 74.8%,59.7% 81.6%,54.5% 87.7%,51.4% 92.6%,50.2% 95.9%,50.0% 97.0%,49.8% 95.9%,48.6% 92.6%,45.5% 87.7%,40.3% 81.6%,33.0% 74.8%,24.6% 67.6%,16.0% 59.9%,8.7% 51.7%,3.8% 43.0%,2.0% 34.0%,3.8% 25.3%,8.7% 17.9%,16.0% 12.6%,24.6% 10.3%,33.0% 11.2%,40.3% 14.8%,45.5% 20.1%,48.6% 25.5%,49.8% 29.5%); }
+.kd-sh-ico .kandi-bead.shape-flower { clip-path: polygon(100.0% 50.0%,96.3% 54.6%,87.3% 57.4%,78.2% 58.6%,74.0% 59.9%,76.0% 63.9%,81.6% 71.1%,85.9% 79.5%,85.4% 85.4%,79.5% 85.9%,71.1% 81.6%,63.9% 76.0%,59.9% 74.0%,58.6% 78.2%,57.4% 87.3%,54.6% 96.3%,50.0% 100.0%,45.4% 96.3%,42.6% 87.3%,41.4% 78.2%,40.1% 74.0%,36.1% 76.0%,28.9% 81.6%,20.5% 85.9%,14.6% 85.4%,14.1% 79.5%,18.4% 71.1%,24.0% 63.9%,26.0% 59.9%,21.8% 58.6%,12.7% 57.4%,3.7% 54.6%,0.0% 50.0%,3.7% 45.4%,12.7% 42.6%,21.8% 41.4%,26.0% 40.1%,24.0% 36.1%,18.4% 28.9%,14.1% 20.5%,14.6% 14.6%,20.5% 14.1%,28.9% 18.4%,36.1% 24.0%,40.1% 26.0%,41.4% 21.8%,42.6% 12.7%,45.4% 3.7%,50.0% 0.0%,54.6% 3.7%,57.4% 12.7%,58.6% 21.8%,59.9% 26.0%,63.9% 24.0%,71.1% 18.4%,79.5% 14.1%,85.4% 14.6%,85.9% 20.5%,81.6% 28.9%,76.0% 36.1%,74.0% 40.1%,78.2% 41.4%,87.3% 42.6%,96.3% 45.4%); }
+.kd-sh-ico .kandi-bead.shape-pony { width: 12px; height: 16px; }
+.kd-len { display: flex; align-items: center; gap: 8px; }
+.kd-len-presets { flex: 1; margin: 0; padding: 0; }
+.kd-step { min-width: 44px; font-size: 20px; line-height: 1; padding: 8px 0; }
+.kd-ch-e { margin-right: 4px; }
+.kd-editor, .kd-list { padding-bottom: 28px; }
+.kd-editor input, .kd-editor textarea, .trade-design input, .trade-design textarea { width: 100%; }
+.kd-cards { display: flex; flex-direction: column; gap: 12px; }
+.kd-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 12px 10px; }
+.kd-card-main { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; color: inherit; }
+.kd-card-name { font-weight: 700; margin-top: 4px; }
+.kd-card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.kd-card-actions .btn { flex: 1; }
+.btn.danger { background: #b3261e; color: #fff; border-color: transparent; }
+.kd-empty { padding: 8px 0 0; }
+.kd-strip { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.kd-strip::-webkit-scrollbar { display: none; }
+.kd-pick { flex: 0 0 auto; width: 104px; min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: inherit; }
+.kd-pick.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,92,0,.35); }
+.kd-pick .kandi-bracelet { justify-content: center; padding: 0; }
+.kd-pick-n { max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd-plus { font-size: 24px; line-height: 1; color: var(--orange2); font-weight: 700; }
+.kd-savebox { margin-top: 16px; }
+
+.kandi-bracelet .kb-s > .kandi-bead { --bead: inherit; }
+.kd #kd-live { position: sticky; top: -1px; z-index: 5; margin: 0 -4px; padding: 6px 4px 8px; background: linear-gradient(180deg, var(--bg, #000) 82%, rgba(0,0,0,0)); }
+.kd-len { margin-bottom: 4px; }

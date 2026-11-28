@@ -66,14 +66,14 @@ test.describe("Digital kandi trades (iPhone WebKit)", () => {
     await pb.locator('[data-act="trade-submit-code"]').click();
     await expect(pb.locator(".trade-design")).toBeVisible({ timeout: 15_000 });
     await expect(pb.locator(".trade-design")).toContainText("Ava Bead");
-    await pb.locator("[data-field='tradeWord']").fill("RAVE");
-    await pb.locator("[data-act='trade-style'][data-id='sunset']").click();
+    await pb.locator("#kd-word").fill("RAVE");
+    await pb.locator("[data-act='kd-style'][data-id='sunset']").click();
     await shot(pb, "05-guest-design.png");
     await pb.locator('[data-act="trade-ready"]').click();
     await expect(pb.locator(".trade-wait")).toBeVisible({ timeout: 15_000 });
 
     await expect(page.locator(".trade-design")).toBeVisible({ timeout: 20_000 });
-    await page.locator("[data-field='tradeWord']").fill("PLUR");
+    await page.locator("#kd-word").fill("PLUR");
     await shot(page, "06-host-design.png");
     await page.locator('[data-act="trade-ready"]').click();
 
