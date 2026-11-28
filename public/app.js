@@ -871,7 +871,7 @@
     const list = onOther ? (state.profileCrews || []) : ((state.crews && state.crews.mine) || []);
     const inbox = (!onOther && state.crewInbox) || { invites: [], requests: [] };
     let html = `<section class="prof-crew" data-crew-slot>`;
-    html += `<div class="row"><div class="grow"><div class="label" style="margin:0">Crew</div>
+    html += `<div class="row"><div class="grow"><div class="label" style="margin:0">${kIcon("users", "pf-ico")}Crew</div>
       <div class="tiny">${onOther ? "Groups they're part of." : "Tag friends, join a rave group, and see who's in whose crew."}</div></div>`;
     if (!onOther) html += `<button type="button" class="btn sm ghost" data-act="open-groups">See all</button>`;
     html += `</div>`;
@@ -1322,7 +1322,7 @@
     const n = (posts || []).length;
     const count = n ? (n === 1 ? "1 post" : n + " posts") : "No posts yet";
     return `<div class="posts-toolbar">
-      <div class="posts-heading"><div class="label" style="margin:0">Posts</div><div class="tiny">${esc(count)}</div></div>
+      <div class="posts-heading"><div class="label" style="margin:0">${kIcon("grid", "pf-ico")}Posts</div><div class="tiny">${esc(count)}</div></div>
       <div class="post-view-toggle" role="group" aria-label="Post layout">
         <button type="button" class="${view === "grid" ? "on" : ""}" data-act="post-view" data-id="grid" aria-label="Grid view" aria-pressed="${view === "grid" ? "true" : "false"}">▦</button>
         <button type="button" class="${view === "list" ? "on" : ""}" data-act="post-view" data-id="list" aria-label="List view" aria-pressed="${view === "list" ? "true" : "false"}">☰</button>
@@ -1333,10 +1333,10 @@
   function profilePosts(posts, isMe) {
     const list = posts || [];
     const empty = isMe
-      ? "No posts yet. Tap New Post to share a photo, a video, or a rave you're going to — just like a regular feed post."
+      ? "No posts yet. Tap New post to share a photo, a video, or a rave you're going to — just like a regular feed post."
       : "No posts yet.";
     const toolbar = postsToolbar(list);
-    if (!list.length) return toolbar + `<div class="empty">${empty}</div>`;
+    if (!list.length) return toolbar + `<div class="empty pf-empty"><p class="tiny">${empty}</p></div>`;
     if (state.profilePostView === "list") {
       return toolbar + `<div class="profile-feed">` + list.map(postCard).join("") + `</div>`;
     }
@@ -1347,10 +1347,27 @@
   function pfSection(id, title, bodyHtml, opts) {
     if (!bodyHtml) return "";
     opts = opts || {};
+    const icon = opts.icon ? kIcon(opts.icon, "pf-ico") : "";
     const head = title
-      ? `<div class="pf-head"><h3 class="pf-title">${esc(title)}</h3>${opts.action || ""}</div>`
+      ? `<div class="pf-head"><h3 class="pf-title">${icon}<span>${esc(title)}</span></h3>${opts.action || ""}</div>`
       : "";
     return `<section class="pf-sec" id="pf-${esc(id)}" data-pf="${esc(id)}">${head}${bodyHtml}</section>`;
+  }
+
+  function pfEmpty(icon, text, btnLabel, act, actId) {
+    const btn = btnLabel
+      ? `<button type="button" class="btn sm ghost" data-act="${esc(act || "")}"${actId != null ? ` data-id="${esc(actId)}"` : ""}>${esc(btnLabel)}</button>`
+      : "";
+    return `<div class="pf-empty">${icon ? kIcon(icon, "pf-empty-ico") : ""}<p class="tiny">${esc(text)}</p>${btn}</div>`;
+  }
+
+  function profileCoverPhoto(p) {
+    const media = mediaOf(p) || [];
+    const file = media.find((m) => m && m.type === "file" && m.url);
+    if (file) return file;
+    const av = mainPhotoOf(p);
+    if (av && av.type === "file" && av.url) return av;
+    return av || null;
   }
 
   function profileAboutBody(p, isMe) {
@@ -1379,7 +1396,7 @@
     if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
     else if (isMe) html += `<p class="muted prof-bio">No bio yet. Tap Edit profile to add one.</p>`;
     if (chips.length) html += `<div class="chips prof-chips">${chips.join("")}</div>`;
-    if (facts) html += `<div class="prof-facts pf-card">${facts}</div>`;
+    if (facts) html += `<div class="prof-facts">${facts}</div>`;
     (p.prompts || []).forEach((pr) => {
       if (!pr || !pr.q || !pr.a) return;
       html += `<div class="prompt pf-prompt"><div class="q">${esc(pr.q)}</div><div class="a">${esc(pr.a)}</div></div>`;
@@ -1394,7 +1411,7 @@
     const soc = opts.counts || {};
     const followerCount = soc.followerCount != null ? soc.followerCount : 0;
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
-    const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
+    const pronouns = p.pronouns ? esc(p.pronouns) : "";
     let actions = "";
     if (isMe) {
       actions = `<div class="pf-actions">
@@ -1407,33 +1424,48 @@
     } else if (opts.actionsHtml) {
       actions = `<div class="pf-actions"><div class="pf-actions-row">${opts.actionsHtml}</div></div>`;
     }
+    const cover = profileCoverPhoto(p);
+    const hasPhoto = Boolean(cover && cover.type === "file" && cover.url);
+    const coverBg = hasPhoto
+      ? lazyBg(cover.url, 1080)
+      : `style="background:${esc((cover && cover.gradient) || "linear-gradient(165deg,#140800 0%,#3a1400 42%,#ff5c00 140%)")}"`;
+    const metaBits = [];
+    if (p.username) metaBits.push("@" + esc(p.username));
+    if (pronouns) metaBits.push(pronouns);
+    if (p.homeLocation) metaBits.push(esc(p.homeLocation));
     let html = `<div class="pf-page">`;
-    // 1. Header card: who this is, at a glance
+    // 1. Hero: cover photo with name overlaid, then stats and actions
     html += `<div class="pf-hero">
-      <div class="pf-hero-top">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}
-        <div class="pf-id">
-          <div class="nm">${personName(p)}</div>
-          <div class="muted pf-handle">@${esc(p.username)}${pronouns}</div>
-          ${p.homeLocation ? `<div class="pf-city">${esc(p.homeLocation)}</div>` : ""}
+      <div class="pf-cover${hasPhoto ? " has-photo" : " no-photo"}" ${coverBg}>
+        <div class="pf-cover-shade" aria-hidden="true"></div>
+        ${!hasPhoto && cover && cover.emoji ? `<div class="pf-cover-emoji" aria-hidden="true">${esc(cover.emoji)}</div>` : ""}
+        <div class="pf-cover-meta">
+          ${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}
+          <div class="pf-id">
+            <div class="nm">${personName(p)}</div>
+            ${metaBits.length ? `<div class="pf-handle">${metaBits.join(" · ")}</div>` : ""}
+          </div>
         </div>
       </div>
-      ${genreRow(p)}
-      ${socialLinksHtml(p)}
-      <div class="counts pf-stats">
-        <span><strong>${followerCount}</strong><span class="tiny">followers</span></span>
-        <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
-        <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
+      <div class="pf-hero-body">
+        ${genreRow(p)}
+        ${socialLinksHtml(p)}
+        <div class="counts pf-stats">
+          <span><strong>${followerCount}</strong><span class="tiny">followers</span></span>
+          <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
+          <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
+        </div>
+        ${actions}
       </div>
-      ${actions}
     </div>`;
     // 2. About
-    html += pfSection("about", "About", profileAboutBody(p, isMe));
-    // 3. Photos & videos (one strip: no separate duplicate Videos block)
+    html += pfSection("about", "About", profileAboutBody(p, isMe), { icon: "user" });
+    // 3. Photos & videos
     const strip = profilePhotoStrip(mediaOf(p), keyPrefix);
-    html += pfSection("media", "Photos & videos", strip);
+    html += pfSection("media", "Photos & videos", strip || (isMe ? pfEmpty("photo", "Add photos and a profile video in Edit profile.", "Add photos", "edit-profile") : ""), { icon: "photo" });
     // 4. Music
     const music = profileSongs(p, keyPrefix) + profileArtists(p) + profileTunes(p.favoriteTunes);
-    html += pfSection("music", "Music", music);
+    html += pfSection("music", "Music", music || (isMe ? pfEmpty("music", "Add the songs and artists you play on repeat.", "Add songs", "edit-profile") : ""), { icon: "music" });
     // 5. Upcoming shows
     let shows = Array.isArray(p.upcomingShows) ? p.upcomingShows : [];
     if (isMe) {
@@ -1452,9 +1484,10 @@
         if (e.imGoing && rsvpIds.has(String(e.id)) && !shows.some((s) => String(s.id) === String(e.id))) shows.push(e);
       });
     }
-    html += pfSection("shows", "Upcoming shows", upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers, noLabel: true }));
+    const expand = state.profileExpand || {};
+    html += pfSection("shows", "Upcoming shows", upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers, noLabel: true, limit: 3, expanded: Boolean(expand.shows) }), { icon: "events" });
     // 6. Kandi collection
-    if (window.KandiTrades && KandiTrades.collectionHtml) html += pfSection("kandi", "", KandiTrades.collectionHtml(p, isMe));
+    if (window.KandiTrades && KandiTrades.collectionHtml) html += pfSection("kandi", "", KandiTrades.collectionHtml(p, isMe, { limit: 6, expanded: Boolean(expand.kandi) }));
     // 7. Crew
     html += pfSection("crew", "", profileCrewSlot());
     // 8. Posts
@@ -1473,7 +1506,7 @@
       : (me.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : "Take a live selfie so people know you're real");
     const safetyOn = Boolean(state.safetyCheck);
     return `<section class="pf-sec" id="pf-account" data-pf="account">
-      <div class="pf-head"><h3 class="pf-title">Safety &amp; account</h3></div>
+      <div class="pf-head"><h3 class="pf-title">${kIcon("shield", "pf-ico")}<span>Safety &amp; account</span></h3></div>
       <div class="set-group pf-links">
         ${safetyOn ? "" : row("open-safety", "Safety check", "Pick buddies to check on you at a show")}
         ${row("open-get-verified", me.verified ? "You're verified" : "Get verified", verifiedSub)}
@@ -1482,6 +1515,7 @@
       </div>
     </section>`;
   }
+
 
   const state = {
     view: "boot",
@@ -1495,6 +1529,7 @@
     storyViewer: null,
     profile: null,
     profileTab: "posts",
+    profileExpand: { shows: false, kandi: false },
     editDraft: null,
     openPost: null,
     overlayBack: null,
@@ -1711,11 +1746,25 @@
   function upcomingBlock(shows, opts) {
     opts = opts || {};
     const lab = opts.noLabel ? "" : `<div class="label">Upcoming shows</div>`;
-    if (opts.hidden) return `${lab}<p class="tiny">This person hides their upcoming shows.</p>`;
-    if (!(shows && shows.length)) return opts.mine ? `${lab}<p class="tiny">Pick your shows in Edit profile or the Events tab and they'll show up here.</p>` : "";
-    return `${lab}<div class="upcoming-list">${shows.map((e) =>
+    if (opts.hidden) return `${lab}<div class="pf-empty"><p class="tiny">This person hides their upcoming shows.</p></div>`;
+    if (!(shows && shows.length)) {
+      if (!opts.mine) return "";
+      return `${lab}<div class="pf-empty">${kIcon("events", "pf-empty-ico")}<p class="tiny">Pick your shows in Edit profile or the Events tab and they'll show up here.</p>
+        <button type="button" class="btn sm ghost" data-act="tab" data-id="events">Open Events</button></div>`;
+    }
+    const all = shows.slice();
+    const limit = opts.limit || 0;
+    const expanded = Boolean(opts.expanded);
+    const list = (limit && !expanded && all.length > limit) ? all.slice(0, limit) : all;
+    let html = `${lab}<div class="upcoming-list">${list.map((e) =>
       `<button type="button" class="upcoming-row" data-act="event" data-id="${esc(e.id)}">${esc(e.emoji || "✺")} <span class="grow">${esc(e.name)}</span><span class="tiny">${esc(e.date || eventChipLabel(e))}</span></button>`
     ).join("")}</div>`;
+    if (limit && all.length > limit) {
+      html += expanded
+        ? `<button type="button" class="btn sm ghost pf-more" data-act="pf-expand" data-id="shows">Show less</button>`
+        : `<button type="button" class="btn sm ghost pf-more" data-act="pf-expand" data-id="shows">See all ${all.length}</button>`;
+    }
+    return html;
   }
 
 
@@ -1747,6 +1796,11 @@
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
     shield: '<path d="M12 3.5 5.5 6.2v5.1c0 4.2 2.8 7.9 6.5 8.7 3.7-.8 6.5-4.5 6.5-8.7V6.2L12 3.5Z"/><path d="M9.3 12.2 11 14l3.8-4.3"/>',
+    photo: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10.2" r="1.5"/><path d="M7 19l5.4-5.4a1.6 1.6 0 0 1 2.3 0L21 15.5"/>',
+    music: '<path d="M9 18.5a2.5 2.5 0 1 1-2.2-.5V7l12-2.4V15"/><path d="M19 15a2.5 2.5 0 1 1-2.2-.5"/><path d="M9 7V18"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3.4 3.2-5 5.5-5s4.7 1.6 5.5 5"/><circle cx="17" cy="8.5" r="2.4"/><path d="M16.2 14.2c2 .4 3.7 1.8 4.3 4.8"/>',
+    grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+    bead: '<circle cx="7" cy="12" r="3"/><circle cx="12" cy="12" r="3"/><circle cx="17" cy="12" r="3"/>',
   };
   function kIcon(name, extraClass) {
     const d = KICON_PATHS[name];
@@ -6488,6 +6542,12 @@
         render(); return;
       }
       if (act === "settings") { state.overlay = { type: "settings" }; render(); quiet(Promise.all([loadBlocks(), loadReferral()]).then(() => render())); return; }
+      if (act === "pf-expand") {
+        state.profileExpand = state.profileExpand || { shows: false, kandi: false };
+        if (id === "shows" || id === "kandi") state.profileExpand[id] = !state.profileExpand[id];
+        render();
+        return;
+      }
       if (act === "profile-tab") { state.profileTab = id === "about" ? "about" : "posts"; render(); return; }
       if (act === "post-view") { state.profilePostView = id === "list" ? "list" : "grid"; render(); return; }
       if (act === "edit-set-gender") { state.editDraft = state.editDraft || {}; state.editDraft.gender = state.editDraft.gender === id ? "" : id; render(); return; }
@@ -8175,7 +8235,7 @@
   const INSTANT = new Set(["close", "hard-reload", "share-close", "share-login", "share-signup", "show-invite-open", "show-invite-close", "show-invite-share", "share-reset", "show-signup", "show-login", "show-forgot", "open-email", "song-play", "song-pick", "song-up", "song-down", "video-tap", "video-sound", "show-pick-open", "show-pick-cancel", "show-pick-cat", "show-pick-toggle", "song-change", "song-cancel-change", "song-remove", "toggle-agree-terms", "tab", "feed-tab", "billing", "pick-plan", "report-reason", "share-with",
     "set-genre", "set-event-filter", "set-sets-filter", "set-gender-filter", "toggle-suggest-set", "toggle-admin-set", "set-signup-gender", "set-signup-intent", "event-cat", "post-event", "like-chip", "pick-prompt", "dismiss-ios-tip", "dismiss-photo-nudge",
     "edit-profile", "event", "paywall", "remove-post-photo", "report", "report-post", "want-like", "delete-account", "share-loc", "onboard-back", "post-like-tap", "filters",
-    "settings", "profile-tab", "post-view", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
+    "settings", "profile-tab", "post-view", "pf-expand", "edit-set-gender", "edit-set-pronouns", "edit-set-sex", "edit-set-trades",
     "edit-toggle-vibe", "edit-toggle-look", "edit-toggle-interested", "edit-toggle-hobby", "edit-add-hobby",
     "clear-composer-media", "remove-composer-photo", "same-show", "pick-same-event", "meet-event",
     "preview-profile", "edit-back",

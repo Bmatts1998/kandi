@@ -106,25 +106,30 @@
     return [];
   }
 
-  function collectionHtml(p, isMe) {
+  function collectionHtml(p, isMe, opts) {
     if (!p) return "";
+    opts = opts || {};
     const items = collectionFor(p.id);
     const visible = isMe ? items : items.filter((i) => !i.hidden);
     const hiddenCount = isMe ? items.filter((i) => i.hidden).length : 0;
-    const shown = visible.filter((i) => isMe || !i.hidden);
+    const shownAll = visible.filter((i) => isMe || !i.hidden);
     const publicCount = items.filter((i) => !i.hidden).length;
+    const limit = opts.limit || 0;
+    const expanded = Boolean(opts.expanded);
+    const shown = (limit && !expanded && shownAll.length > limit) ? shownAll.slice(0, limit) : shownAll;
+    const beadIco = `<svg class="kic pf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="12" r="3"/><circle cx="12" cy="12" r="3"/><circle cx="17" cy="12" r="3"/></svg>`;
     let html = `<section class="kandi-collection" id="kandi-collection">
       <div class="kandi-col-head">
         <div>
-          <div class="label">Kandi collection</div>
+          <div class="label">${beadIco}Kandi collection</div>
           <div class="tiny">${publicCount ? publicCount + (publicCount === 1 ? " trade" : " trades") : (isMe ? "Trade kandi when you meet someone" : "No kandi yet")}</div>
         </div>
         ${isMe ? `<button type="button" class="btn sm primary" data-act="trade-open">Trade kandi</button>` : ""}
       </div>`;
-    if (!shown.length) {
+    if (!shownAll.length) {
       html += isMe
-        ? `<p class="muted kandi-empty">When you meet someone at a show, trade a digital kandi. It stays on both of your profiles as a stamp of the night.</p>`
-        : `<p class="muted kandi-empty">No kandi in this collection yet.</p>`;
+        ? `<div class="pf-empty kandi-empty"><p class="tiny">When you meet someone at a show, trade a digital kandi. It stays on both of your profiles as a stamp of the night.</p></div>`
+        : `<div class="pf-empty kandi-empty"><p class="tiny">No kandi in this collection yet.</p></div>`;
       html += `</section>`;
       return html;
     }
@@ -139,6 +144,11 @@
       </button>`;
     });
     html += `</div>`;
+    if (limit && shownAll.length > limit) {
+      html += expanded
+        ? `<button type="button" class="btn sm ghost pf-more" data-act="pf-expand" data-id="kandi">Show less</button>`
+        : `<button type="button" class="btn sm ghost pf-more" data-act="pf-expand" data-id="kandi">See all ${shownAll.length}</button>`;
+    }
     if (hiddenCount && isMe) html += `<p class="tiny kandi-hidden-note">${hiddenCount} hidden from others.</p>`;
     html += `</section>`;
     return html;
