@@ -66,7 +66,7 @@ test.describe("QA pass regressions (iPhone WebKit)", () => {
     await signup(page, "qa_ios_" + Date.now() % 100000, "iOS Tester");
     await page.goto("/");
     await page.locator('[data-act="tab"][data-id="you"]').click();
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     const body = page.locator(".overlay");
     await expect(body).toContainText("Delete account");
     await expect(body).not.toContainText("meetup note");

@@ -1343,36 +1343,98 @@
     return toolbar + postGrid(list, empty);
   }
 
+  // ---- Profile page: one scrolling page of clearly labeled sections (shared by You, other people, and the edit preview) ----
+  function pfSection(id, title, bodyHtml, opts) {
+    if (!bodyHtml) return "";
+    opts = opts || {};
+    const head = title
+      ? `<div class="pf-head"><h3 class="pf-title">${esc(title)}</h3>${opts.action || ""}</div>`
+      : "";
+    return `<section class="pf-sec" id="pf-${esc(id)}" data-pf="${esc(id)}">${head}${bodyHtml}</section>`;
+  }
+
+  function profileAboutBody(p, isMe) {
+    const chips = [];
+    if (p.gender) chips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
+    const height = formatHeight(p.heightIn);
+    if (height) chips.push(`<span class="chip soft">${esc(height)}</span>`);
+    (p.hobbies || []).forEach((h) => chips.push(`<span class="chip soft">${esc(h)}</span>`));
+    const looking = (p.looking || []).map(lookingLabel).join(", ");
+    const interested = (p.interestedIn || []).map((id) => INTERESTED_LABEL[id] || id).join(", ");
+    const trades = p.kandiTrades ? (KANDI_TRADES_LABEL[p.kandiTrades] || p.kandiTrades) : "";
+    const years = p.yearsRaving ? (String(p.yearsRaving).match(/year/i) ? p.yearsRaving : p.yearsRaving + " years") : "";
+    const facts = [
+      profileFact("Looking for", p.meetIntent === "both" ? "Friends and dating" : (meetIntentLabel(p.meetIntent) || "")),
+      profileFact("Interested in", interested),
+      profileFact("Open to", looking),
+      profileFact("Years raving", years),
+      profileFact("Kandi trades", trades),
+      profileFact("Rave totem", p.raveTotem),
+      profileFact("Favorite artists / DJs", p.favoriteArtists),
+      profileFact("Favorite festival or show", p.favoriteFestival),
+      profileFact("Favorite venue", p.favoriteVenue),
+      profileFact("Favorite hangout", p.favoriteHangout),
+    ].join("");
+    let html = "";
+    if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
+    else if (isMe) html += `<p class="muted prof-bio">No bio yet. Tap Edit profile to add one.</p>`;
+    if (chips.length) html += `<div class="chips prof-chips">${chips.join("")}</div>`;
+    if (facts) html += `<div class="prof-facts pf-card">${facts}</div>`;
+    (p.prompts || []).forEach((pr) => {
+      if (!pr || !pr.q || !pr.a) return;
+      html += `<div class="prompt pf-prompt"><div class="q">${esc(pr.q)}</div><div class="a">${esc(pr.a)}</div></div>`;
+    });
+    return html;
+  }
+
   function profilePreview(p, posts, opts) {
     opts = opts || {};
     const isMe = Boolean(opts.isMe);
-    const tab = state.profileTab || "posts";
-    const buttons = isMe
-      ? `<div class="prof-actions"><button type="button" class="btn sm primary" data-act="edit-profile">Edit Profile</button>
-          ${isNativeIos() ? "" : `<button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>`}
-          <button type="button" class="btn sm ghost" data-act="trade-open">Trade kandi</button>
-          <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New Post</button></div>`
-      : "";
+    const keyPrefix = (opts.asOthers ? "pv" : "p") + p.id;
     const soc = opts.counts || {};
     const followerCount = soc.followerCount != null ? soc.followerCount : 0;
     const followingCount = soc.followingCount != null ? soc.followingCount : 0;
     const pronouns = p.pronouns ? ` · ${esc(p.pronouns)}` : "";
-    let html = `<div class="prof-hero">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}<div class="grow">
-      <div class="nm">${personName(p)}</div>
-      <div class="muted">@${esc(p.username)}${pronouns}${p.homeLocation ? " · " + esc(p.homeLocation) : ""}</div>
+    let actions = "";
+    if (isMe) {
+      actions = `<div class="pf-actions">
+        <button type="button" class="btn primary pf-edit" data-act="edit-profile">Edit profile</button>
+        <div class="pf-actions-row">
+          <button type="button" class="btn sm ghost" data-act="open-composer" data-id="you">New post</button>
+          <button type="button" class="btn sm ghost" data-act="trade-open">Trade kandi</button>
+          ${isNativeIos() ? "" : `<button type="button" class="btn sm ghost" data-act="upgrade">Kandi Plus</button>`}
+        </div></div>`;
+    } else if (opts.actionsHtml) {
+      actions = `<div class="pf-actions"><div class="pf-actions-row">${opts.actionsHtml}</div></div>`;
+    }
+    let html = `<div class="pf-page">`;
+    // 1. Header card: who this is, at a glance
+    html += `<div class="pf-hero">
+      <div class="pf-hero-top">${storyRingWrap(personAvatar(p, "av prof-av"), p, "lg")}
+        <div class="pf-id">
+          <div class="nm">${personName(p)}</div>
+          <div class="muted pf-handle">@${esc(p.username)}${pronouns}</div>
+          ${p.homeLocation ? `<div class="pf-city">${esc(p.homeLocation)}</div>` : ""}
+        </div>
+      </div>
       ${genreRow(p)}
       ${socialLinksHtml(p)}
-      ${buttons}
-    </div></div>`;
-    html += `<div class="counts">
-      <span><strong>${followerCount}</strong><span class="tiny">followers</span></span>
-      <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
-      <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
+      <div class="counts pf-stats">
+        <span><strong>${followerCount}</strong><span class="tiny">followers</span></span>
+        <span><strong>${followingCount}</strong><span class="tiny">following</span></span>
+        <span><strong>${(posts || []).length}</strong><span class="tiny">posts</span></span>
+      </div>
+      ${actions}
     </div>`;
-    html += profileSongs(p, (opts.asOthers ? "pv" : "p") + p.id);
-    html += profileArtists(p);
-    html += profileVideos(p, (opts.asOthers ? "pv" : "p") + p.id);
-    html += profileCrewSlot();
+    // 2. About
+    html += pfSection("about", "About", profileAboutBody(p, isMe));
+    // 3. Photos & videos (one strip: no separate duplicate Videos block)
+    const strip = profilePhotoStrip(mediaOf(p), keyPrefix);
+    html += pfSection("media", "Photos & videos", strip);
+    // 4. Music
+    const music = profileSongs(p, keyPrefix) + profileArtists(p) + profileTunes(p.favoriteTunes);
+    html += pfSection("music", "Music", music);
+    // 5. Upcoming shows
     let shows = Array.isArray(p.upcomingShows) ? p.upcomingShows : [];
     if (isMe) {
       const rsvpIds = new Set(((p.events || (state.me && state.me.events) || []).map(String)));
@@ -1390,33 +1452,35 @@
         if (e.imGoing && rsvpIds.has(String(e.id)) && !shows.some((s) => String(s.id) === String(e.id))) shows.push(e);
       });
     }
-    html += upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers });
-    if (window.KandiTrades && KandiTrades.collectionHtml) html += KandiTrades.collectionHtml(p, isMe);
-    html += `<div class="seg event-cats profile-tabs">
-      <button type="button" class="${tab === "posts" ? "on" : ""}" data-act="profile-tab" data-id="posts">Posts</button>
-      <button type="button" class="${tab === "about" ? "on" : ""}" data-act="profile-tab" data-id="about">About</button>
-    </div>`;
-    if (tab === "about") {
-      html += profilePhotoStrip(mediaOf(p), (opts.asOthers ? "pv" : "p") + p.id);
-      if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
-      else if (isMe) html += `<p class="muted prof-bio">No bio yet. Tap Edit Profile to add one.</p>`;
-      html += profileDetails(p, false);
-      html += profileTunes(p.favoriteTunes);
-    } else {
-      if (p.bio) html += `<p class="prof-bio">${esc(p.bio)}</p>`;
-      const topChips = [];
-      if (p.age) topChips.push(`<span class="chip soft">${esc(p.age)}</span>`);
-      if (p.gender) topChips.push(`<span class="chip soft">${esc(genderLabel(p.gender))}</span>`);
-      const height = formatHeight(p.heightIn);
-      if (height) topChips.push(`<span class="chip soft">${esc(height)}</span>`);
-      (p.hobbies || []).slice(0, 3).forEach((h) => topChips.push(`<span class="chip soft">${esc(h)}</span>`));
-      if (topChips.length) html += `<div class="chips prof-chips">${topChips.join("")}</div>`;
-      if ((p.favoriteTunes || []).length) {
-        html += `<button type="button" class="btn sm ghost tunes-jump" data-act="profile-tab" data-id="about">My Tunes</button>`;
-      }
-      html += profilePosts(posts, isMe);
-    }
+    html += pfSection("shows", "Upcoming shows", upcomingBlock(shows, { hidden: Boolean(p.upcomingHidden) || (isMe && p.showUpcoming === false), mine: isMe && !opts.asOthers, noLabel: true }));
+    // 6. Kandi collection
+    if (window.KandiTrades && KandiTrades.collectionHtml) html += pfSection("kandi", "", KandiTrades.collectionHtml(p, isMe));
+    // 7. Crew
+    html += pfSection("crew", "", profileCrewSlot());
+    // 8. Posts
+    html += pfSection("posts", "", profilePosts(posts, isMe));
+    // 9. Safety & account (your own page only)
+    if (isMe && !opts.asOthers) html += profileAccountLinks();
+    html += `</div>`;
     return html;
+  }
+
+  function profileAccountLinks() {
+    const me = state.me || {};
+    const row = (act, title, sub, attrs) => `<button type="button" class="set-row" data-act="${act}" ${attrs || ""}><div class="grow"><div>${title}</div><div class="tiny">${sub}</div></div><span aria-hidden="true">›</span></button>`;
+    const verifiedSub = me.verified
+      ? "Selfie-verified badge is on your profile"
+      : (me.verificationStatus === "pending" ? "Selfie submitted — we're reviewing it" : "Take a live selfie so people know you're real");
+    const safetyOn = Boolean(state.safetyCheck);
+    return `<section class="pf-sec" id="pf-account" data-pf="account">
+      <div class="pf-head"><h3 class="pf-title">Safety &amp; account</h3></div>
+      <div class="set-group pf-links">
+        ${safetyOn ? "" : row("open-safety", "Safety check", "Pick buddies to check on you at a show")}
+        ${row("open-get-verified", me.verified ? "You're verified" : "Get verified", verifiedSub)}
+        ${row("open-groups", "Rave groups", "Form a crew or join one")}
+        ${row("open-settings", "Settings", "Account, privacy, email, log out, delete account")}
+      </div>
+    </section>`;
   }
 
   const state = {
@@ -1646,9 +1710,10 @@
   }
   function upcomingBlock(shows, opts) {
     opts = opts || {};
-    if (opts.hidden) return `<div class="label">Upcoming shows</div><p class="tiny">This person hides their upcoming shows.</p>`;
-    if (!(shows && shows.length)) return opts.mine ? `<div class="label">Upcoming shows</div><p class="tiny">Pick your shows in Edit Profile or the Events tab and they'll show up here.</p>` : "";
-    return `<div class="label">Upcoming shows</div><div class="upcoming-list">${shows.map((e) =>
+    const lab = opts.noLabel ? "" : `<div class="label">Upcoming shows</div>`;
+    if (opts.hidden) return `${lab}<p class="tiny">This person hides their upcoming shows.</p>`;
+    if (!(shows && shows.length)) return opts.mine ? `${lab}<p class="tiny">Pick your shows in Edit profile or the Events tab and they'll show up here.</p>` : "";
+    return `${lab}<div class="upcoming-list">${shows.map((e) =>
       `<button type="button" class="upcoming-row" data-act="event" data-id="${esc(e.id)}">${esc(e.emoji || "✺")} <span class="grow">${esc(e.name)}</span><span class="tiny">${esc(e.date || eventChipLabel(e))}</span></button>`
     ).join("")}</div>`;
   }
@@ -4394,8 +4459,9 @@
     const posts = (soc && soc.posts) || [];
     const counts = soc && soc.user ? { followerCount: soc.user.followerCount, followingCount: soc.user.followingCount } : {};
     let html = header("You", `<button type="button" class="icon-btn" data-act="share-profile" data-id="${p.id}" aria-label="Share my profile">↗</button>${bellBtn()}<button type="button" class="icon-btn" data-act="open-settings" aria-label="Settings">⚙︎</button>`);
-    html += `<div class="scroll pad">`;
-    html += safetyEventsCard();
+    html += `<div class="scroll pad pf-scroll">`;
+    // An active safety check stays pinned to the top; otherwise it lives under Safety & account.
+    if (state.safetyCheck) html += safetyEventsCard();
     html += profilePreview(p, posts, { isMe: true, counts });
     html += `</div>`;
     return html;
@@ -4567,9 +4633,10 @@
     for (let i = 0; i < MAX_TUNES; i++) {
       tunes += `<input data-field="editTune${i}" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Paste a Spotify, SoundCloud, or Apple Music link" value="${esc(state.drafts["editTune" + i] || "")}" style="margin-top:8px" />`;
     }
-    return `<div style="display:flex;justify-content:center;margin:8px 0 16px">${profileAvatarEditor(me)}</div>
-      ${photoEditor(mediaOf(me))}
-      <div class="label" style="margin-top:8px">Name</div>
+    const sec = (title, hint, body) => `<section class="ef-sec"><h3 class="ef-title">${title}</h3>${hint ? `<p class="tiny ef-hint">${hint}</p>` : ""}${body}</section>`;
+    const photosSec = sec("Photos &amp; video", "", `<div style="display:flex;justify-content:center;margin:4px 0 16px">${profileAvatarEditor(me)}</div>${photoEditor(mediaOf(me))}`);
+    const basicsSec = sec("Basics", "", `
+      <div class="label">Name</div>
       <input data-field="editName" placeholder="Name" value="${esc(state.drafts.editName || "")}" />
       <div class="label" style="margin-top:12px">Age (18+)</div>
       <input data-field="editAge" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="Age" value="${esc(state.drafts.editAge || "")}" />
@@ -4579,34 +4646,41 @@
       <div class="label" style="margin-top:12px">Home city</div>
       <input data-field="editHomeLocation" placeholder="e.g. Salt Lake City, Springville, or a local ZIP" value="${esc(state.drafts.editHomeLocation || "")}" />
       <div class="label" style="margin-top:12px">Bio</div>
-      <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>
+      <textarea data-field="editBio" placeholder="A little about you...">${esc(state.drafts.editBio || "")}</textarea>`);
+    const aboutSec = sec("About you", "", `
       ${editChipRow("Gender", GENDERS, d.gender, "edit-set-gender", true)}
       ${editChipRow("Pronouns", PRONOUNS.map((x) => ({ id: x, label: x })), d.pronouns, "edit-set-pronouns", true)}
       <div class="label" style="margin-top:14px">Height</div>
       <div class="row height-row"><select data-field="editHeightFt" aria-label="Height in feet">${ftOpts}</select>
         <select data-field="editHeightIn" aria-label="Height in inches">${inOpts}</select></div>
-      ${editChipRow("Interested in", INTERESTED_IN, d.interestedIn, "edit-toggle-interested", false)}
       <div class="label" style="margin-top:14px">Genre badges <span class="tiny">(${(d.vibes || []).length}/${MAX_GENRES})</span></div>
       <p class="tiny" style="margin-bottom:8px">Pick up to ${MAX_GENRES}. These show on your profile, in Discover, and next to your name on posts.</p>
       <div class="chips">${genreCatalog().map((g) =>
         `<button type="button" class="chip genre-pick g-${esc(g.id)}${(d.vibes || []).includes(g.id) ? " on" : ""}" data-act="edit-toggle-vibe" data-id="${esc(g.id)}">${esc(g.name)}</button>`
       ).join("")}</div>
+      <div class="label" style="margin-top:14px">Hobbies</div>
+      <div class="chips">${hobbySet.map((h) => `<button type="button" class="chip${(d.hobbies || []).includes(h) ? " on" : ""}" data-act="edit-toggle-hobby" data-id="${esc(h)}">${esc(h)}</button>`).join("")}</div>
+      <div class="row" style="margin-top:8px"><input data-field="editCustomHobby" placeholder="Add your own hobby" value="${esc(state.drafts.editCustomHobby || "")}" />
+        <button type="button" class="btn sm ghost" data-act="edit-add-hobby">Add</button></div>
+      ${customHobbies.length ? `<p class="tiny" style="margin-top:6px">Custom: ${customHobbies.map(esc).join(", ")}</p>` : ""}`);
+    const lookingSec = sec("Who you want to meet", "", `
       <div class="label">Looking for</div>
       <div class="chips">${MEET_INTENTS.map((v) =>
         `<button type="button" class="chip${(d.meetIntent || "both") === v.id ? " on" : ""}" data-act="edit-set-meet-intent" data-id="${v.id}">${esc(v.label)}</button>`
       ).join("")}</div>
       <p class="tiny" style="margin:4px 0 10px">Friends mode ignores gender preferences. Dating mode still uses them.</p>
-      ${editChipRow("Open to", LOOKING, d.looking, "edit-toggle-look", false)}
-      <div class="label" style="margin-top:14px">Hobbies</div>
-      <div class="chips">${hobbySet.map((h) => `<button type="button" class="chip${(d.hobbies || []).includes(h) ? " on" : ""}" data-act="edit-toggle-hobby" data-id="${esc(h)}">${esc(h)}</button>`).join("")}</div>
-      <div class="row" style="margin-top:8px"><input data-field="editCustomHobby" placeholder="Add your own hobby" value="${esc(state.drafts.editCustomHobby || "")}" />
-        <button type="button" class="btn sm ghost" data-act="edit-add-hobby">Add</button></div>
-      ${customHobbies.length ? `<p class="tiny" style="margin-top:6px">Custom: ${customHobbies.map(esc).join(", ")}</p>` : ""}
-      <div class="label" style="margin-top:14px">Favorite artists / DJs</div>
+      ${editChipRow("Interested in", INTERESTED_IN, d.interestedIn, "edit-toggle-interested", false)}
+      ${editChipRow("Open to", LOOKING, d.looking, "edit-toggle-look", false)}`);
+    const musicSec = sec("Music", "", `
+      <div class="label">Favorite artists / DJs</div>
       <input data-field="editFavoriteArtists" placeholder="Who do you play on repeat?" value="${esc(state.drafts.editFavoriteArtists || "")}" />
       ${editSongPicker()}
       ${editArtistPicker()}
-      <div class="label" style="margin-top:14px">Shows I'm going to</div>
+      <div class="label" style="margin-top:18px">My Tunes</div>
+      <p class="tiny">Paste up to 5 links from Spotify, SoundCloud, or Apple Music — tracks, playlists, or albums. We'll show a player on your profile.</p>
+      ${tunes}`);
+    const showsSec = sec("Shows", "", `
+      <div class="label">Shows I'm going to</div>
       <p class="tiny" style="margin-bottom:6px">Saves right away. These show as Upcoming shows on your profile.</p>
       ${showPickerField("edit")}
       <div class="label" style="margin-top:12px">Favorite festival or show</div>
@@ -4614,26 +4688,24 @@
       <div class="label" style="margin-top:12px">Favorite venue</div>
       <input data-field="editFavoriteVenue" placeholder="e.g. The Great Saltair, Soundwell" value="${esc(state.drafts.editFavoriteVenue || "")}" />
       <div class="label" style="margin-top:12px">Favorite hangout</div>
-      <input data-field="editFavoriteHangout" placeholder="Where do you post up?" value="${esc(state.drafts.editFavoriteHangout || "")}" />
+      <input data-field="editFavoriteHangout" placeholder="Where do you post up?" value="${esc(state.drafts.editFavoriteHangout || "")}" />`);
+    const raveSec = sec("Rave life", "", `
       ${editChipRow("Kandi trades", KANDI_TRADES, d.kandiTrades, "edit-set-trades", true)}
       <div class="label" style="margin-top:12px">Rave totem</div>
       <input data-field="editRaveTotem" placeholder="How do people find you in the crowd?" value="${esc(state.drafts.editRaveTotem || "")}" />
       <div class="label" style="margin-top:12px">Years raving</div>
-      <input data-field="editYearsRaving" placeholder="e.g. 6" value="${esc(state.drafts.editYearsRaving || "")}" />
-      <div class="label" style="margin-top:18px">Socials (optional)</div>
-      <p class="tiny">Show Instagram and Spotify buttons on your profile and Discover card. Facebook is optional too. We don't import Instagram photos or connect to Spotify.</p>
-      <input data-field="editInstagram" aria-label="Instagram handle" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" placeholder="Instagram @handle or link" value="${esc(state.drafts.editInstagram || "")}" style="margin-top:6px" />
+      <input data-field="editYearsRaving" placeholder="e.g. 6" value="${esc(state.drafts.editYearsRaving || "")}" />`);
+    const socialsSec = sec("Socials (optional)", "Show Instagram and Spotify buttons on your profile and Discover card. Facebook is optional too. We don't import Instagram photos or connect to Spotify.", `
+      <input data-field="editInstagram" aria-label="Instagram handle" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" placeholder="Instagram @handle or link" value="${esc(state.drafts.editInstagram || "")}" />
       <input data-field="editSpotify" aria-label="Spotify profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Spotify profile URL or spotify:user:…" value="${esc(state.drafts.editSpotify || "")}" style="margin-top:8px" />
-      <input data-field="editFacebook" aria-label="Facebook profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Facebook username or profile link" value="${esc(state.drafts.editFacebook || "")}" style="margin-top:8px" />
-      <div class="label" style="margin-top:18px">My Tunes</div>
-      <p class="tiny">Paste up to 5 links from Spotify, SoundCloud, or Apple Music — tracks, playlists, or albums. We'll show a player on your profile.</p>
-      ${tunes}
+      <input data-field="editFacebook" aria-label="Facebook profile" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" placeholder="Facebook username or profile link" value="${esc(state.drafts.editFacebook || "")}" style="margin-top:8px" />`);
+    return `<div class="ef-page">${photosSec}${basicsSec}${aboutSec}${lookingSec}${musicSec}${showsSec}${raveSec}${socialsSec}
       ${state.err ? `<div class="err">${esc(state.err)}</div>` : ""}
       <div class="edit-preview-actions">
         <button type="button" class="btn ghost" data-act="preview-profile">Preview</button>
         <button type="button" class="btn primary" data-act="save-profile">Save</button>
       </div>
-      <div style="height:24px"></div>`;
+      <div style="height:24px"></div></div>`;
   }
 
   function composerMediaPreview() {
@@ -5247,12 +5319,11 @@
         : (u.canFollow ? `<button type="button" class="btn sm primary" data-act="follow" data-id="${u.id}">Follow</button>` : ""));
       const extra = u.isMe
         ? ""
-        : `<button type="button" class="btn ghost" style="margin-top:24px" data-act="report" data-id="${u.id}">Report / block</button>`;
+        : `<button type="button" class="btn ghost" data-act="report" data-id="${u.id}">Report / block</button>`;
       return `<div class="overlay top-pad"><div class="header"><div class="left"><button type="button" class="icon-btn" data-act="close" aria-label="Close">✕</button><span style="font-weight:600">${esc(u.name)}</span></div><div class="right">${followBtn}</div></div>
         <div class="scroll pad">
-          ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount } })}
-          ${!u.isMe ? `<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">${goerActions(u)}</div>` : ""}
-          ${extra}
+          ${profilePreview(u, data.posts || [], { isMe: Boolean(u.isMe), counts: { followerCount: u.followerCount, followingCount: u.followingCount }, actionsHtml: u.isMe ? "" : goerActions(u) })}
+          ${extra ? `<div class="pf-foot">${extra}</div>` : ""}
         </div></div>`;
     }
 

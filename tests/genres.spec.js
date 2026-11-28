@@ -16,10 +16,10 @@ test.describe("Genre badges (iPhone WebKit)", () => {
     await login(page, "vesper", "plur-demo");
     await page.locator('[data-act="tab"][data-id="you"]').click();
     await expect(page.getByRole("button", { name: "Edit Profile" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator(".prof-hero .genre-badge")).toHaveCount(3);
-    await expect(page.locator(".prof-hero")).toContainText(/House/i);
-    await expect(page.locator(".prof-hero")).toContainText(/Techno/i);
-    await expect(page.locator(".prof-hero")).toContainText(/Disco/i);
+    await expect(page.locator(".pf-hero .genre-badge")).toHaveCount(3);
+    await expect(page.locator(".pf-hero")).toContainText(/House/i);
+    await expect(page.locator(".pf-hero")).toContainText(/Techno/i);
+    await expect(page.locator(".pf-hero")).toContainText(/Disco/i);
     await expect(page.locator(".raver-badge")).toHaveCount(0);
     await expect(page.getByText("Banger", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Bopper", { exact: true })).toHaveCount(0);
@@ -47,8 +47,8 @@ test.describe("Genre badges (iPhone WebKit)", () => {
   test("tapping a genre badge opens people and events for that sound", async ({ page }) => {
     await login(page, "vesper", "plur-demo");
     await page.locator('[data-act="tab"][data-id="you"]').click();
-    await expect(page.locator(".prof-hero .genre-badge").first()).toBeVisible({ timeout: 20_000 });
-    await page.locator(".prof-hero .genre-badge").first().click();
+    await expect(page.locator(".pf-hero .genre-badge").first()).toBeVisible({ timeout: 20_000 });
+    await page.locator(".pf-hero .genre-badge").first().click();
     await expect(page.locator(".sheet")).toBeVisible();
     await expect(page.getByRole("button", { name: "Show in Discover" })).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".sheet")).toContainText(/People into|No one has this badge/i);

@@ -400,3 +400,79 @@ body.net-busy::before { background: linear-gradient(90deg, transparent, var(--ac
 .ambassador-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; vertical-align: 1px; border: 1px solid rgba(255,255,255,.28); color: #f2f2f2; }
 .ambassador-badge.lg { display: inline-block; margin: 0 0 10px; padding: 5px 12px; font-size: 13px; }
 .admin-ref-list { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- Profile page redesign: one scrolling page of labeled sections ---- */
+/* Scrolling: the page body scrolls on its own and always clears the tab bar, notch and home indicator. */
+.scroll { overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.scroll.pf-scroll, .overlay > .scroll.pad { padding-bottom: calc(var(--s7) + var(--safe-b)); }
+.overlay > .scroll { min-height: 0; }
+body.safety-dock-on .scroll.pf-scroll { padding-bottom: calc(96px + var(--safe-b)); }
+
+.pf-page { display: flex; flex-direction: column; gap: var(--s5); padding-top: var(--s2); }
+
+/* Header card */
+.pf-hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s4); }
+.pf-hero-top { display: flex; align-items: center; gap: var(--s4); }
+.pf-hero .avatar-ring-lg { width: 104px; height: 104px; padding: 4px; }
+.pf-hero .avatar-ring-lg .av, .pf-hero .avatar-ring-lg .prof-av { width: 92px; height: 92px; }
+.pf-id { min-width: 0; flex: 1; }
+.pf-id .nm { font-size: var(--fs-h2); font-weight: var(--fw-bold); letter-spacing: -.02em; line-height: var(--lh-tight); overflow-wrap: anywhere; }
+.pf-handle { font-size: var(--fs-sub); margin-top: 2px; overflow-wrap: anywhere; }
+.pf-city { margin-top: 4px; font-size: var(--fs-sub); color: var(--text-2); }
+.pf-city::before { content: "\2022"; color: var(--accent); margin-right: 6px; }
+.pf-hero .genre-row { margin-top: var(--s3); }
+.pf-hero .social-links, .pf-hero .socials { margin-top: var(--s3); }
+.pf-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: var(--s4) 0 0; padding: var(--s3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.pf-stats span, .pf-stats > span { text-align: center; }
+.pf-stats strong { font-size: var(--fs-headline); }
+.pf-stats .tiny { display: block; color: var(--text-3); }
+.pf-actions { margin-top: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+.pf-actions .pf-edit { width: 100%; }
+.pf-actions-row { display: flex; gap: var(--s2); }
+.pf-actions-row .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+
+/* Sections */
+.pf-sec { margin: 0; }
+.pf-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin: 0 0 var(--s3); }
+.pf-title { margin: 0; font-size: var(--fs-headline); font-weight: var(--fw-bold); letter-spacing: -.01em; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.pf-title::before, .pf-sec .kandi-col-head .label::before, .pf-sec .prof-crew .row .label::before, .pf-sec .posts-heading .label::before,
+.ef-title::before { content: ""; flex: none; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
+.pf-sec .kandi-col-head .label, .pf-sec .prof-crew .row .label, .pf-sec .posts-heading .label { display: flex; align-items: center; gap: 8px; }
+.pf-sec .label { font-size: var(--fs-foot); font-weight: var(--fw-semi); color: var(--text-2); margin: var(--s4) 0 var(--s2); }
+.pf-sec .pf-head + .label, .pf-sec > .label:first-child { margin-top: 0; }
+.pf-sec .prof-bio { margin: 0 0 var(--s3); font-size: var(--fs-callout); }
+.pf-sec .prof-chips { margin: 0 0 var(--s3); }
+.pf-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s4); }
+.pf-sec .prof-facts { grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s3); margin: 0 0 var(--s3); }
+.pf-sec .prof-fact { min-width: 0; }
+.pf-sec .prof-fact .label { font-size: var(--fs-cap); color: var(--text-3); margin: 0 0 2px; letter-spacing: .04em; text-transform: uppercase; }
+.pf-sec .prof-fact-val { font-size: var(--fs-callout); overflow-wrap: anywhere; }
+.pf-sec .pf-prompt { padding: var(--s4); margin: 0 0 var(--s3); border-radius: var(--r-md); }
+.pf-sec .pf-prompt .a { font-size: var(--fs-headline); margin-top: 4px; }
+
+/* Tidy the blocks that live inside sections (they bring their own spacing) */
+.pf-sec .photo-strip { margin: 0; }
+.pf-sec .prof-song, .pf-sec .prof-artists, .pf-sec .prof-tunes, .pf-sec .prof-videos, .pf-sec .kandi-collection, .pf-sec .prof-crew { margin: 0; }
+.pf-sec .prof-song + .prof-artists, .pf-sec .prof-song + .prof-tunes, .pf-sec .prof-artists + .prof-tunes { margin-top: var(--s5); }
+.pf-sec .upcoming-list { margin: 0; }
+.pf-sec .posts-toolbar { margin: 0 0 var(--s3); }
+.pf-sec .posts-heading .label { font-size: var(--fs-headline); font-weight: var(--fw-bold); color: var(--text); margin: 0; }
+.pf-sec .profile-feed { margin: 0 calc(-1 * var(--s4)); }
+.pf-sec .kandi-col-head { align-items: center; }
+.pf-sec .kandi-col-head .label { font-size: var(--fs-headline); font-weight: var(--fw-bold); color: var(--text); margin: 0; }
+.pf-sec .prof-crew .row .label { font-size: var(--fs-headline); font-weight: var(--fw-bold); color: var(--text); margin: 0; }
+.pf-sec .prof-crew .row { align-items: center; }
+.pf-sec .empty { padding: var(--s6) var(--s4); }
+
+/* Safety & account links */
+.pf-links { margin-bottom: 0; }
+.pf-links .set-row:last-child { border-bottom: 0; }
+.pf-foot { margin-top: var(--s5); }
+.pf-foot .btn { width: 100%; }
+
+/* Edit profile: grouped, headed sections */
+.ef-page { display: flex; flex-direction: column; gap: var(--s6); padding-top: var(--s2); }
+.ef-sec { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s4); }
+.ef-title { margin: 0 0 var(--s3); font-size: var(--fs-headline); font-weight: var(--fw-bold); display: flex; align-items: center; gap: 8px; }
+.ef-hint { margin: -6px 0 var(--s3); color: var(--text-3); }
+.ef-sec .label:first-child { margin-top: 0; }

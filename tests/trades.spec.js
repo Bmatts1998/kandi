@@ -103,9 +103,9 @@ test.describe("Digital kandi trades (iPhone WebKit)", () => {
     await ip.goto("/");
     await expect(ip.locator(".tabbar")).toBeVisible({ timeout: 30_000 });
     await ip.locator('[data-act="tab"][data-id="you"]').click();
-    await expect(ip.locator(".prof-actions [data-act='trade-open'], #kandi-collection [data-act='trade-open']")).toHaveCount(2);
+    await expect(ip.locator(".pf-actions [data-act='trade-open'], #kandi-collection [data-act='trade-open']")).toHaveCount(2);
     await expect(ip.locator('[data-act="upgrade"]')).toHaveCount(0);
-    await ip.getByRole("button", { name: "Settings" }).click();
+    await ip.getByRole("button", { name: "Settings", exact: true }).click();
     const body = ip.locator(".overlay");
     await expect(body).toContainText("Trade kandi");
     await expect(body).not.toContainText("Upgrade to Kandi Plus");

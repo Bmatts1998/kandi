@@ -24,23 +24,21 @@ test.describe("Profile preview, edit, and posts (iPhone WebKit)", () => {
     const you = page.locator(".screen.has-tabs, .screen").first();
     await expect(page.getByRole("button", { name: "Edit Profile" })).toBeVisible();
     await expect(page.getByRole("button", { name: "New Post" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Posts" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "About" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    // One scrolling page of labeled sections (no Posts/About tabs).
+    await expect(page.locator(".pf-sec .pf-title", { hasText: "About" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Grid view" })).toBeVisible();
     await expect(page.getByRole("button", { name: "List view" })).toBeVisible();
 
     // Preview must not include inline photo editors.
     await expect(page.locator(".scroll .photo-editor")).toHaveCount(0);
     await expect(page.locator(".scroll .slot-x")).toHaveCount(0);
-    await expect(page.locator(".prof-hero .prof-avatar-wrap")).toHaveCount(0);
+    await expect(page.locator(".pf-hero .prof-avatar-wrap")).toHaveCount(0);
     await expect(page.locator(".avatar-ring[data-story-ring]")).toBeVisible();
 
-    await page.getByRole("button", { name: "About" }).click();
     await expect(page.locator(".prof-facts")).toBeVisible();
     await expect(page.locator(".prof-chips").first()).toBeVisible();
-
-    await page.getByRole("button", { name: "Posts" }).click();
+    await expect(page.locator("#pf-posts")).toBeAttached();
     await page.getByRole("button", { name: "List view" }).click();
     await expect(page.locator(".post-view-toggle button[data-id='list']")).toHaveClass(/on/);
     await page.getByRole("button", { name: "Grid view" }).click();
